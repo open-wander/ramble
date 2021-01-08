@@ -1,0 +1,12 @@
+database:
+  dbname: "rmbldb"
+  username: "postgres"
+  password: "postgres"
+  host: "127.0.0.1"
+  port: "5432"
+
+server:
+  RMBLServerPort: "10000"
+  GithubUserName:  "USER"
+  GithubAuthToken: "0AUTHTOKEN"
+  # Debug: true # Uncomment if you want to see the debug messages for gin
