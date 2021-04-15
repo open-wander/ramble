@@ -4,7 +4,6 @@ github.com/fsnotify/fsnotify
 github.com/gin-contrib/sse
 # github.com/gin-gonic/contrib v0.0.0-20201101042839-6a891bf89f19
 ## explicit
-github.com/gin-gonic/contrib/static
 # github.com/gin-gonic/gin v1.6.3
 ## explicit
 github.com/gin-gonic/gin
@@ -23,10 +22,8 @@ github.com/go-playground/validator/v10
 github.com/golang/protobuf/proto
 # github.com/google/go-github v17.0.0+incompatible
 ## explicit
-github.com/google/go-github/github
 # github.com/google/go-querystring v1.0.0
 ## explicit
-github.com/google/go-querystring/query
 # github.com/hashicorp/hcl v1.0.0
 github.com/hashicorp/hcl
 github.com/hashicorp/hcl/hcl/ast
@@ -86,27 +83,14 @@ github.com/subosito/gotenv
 github.com/ugorji/go/codec
 # golang.org/x/crypto v0.0.0-20201016220609-9e8e0b390897
 ## explicit
-# golang.org/x/net v0.0.0-20200822124328-c89045814202
-golang.org/x/net/context
-golang.org/x/net/context/ctxhttp
 # golang.org/x/oauth2 v0.0.0-20200902213428-5d25da1a8d43
 ## explicit
-golang.org/x/oauth2
-golang.org/x/oauth2/internal
 # golang.org/x/sys v0.0.0-20200803210538-64077c9b5642
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 # golang.org/x/text v0.3.3
 golang.org/x/text/transform
 golang.org/x/text/unicode/norm
-# google.golang.org/appengine v1.6.6
-google.golang.org/appengine/internal
-google.golang.org/appengine/internal/base
-google.golang.org/appengine/internal/datastore
-google.golang.org/appengine/internal/log
-google.golang.org/appengine/internal/remote_api
-google.golang.org/appengine/internal/urlfetch
-google.golang.org/appengine/urlfetch
 # google.golang.org/protobuf v1.25.0
 google.golang.org/protobuf/encoding/prototext
 google.golang.org/protobuf/encoding/protowire

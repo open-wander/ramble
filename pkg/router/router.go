@@ -25,23 +25,37 @@ func Setup() *gin.Engine {
 	}
 
 	// Non-protected routes
-	repos := router.Group("/api/v1/repo")
+	repos := router.Group("/v1")
 	{
-		repos.GET("/", controller.GetRepos)
-		repos.GET("/:name", controller.GetRepo)
+		// Check that the endpoint implements Ramble registry API V1.
+		repos.GET("/", controller.NotImplemented)
+		// Catalogue
+		// Retrieve a sorted, json list of repositories available in the registry.
+		repos.GET("/_catalog", controller.NotImplemented)
+		// Fetch the tags under the repository identified by name.
+		repos.GET("/<name>/tags/list", controller.NotImplemented)
+		// Manifests
+		// Fetch the manifest identified by name and reference where reference can be a tag or digest
+		repos.GET("/<name>/manifests/<reference>", controller.NotImplemented)
+		// Put the manifest identified by name and reference where reference can be a tag or digest.
+		repos.PUT("/<name>/manifests/<reference>", controller.NotImplemented)
+		// Delete the manifest identified by name and reference. Note that a manifest can only be deleted by digest.
+		repos.DELETE("/<name>/manifests/<reference>", controller.NotImplemented)
+		// Blobs
+		// Retrieve the blob from the registry identified by digest
+		repos.GET("/<name>/blobs/<digest>", controller.NotImplemented)
+		// Delete the blob identified by name and digest
+		repos.DELETE("/<name>/blobs/<digest>", controller.NotImplemented)
+		// Initiate a resumable blob upload. If successful, an upload location will be provided to complete the upload.
+		repos.POST("/<name>/blobs/uploads/", controller.NotImplemented)
+		// Retrieve status of upload identified by uuid.
+		repos.GET("/<name>/blobs/uploads/<uuid>", controller.NotImplemented)
+		// Upload a chunk of data for the specified upload.
+		repos.PATCH("/<name>/blobs/uploads/<uuid>", controller.NotImplemented)
+		// Complete the upload specified by uuid, optionally appending the body as the final chunk.
+		repos.PUT("/<name>/blobs/uploads/<uuid>", controller.NotImplemented)
+		// Cancel outstanding upload processes, releasing associated resources.
+		repos.DELETE("/<name>/blobs/uploads/<uuid>", controller.NotImplemented)
 	}
-
-	// Protected routes
-	// For authorized access, group protected routes using gin.BasicAuth() middleware
-	// gin.Accounts is a shortcut for map[string]string
-
-	authorized := router.Group("/admin", gin.BasicAuth(gin.Accounts{}))
-
-	// /admin/dashboard endpoint is now protected
-	authorized.GET("/dashboard", controller.Dashboard)
-	authorized.POST("/createrepo", controller.CreateRepo)
-	authorized.PUT("/updaterepo", controller.UpdateRepo)
-	authorized.DELETE("/deleterepo", controller.DeleteRepo)
-
 	return router
 }
