@@ -11,12 +11,16 @@ import (
 	"gorm.io/gorm"
 )
 
+// TODO create a filtered list of repositories as this will get bigger as time goes on
+
 func GetAllRepositories(c *fiber.Ctx) error {
 	db := database.DB
 	var repositories []models.Repository
 	db.Find(&repositories)
 	return c.JSON(repositories)
 }
+
+// TODO create a filtered list of repositories as this will get bigger as time goes on
 
 func GetOrgRepositories(c *fiber.Ctx) error {
 	fmt.Println("org Repos Hit")

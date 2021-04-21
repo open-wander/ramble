@@ -48,6 +48,8 @@ func validUser(id string, p string) bool {
 }
 
 // GetAllUsers get all user
+// TODO create a filtered list of repositories as this will get bigger as time goes on
+
 func GetAllUsers(c *fiber.Ctx) error {
 	db := database.DB
 	var users []models.User
@@ -59,6 +61,8 @@ func GetAllUsers(c *fiber.Ctx) error {
 	}
 	return c.JSON(fiber.Map{"status": "success", "message": "Users found", "data": users})
 }
+
+// TODO create a function for getting all uers related to an ORG
 
 // GetUser get a user
 func GetUser(c *fiber.Ctx) error {
