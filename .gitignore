@@ -18,3 +18,5 @@ dist
 *.db
 .DS_Store
 config.yml
+tmp/air.log
+tmp/rmbl-server

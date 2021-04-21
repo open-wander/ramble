@@ -2,58 +2,53 @@ package database
 
 import (
 	"fmt"
+	"log"
+	"time"
 
-	"github.com/nsreg/rmbl/model"
-	"github.com/nsreg/rmbl/pkg/config"
+	appconfig "rmbl/pkg/config"
 
-	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/postgres"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var (
-	DB    *gorm.DB
-	err   error
-	DBErr error
+	DB *gorm.DB
 )
 
-type Database struct {
-	*gorm.DB
+type DefaultModel struct {
+	ID        uint       `gorm:"primary_key" json:"id"`
+	CreatedAt time.Time  `json:"createdAt"`
+	UpdatedAt time.Time  `json:"updatedAt"`
+	DeletedAt *time.Time `sql:"index" json:"deletedAt"`
 }
 
-// Setup opens a database and saves the reference to `Database` struct.
-func Setup() {
-	var db = DB
+func SetupDatabase() {
+	appconfig := appconfig.GetConfig()
+	username := appconfig.Database.Username
+	password := appconfig.Database.Password
+	dbName := appconfig.Database.Dbname
+	dbHost := appconfig.Database.Host
+	dbPort := appconfig.Database.Port
 
-	config := config.GetConfig()
+	var err error
+	var config gorm.Config
+	dsn := fmt.Sprintf("host=%s port=%s user=%s dbname=%s sslmode=disable password=%s", dbHost, dbPort, username, dbName, password)
 
-	database := config.Database.Dbname
-	username := config.Database.Username
-	password := config.Database.Password
-	host := config.Database.Host
-	port := config.Database.Port
-
-	db, err = gorm.Open("postgres", "host="+host+" port="+port+" user="+username+" dbname="+database+"  sslmode=disable password="+password)
-	if err != nil {
-		DBErr = err
-		fmt.Println("db err: ", err)
+	if appconfig.Database.GormLogger != "" {
+		config = gorm.Config{}
+	} else {
+		config = gorm.Config{
+			Logger: logger.Default.LogMode(logger.Silent),
+		}
 	}
 
-	// Change this to true if you want to see SQL queries
-	db.LogMode(false)
+	DB, err = gorm.Open(postgres.Open(dsn), &config)
 
-	// Auto migrate project models
-	db.AutoMigrate(&model.Repository{}, &model.User{}, &model.RelVersion{})
-	db.DB().SetMaxIdleConns(20)
-	db.DB().SetMaxOpenConns(200)
-	DB = db
-}
+	if err != nil {
+		log.Fatal(err)
+		panic("Failed to connect database")
+	}
 
-// GetDB helps you to get a connection
-func GetDB() *gorm.DB {
-	return DB
-}
-
-// GetDBErr helps you to get a connection
-func GetDBErr() error {
-	return DBErr
+	fmt.Println("Connection Opened to Database")
 }
