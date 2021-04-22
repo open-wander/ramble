@@ -1,20 +1,34 @@
 package main
 
 import (
-	"github.com/nsreg/rmbl/pkg/config"
-	"github.com/nsreg/rmbl/pkg/database"
-	"github.com/nsreg/rmbl/pkg/router"
+	"log"
+	"rmbl/api"
+	"rmbl/models"
+	appconfig "rmbl/pkg/config"
+	"rmbl/pkg/database"
+	"rmbl/pkg/server"
 )
 
 func init() {
-	config.Setup()
-	database.Setup()
+	appconfig.Setup()
 }
 
 func main() {
-	config := config.GetConfig()
 
-	r := router.Setup()
-	// log.Printf("server port is %s", config.Server.RMBLServerPort)
-	r.Run("0.0.0.0:" + config.Server.RMBLServerPort)
+	// config := appconfig.GetConfig()
+	// config.Setup()
+
+	// Server initialization
+	app := server.Create()
+
+	// Migrations
+	database.DB.AutoMigrate(&models.User{})
+	database.DB.AutoMigrate(&models.Repository{})
+
+	// Api routes
+	api.Setup(app)
+
+	if err := server.Listen(app); err != nil {
+		log.Panic(err)
+	}
 }
