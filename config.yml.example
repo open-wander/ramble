@@ -4,9 +4,12 @@ database:
   password: "postgres"
   host: "127.0.0.1"
   port: "5432"
+  gormlogger: "true"
 
 server:
+  RMBLServerHost: "0.0.0.0"
   RMBLServerPort: "10000"
-  GithubUserName:  "USER"
+  EnableLimiter: "true"
+  EnableLogger: "true"
+  JWTSecret: "SECREPHRASE"
   GithubAuthToken: "0AUTHTOKEN"
-  # Debug: true # Uncomment if you want to see the debug messages for gin

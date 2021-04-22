@@ -44,10 +44,50 @@ List of features ready and TODOs for future development
 
 ## API Endpoints
 
-`/api/v1/repo`
+`/v1/_catalog`
 GET = Gets list of all repos
 
-`/api/v1/repo?Limit=25&Offset=0&Sort=ID&Order=DESC&Search=hello`
+`/v1/:org`
+GET = Gets the details of all Org repositories
+
+`/v1/:org/:name`
+GET = Gets the details of a Specific repo
+
+`/v1/:org/`
+POST = Create a new repo entry with the following payload
+
+```JSON
+{
+  "name": "fabio_lb",
+  "org": "nsreg",
+  "version": "0.2.1",
+  "description": "Fabio LoadBalancer",
+  "url": "https://github.com/nsreg/fabio_lb"
+}
+```
+
+`/v1/:org/:name`
+PUT = Update a Repo to the latest details.
+
+### Payload should look like this
+
+```JSON
+{
+  "name": "fabio_lb",
+  "org": "nsreg",
+  "version": "0.2.1",
+  "description": "Fabio LoadBalancer",
+  "url": "https://github.com/nsreg/fabio_lb"
+}
+```
+
+`/v1/:org/:name`
+DELETE = Delete a repo that is no longer needed. (only marks it as deleted at the moment)
+
+
+## - - - TODO - - - -
+
+`/v1/?Limit=25&Offset=0&Sort=ID&Order=DESC&Search=hello`
 Search Repos using the search term.
 You can stipulate the following:
 
@@ -56,41 +96,14 @@ You can stipulate the following:
 * Sort=ID
 * Order=ASC/DESC
 
-`/api/v1/repo/:repoName`
-GET = Gets the details of a Specific repo
+`/v1/:org/?Limit=25&Offset=0&Sort=ID&Order=DESC&Search=hello`
+Search Repos using the search term.
+You can stipulate the following:
 
-You need to be Authorized to call the following
-
-`/admin/createrepo`
-POST = Create a new repo entry with the following payload
-
-```JSON
-{
-    "repoName": "rmbl_job_postgres_mr"
-}
-```
-
-`/admin/updaterepo`
-PUT = Update a Repo to the latest details.
-
-### Payload should look like this
-
-```JSON
-{
-    "repoName": "rmbl_job_postgres_mr"
-}
-```
-
-`/admin/deleterepo`
-DELETE = Delete a repo that is no longer needed. (only marks it as deleted at the moment)
-
-### Payload should look like this
-
-```JSON
-{
-    "repoName": "rmbl_job_postgres_mr"
-}
-```
+* Limit=25 (default)
+* Offset=0
+* Sort=ID
+* Order=ASC/DESC
 
 ## Status
 
