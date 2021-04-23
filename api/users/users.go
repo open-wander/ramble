@@ -78,6 +78,7 @@ func GetUser(c *fiber.Ctx) error {
 
 // CreateUser new user
 func CreateUser(c *fiber.Ctx) error {
+	c.Accepts("application/json")
 	type NewUser struct {
 		Username string `json:"username"`
 		Email    string `json:"email"`
@@ -111,6 +112,7 @@ func CreateUser(c *fiber.Ctx) error {
 
 // UpdateUser update user
 func UpdateUser(c *fiber.Ctx) error {
+	c.Accepts("application/json")
 	type UpdateUserInput struct {
 		Names string `json:"names"`
 	}
