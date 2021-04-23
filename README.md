@@ -47,26 +47,26 @@ List of features ready and TODOs for future development
 `/v1/_catalog`
 GET = Gets list of all repos
 
-`/v1/:org`
+`/v1/:user`
 GET = Gets the details of all Org repositories
 
-`/v1/:org/:name`
+`/v1/:user/:name`
 GET = Gets the details of a Specific repo
 
-`/v1/:org/`
+`/v1/:user/`
 POST = Create a new repo entry with the following payload
 
 ```JSON
 {
   "name": "fabio_lb",
-  "org": "nsreg",
+  "user": "nsreg",
   "version": "0.2.1",
   "description": "Fabio LoadBalancer",
   "url": "https://github.com/nsreg/fabio_lb"
 }
 ```
 
-`/v1/:org/:name`
+`/v1/:user/:name`
 PUT = Update a Repo to the latest details.
 
 ### Payload should look like this
@@ -74,35 +74,35 @@ PUT = Update a Repo to the latest details.
 ```JSON
 {
   "name": "fabio_lb",
-  "org": "nsreg",
+  "user": "nsreg",
   "version": "0.2.1",
   "description": "Fabio LoadBalancer",
   "url": "https://github.com/nsreg/fabio_lb"
 }
 ```
 
-`/v1/:org/:name`
+`/v1/:user/:name`
 DELETE = Delete a repo that is no longer needed. (only marks it as deleted at the moment)
 
 
 ## - - - TODO - - - -
 
-`/v1/?Limit=25&Offset=0&Sort=ID&Order=DESC&Search=hello`
+`/v1/?limit=25&offset=0&sort=ID&order=DESC&search=hello`
 Search Repos using the search term.
 You can stipulate the following:
 
 * Limit=25 (default)
 * Offset=0
-* Sort=ID
+* Sort=ID (Sort Field)
 * Order=ASC/DESC
 
-`/v1/:org/?Limit=25&Offset=0&Sort=ID&Order=DESC&Search=hello`
+`/v1/:user/?limit=25&offset=0&sort=ID&order=DESC&search=hello`
 Search Repos using the search term.
 You can stipulate the following:
 
 * Limit=25 (default)
 * Offset=0
-* Sort=ID
+* Sort=ID (Sort Field)
 * Order=ASC/DESC
 
 ## Status
