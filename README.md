@@ -87,7 +87,7 @@ DELETE = Delete a repo that is no longer needed. (only marks it as deleted at th
 
 ## - - - TODO - - - -
 
-`/v1/?limit=25&offset=0&sort=ID&order=DESC&search=hello`
+`/v1/?limit=25&offset=0&order=DESC&search=hello`
 Search Repos using the search term.
 You can stipulate the following:
 
@@ -96,7 +96,7 @@ You can stipulate the following:
 * Sort=ID (Sort Field)
 * Order=ASC/DESC
 
-`/v1/:user/?limit=25&offset=0&sort=ID&order=DESC&search=hello`
+`/v1/:user/?limit=25&offset=0ID&order=DESC&search=hello`
 Search Repos using the search term.
 You can stipulate the following:
 
