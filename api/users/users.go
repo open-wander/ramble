@@ -69,7 +69,7 @@ func GetUser(c *fiber.Ctx) error {
 	id := c.Params("id")
 	db := database.DB
 	var user models.User
-	db.Find(&user, id)
+	db.Preload("Repositories").Find(&user, id)
 	if user.Username == "" {
 		return c.Status(404).JSON(fiber.Map{"status": "error", "message": "No user found with ID", "data": nil})
 	}
@@ -147,12 +147,12 @@ func DeleteUser(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Review your input", "data": err})
 	}
 	id := c.Params("id")
-	token := c.Locals("user").(*jwt.Token)
+	// token := c.Locals("user").(*jwt.Token)
 
-	if !validToken(token, id) {
-		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Invalid token id", "data": nil})
+	// if !validToken(token, id) {
+	// 	return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Invalid token id", "data": nil})
 
-	}
+	// }
 
 	if !validUser(id, pi.Password) {
 		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Not valid user", "data": nil})
@@ -164,6 +164,8 @@ func DeleteUser(c *fiber.Ctx) error {
 
 	db.First(&user, id)
 
-	db.Delete(&user)
+	// When Users are Deleted their repositories are deleted at the same time.
+
+	db.Select("Repositories").Delete(&user)
 	return c.JSON(fiber.Map{"status": "success", "message": "User successfully deleted", "data": nil})
 }

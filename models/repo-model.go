@@ -6,7 +6,16 @@ import "rmbl/pkg/database"
 type Repository struct {
 	database.DefaultModel
 	Name        string `json:"name"`
-	User        string `json:"user"`
+	UserID      uint   `json:"username" gorm:"not null" gorm:"index"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+	URL         string `json:"url"`
+}
+
+type RepositoryViewStruct struct {
+	database.DefaultModel
+	Name        string `json:"name"`
+	UserName    string `json:"username" gorm:"column:username"`
 	Version     string `json:"version"`
 	Description string `json:"description"`
 	URL         string `json:"url"`
