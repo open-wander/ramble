@@ -62,7 +62,7 @@ func GetAllUsers(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"status": "success", "message": "Users found", "data": users})
 }
 
-// TODO create a function for getting all uers related to an ORG
+// TODO create a function for getting all users related to an ORG
 
 // GetUser get a user
 func GetUser(c *fiber.Ctx) error {
@@ -73,7 +73,7 @@ func GetUser(c *fiber.Ctx) error {
 	if user.Username == "" {
 		return c.Status(404).JSON(fiber.Map{"status": "error", "message": "No user found with ID", "data": nil})
 	}
-	return c.JSON(fiber.Map{"status": "success", "message": "Product found", "data": user})
+	return c.JSON(fiber.Map{"status": "success", "message": "User found", "data": user})
 }
 
 // CreateUser new user
