@@ -20,3 +20,10 @@ type RepositoryViewStruct struct {
 	Description string `json:"description"`
 	URL         string `json:"url"`
 }
+
+// Data is mainly generated for filtering and pagination
+type Data struct {
+	TotalData    int64
+	FilteredData int64
+	Data         []RepositoryViewStruct
+}
