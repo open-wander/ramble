@@ -6,9 +6,7 @@ import (
 	"rmbl/models"
 	"rmbl/pkg/apperr"
 	"rmbl/pkg/database"
-	h "rmbl/pkg/helpers"
 	"strconv"
-	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
@@ -16,8 +14,6 @@ import (
 
 func Paginate(c *fiber.Ctx) func(db *gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
-		// sort, _ := strconv.Atoi(c.Query("sort", "ID"))
-		// order, _ := strconv.Atoi(c.Query("order", "DESC"))
 		offset, _ := strconv.Atoi(c.Query("offset", "0"))
 		limit, _ := strconv.Atoi(c.Query("limit", "25"))
 		return db.Offset(offset).Limit(limit)
@@ -35,35 +31,20 @@ func getUserIDByUserName(username string) (id uint) {
 // Get All Repositories limited to 25 results
 // you can use ?limit=25&offset=0&order=desc to override the defaults
 func GetAllRepositories(c *fiber.Ctx) error {
-
+	search := c.Query("search")
+	order := c.Query("order", "DESC")
 	db := database.DB
 	var repositories []models.Repository
-	var data models.Data
-	var userRepos []models.RepositoryViewStruct
+	userRepos := []models.RepositoryViewStruct{}
 
-	order := c.Query("order", "true")
-	// offset := c.Query("offset", "0")
-	limit := c.Query("limit", "25")
-	search := c.Query("search")
-
-	dbquery := db.Debug().Model(&repositories).Joins("inner join users on users.id = repositories.user_id")
-	dbquery.Count(&data.TotalData)
-	dbquery.Order(order)
-	// dbquery.Limit(h.Limit(limit))
-	dbquery.Scopes(h.Search(search), Paginate(c))
-	// dbquery.Offset(h.Offset(offset))
-	dbquery.Select("repositories.id ,repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
-	dbquery.Count(&data.FilteredData)
-
-	// dbquery.Scan(&userRepos)
-	filtereddata := &data.FilteredData
-	pagelimit := h.Limit(limit)
-	var pagesize int64 = int64(pagelimit)
-	fmt.Println(pagesize)
-	data.FilteredData = *filtereddata
-	data.Data = userRepos
-
-	return c.JSON(data)
+	if search != "" {
+		db.Debug().Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name "+order).Scopes(Paginate(c)).Where("name LIKE ?", "%"+search+"%").
+			Select("repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
+	} else {
+		db.Debug().Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name " + order).Scopes(Paginate(c)).
+			Select("repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
+	}
+	return c.JSON(userRepos)
 }
 
 // Get All Repositories limited to 25 results
@@ -81,10 +62,10 @@ func GetUserRepositories(c *fiber.Ctx) error {
 
 	if search != "" {
 		db.Debug().Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name "+order).Scopes(Paginate(c)).Where(&models.Repository{UserID: userid}).Where("name LIKE ?", "%"+search+"%").
-			Select("repositories.id ,repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
+			Select("repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
 	} else {
 		db.Debug().Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name " + order).Scopes(Paginate(c)).Where(&models.Repository{UserID: userid}).
-			Select("repositories.id, repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
+			Select("repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
 	}
 	return c.JSON(userRepos)
 }
@@ -93,27 +74,24 @@ func GetRepository(c *fiber.Ctx) error {
 	user := c.Params("user")
 	name := c.Params("name")
 	db := database.DB
+	// var repository models.Repository
 	var repositories []models.Repository
-	userRepo := models.RepositoryViewStruct{}
+	// err := db.Where("user = ? AND name = ?", user, name).Find(&repository).Error
+	userRepo := []models.RepositoryViewStruct{}
 	userid := getUserIDByUserName(user)
 
-	// Get Useragent from request
-	useragent := string(c.Context().UserAgent())
-
+	// err := db.Debug().Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Where(&models.Repository{UserID: userid}).Where("name = ?", name).
 	err := db.Debug().Model(&repositories).Where(&models.Repository{UserID: userid}).Joins("inner join users on users.id = repositories.user_id").Where("name = ?", name).
-		Select("repositories.id ,repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepo).Error
+		Select("repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepo).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return apperr.EntityNotFound("No repository found")
 	} else if err != nil {
 		return apperr.Unexpected(err.Error())
 	}
-	if strings.HasPrefix(useragent, "git") {
-		p := "/" + c.Params("*") + "?" + string(c.Context().QueryArgs().QueryString())
-		return c.Redirect(userRepo.URL+p, 302)
-	} else {
-		return c.JSON(userRepo)
-	}
+
+	// return c.JSON(repositories)
+	return c.JSON(userRepo)
 }
 
 func NewRepository(c *fiber.Ctx) error {
