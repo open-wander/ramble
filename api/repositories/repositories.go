@@ -44,12 +44,6 @@ func GetAllRepositories(c *fiber.Ctx) error {
 		db.Debug().Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name " + order).Scopes(Paginate(c)).
 			Select("repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
 	}
-	// if search != "" {
-	// 	db.Preload("Users").Order("name "+order).Scopes(Paginate(c)).Where("name LIKE ?", "%"+search+"%").Find(&repositories)
-	// } else {
-	// 	db.Preload("Users").Order("name " + order).Scopes(Paginate(c)).Find(&repositories)
-	// }
-	// return c.JSON(repositories)
 	return c.JSON(userRepos)
 }
 
@@ -65,13 +59,6 @@ func GetUserRepositories(c *fiber.Ctx) error {
 	var repositories []models.Repository
 	userRepos := []models.RepositoryViewStruct{}
 	userid := getUserIDByUserName(username)
-
-	// if search != "" {
-	// 	db.Order("name "+order).Scopes(Paginate(c)).Where(&models.Repository{UserID: userid}).Where("name LIKE ?", "%"+search+"%").Find(&repositories)
-	// } else {
-	// 	db.Order("name " + order).Scopes(Paginate(c)).Where(&models.Repository{UserID: userid}).Find(&repositories)
-	// }
-	// return c.JSON(repositories)
 
 	if search != "" {
 		db.Debug().Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name "+order).Scopes(Paginate(c)).Where(&models.Repository{UserID: userid}).Where("name LIKE ?", "%"+search+"%").
