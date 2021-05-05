@@ -35,8 +35,14 @@ func SetupDatabase() {
 	var config gorm.Config
 	dsn := fmt.Sprintf("host=%s port=%s user=%s dbname=%s sslmode=disable password=%s", dbHost, dbPort, username, dbName, password)
 
-	if appconfig.Database.GormLogger != "" {
-		config = gorm.Config{}
+	if appconfig.Database.GormLogger == "Error" {
+		config = gorm.Config{
+			Logger: logger.Default.LogMode(logger.Error),
+		}
+	} else if appconfig.Database.GormLogger == "Info" {
+		config = gorm.Config{
+			Logger: logger.Default.LogMode(logger.Info),
+		}
 	} else {
 		config = gorm.Config{
 			Logger: logger.Default.LogMode(logger.Silent),

@@ -4,12 +4,14 @@ database:
   password: "postgres"
   host: "127.0.0.1"
   port: "5432"
-  gormlogger: "true"
+  # Gormlogger Level Error || Info
+  gormlogger: "Info"
 
 server:
   RMBLServerHost: "0.0.0.0"
   RMBLServerPort: "10000"
   EnableLimiter: "true"
+  # Fiber Logging Either true or ""
   EnableLogger: "true"
   JWTSecret: "SECREPHRASE"
   GithubAuthToken: "0AUTHTOKEN"
