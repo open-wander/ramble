@@ -38,10 +38,10 @@ func GetAllRepositories(c *fiber.Ctx) error {
 	userRepos := []models.RepositoryViewStruct{}
 
 	if search != "" {
-		db.Debug().Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name "+order).Scopes(Paginate(c)).Where("name LIKE ?", "%"+search+"%").
+		db.Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name "+order).Scopes(Paginate(c)).Where("name LIKE ?", "%"+search+"%").
 			Select("repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
 	} else {
-		db.Debug().Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name " + order).Scopes(Paginate(c)).
+		db.Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name " + order).Scopes(Paginate(c)).
 			Select("repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
 	}
 	return c.JSON(userRepos)
@@ -61,10 +61,10 @@ func GetUserRepositories(c *fiber.Ctx) error {
 	userid := getUserIDByUserName(username)
 
 	if search != "" {
-		db.Debug().Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name "+order).Scopes(Paginate(c)).Where(&models.Repository{UserID: userid}).Where("name LIKE ?", "%"+search+"%").
+		db.Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name "+order).Scopes(Paginate(c)).Where(&models.Repository{UserID: userid}).Where("name LIKE ?", "%"+search+"%").
 			Select("repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
 	} else {
-		db.Debug().Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name " + order).Scopes(Paginate(c)).Where(&models.Repository{UserID: userid}).
+		db.Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name " + order).Scopes(Paginate(c)).Where(&models.Repository{UserID: userid}).
 			Select("repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
 	}
 	return c.JSON(userRepos)
@@ -74,23 +74,18 @@ func GetRepository(c *fiber.Ctx) error {
 	user := c.Params("user")
 	name := c.Params("name")
 	db := database.DB
-	// var repository models.Repository
 	var repositories []models.Repository
-	// err := db.Where("user = ? AND name = ?", user, name).Find(&repository).Error
 	userRepo := []models.RepositoryViewStruct{}
 	userid := getUserIDByUserName(user)
 
-	// err := db.Debug().Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Where(&models.Repository{UserID: userid}).Where("name = ?", name).
-	err := db.Debug().Model(&repositories).Where(&models.Repository{UserID: userid}).Joins("inner join users on users.id = repositories.user_id").Where("name = ?", name).
+	err := db.Model(&repositories).Where(&models.Repository{UserID: userid}).Joins("inner join users on users.id = repositories.user_id").Where("name = ?", name).
 		Select("repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepo).Error
-
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return apperr.EntityNotFound("No repository found")
 	} else if err != nil {
 		return apperr.Unexpected(err.Error())
 	}
 
-	// return c.JSON(repositories)
 	return c.JSON(userRepo)
 }
 
@@ -106,10 +101,8 @@ func NewRepository(c *fiber.Ctx) error {
 	repository.UserID = getUserIDByUserName(username)
 	fmt.Println(repository.UserID)
 	if err := c.BodyParser(repository); err != nil {
-		// fmt.Println(repository)
 		fmt.Println("Error")
 		fmt.Println(err)
-		// return apperr.BadRequest("Invalid params")
 	}
 	db.Create(&repository)
 	fmt.Println(repository)
@@ -123,7 +116,7 @@ func UpdateRepository(c *fiber.Ctx) error {
 	db := database.DB
 	userid := getUserIDByUserName(user)
 	var repository models.Repository
-	err := db.Debug().Where(&models.Repository{UserID: userid}).Where("name = ?", name).First(&repository).Error
+	err := db.Where(&models.Repository{UserID: userid}).Where("name = ?", name).First(&repository).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return apperr.EntityNotFound("No repository found")
@@ -140,7 +133,7 @@ func UpdateRepository(c *fiber.Ctx) error {
 	updatedRepository = &models.Repository{Name: updatedRepository.Name, UserID: updatedRepository.UserID, Version: updatedRepository.Version, Description: updatedRepository.Description, URL: updatedRepository.URL}
 	updatedRepository.UserID = userid
 	updatedRepository.Name = name
-	if err = db.Debug().Where(&models.Repository{UserID: userid}).Model(&repository).Where("name = ?", name).Updates(updatedRepository).Error; err != nil {
+	if err = db.Where(&models.Repository{UserID: userid}).Model(&repository).Where("name = ?", name).Updates(updatedRepository).Error; err != nil {
 		return apperr.Unexpected(err.Error())
 	}
 
@@ -154,7 +147,7 @@ func DeleteRepository(c *fiber.Ctx) error {
 	userid := getUserIDByUserName(user)
 
 	var repository models.Repository
-	err := db.Debug().Where(&models.Repository{UserID: userid}).Where("name = ?", name).First(&repository).Error
+	err := db.Where(&models.Repository{UserID: userid}).Where("name = ?", name).First(&repository).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return apperr.EntityNotFound("No Repository found")
