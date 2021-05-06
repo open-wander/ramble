@@ -2,9 +2,10 @@ package authentication
 
 import (
 	"errors"
-	"os"
 	"rmbl/models"
+	appconfig "rmbl/pkg/config"
 	"rmbl/pkg/database"
+
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -22,7 +23,7 @@ func CheckPasswordHash(password, hash string) bool {
 func getUserByEmail(e string) (*models.User, error) {
 	db := database.DB
 	var user models.User
-	if err := db.Where(&models.User{Email: e}).Find(&user).Error; err != nil {
+	if err := db.Where(&models.User{Email: e}).First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
@@ -34,7 +35,7 @@ func getUserByEmail(e string) (*models.User, error) {
 func getUserByUsername(u string) (*models.User, error) {
 	db := database.DB
 	var user models.User
-	if err := db.Where(&models.User{Username: u}).Find(&user).Error; err != nil {
+	if err := db.Where(&models.User{Username: u}).First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
@@ -75,7 +76,7 @@ func Login(c *fiber.Ctx) error {
 	}
 
 	if email == nil && user == nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "User not found", "data": err})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Invalid Credentials", "data": err})
 	}
 
 	if email == nil {
@@ -95,7 +96,7 @@ func Login(c *fiber.Ctx) error {
 	}
 
 	if !CheckPasswordHash(pass, ud.Password) {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Invalid password", "data": nil})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Invalid Credentials", "data": nil})
 	}
 
 	token := jwt.New(jwt.SigningMethodHS256)
@@ -105,7 +106,7 @@ func Login(c *fiber.Ctx) error {
 	claims["user_id"] = ud.ID
 	claims["exp"] = time.Now().Add(time.Hour * 72).Unix()
 
-	t, err := token.SignedString([]byte(os.Getenv("SECRET")))
+	t, err := token.SignedString([]byte(appconfig.Config.Server.JWTSecret))
 	if err != nil {
 		return c.SendStatus(fiber.StatusInternalServerError)
 	}

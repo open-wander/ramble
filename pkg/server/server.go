@@ -73,7 +73,7 @@ func Listen(app *fiber.App) error {
 	app.Use(func(c *fiber.Ctx) error {
 		return c.SendStatus(404)
 	})
-
+	fmt.Println("Rest API v0.1 - RMBL API")
 	return app.Listen(fmt.Sprintf("%s:%s", appconfig.Server.RMBLServerHost, appconfig.Server.RMBLServerPort))
 
 }

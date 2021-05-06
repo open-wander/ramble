@@ -11,7 +11,7 @@ def genUser():
   return user
 
 def getUser(username):
-  requests.get('http://localhost:10000/v1/_catalog', params=params)
+  requests.get('http://localhost:10000/_catalog', params=params)
 
 def genRepo():
   name = chance.word(language='en')
@@ -42,5 +42,5 @@ for u in range(10):
       repo = genRepo()
       # print(repo)
       username = userdata["username"]
-      url = 'http://localhost:10000/v1/'+username
+      url = 'http://localhost:10000/'+username
       response = requests.post(url, json=repo)
