@@ -34,8 +34,6 @@ func Setup() {
 	if err != nil {
 		log.Fatalf("Unable to decode into struct, %v", err)
 	}
-	fmt.Println("Rest API v1.0 - RMBL API")
-	fmt.Println("")
 	fmt.Println("Using config file:", viper.ConfigFileUsed())
 	Config = configuration
 }
