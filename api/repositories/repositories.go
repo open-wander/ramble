@@ -47,7 +47,7 @@ func GetAllRepositories(c *fiber.Ctx) error {
 	dbquery.Count(&data.TotalData)
 	dbquery.Order(order)
 	dbquery.Scopes(h.Search(search), Paginate(c))
-	dbquery.Select("repositories.id ,repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
+	dbquery.Select("repositories.id, repositories.created_at, repositories.updated_at, repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
 	dbquery.Count(&data.FilteredData)
 	filtereddata := &data.FilteredData
 	pagelimit := h.Limit(limit)
@@ -73,10 +73,10 @@ func GetUserRepositories(c *fiber.Ctx) error {
 
 	if search != "" {
 		db.Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name "+order).Scopes(Paginate(c)).Where(&models.Repository{UserID: userid}).Where("name LIKE ?", "%"+search+"%").
-			Select("repositories.id ,repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
+			Select("repositories.id, repositories.created_at, repositories.updated_at, repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
 	} else {
 		db.Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name " + order).Scopes(Paginate(c)).Where(&models.Repository{UserID: userid}).
-			Select("repositories.id ,repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
+			Select("repositories.id, repositories.created_at, repositories.updated_at, repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
 	}
 	return c.JSON(userRepos)
 }
@@ -92,7 +92,7 @@ func GetRepository(c *fiber.Ctx) error {
 	useragent := string(c.Context().UserAgent())
 
 	err := db.Model(&repositories).Where(&models.Repository{UserID: userid}).Joins("inner join users on users.id = repositories.user_id").Where("name = ?", name).
-		Select("repositories.id ,repositories.name, repositories.version, repositories.description, repositories.url, users.username").First(&userRepo).Error
+		Select("repositories.id, repositories.created_at, repositories.updated_at, repositories.name, repositories.version, repositories.description, repositories.url, users.username").First(&userRepo).Error
 
 	if err == gorm.ErrRecordNotFound {
 		return apperr.EntityNotFound("No repository found")
