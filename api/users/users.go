@@ -131,7 +131,6 @@ func UpdateUser(c *fiber.Ctx) error {
 	var user models.User
 
 	db.First(&user, id)
-	user.Names = uui.Names
 	db.Save(&user)
 
 	return c.JSON(fiber.Map{"status": "success", "message": "User successfully updated", "data": user})
@@ -147,12 +146,12 @@ func DeleteUser(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Review your input", "data": err})
 	}
 	id := c.Params("id")
-	// token := c.Locals("user").(*jwt.Token)
+	token := c.Locals("user").(*jwt.Token)
 
-	// if !validToken(token, id) {
-	// 	return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Invalid token id", "data": nil})
+	if !validToken(token, id) {
+		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Invalid token id", "data": nil})
 
-	// }
+	}
 
 	if !validUser(id, pi.Password) {
 		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Not valid user", "data": nil})

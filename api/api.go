@@ -9,10 +9,11 @@ import (
 )
 
 func Setup(app *fiber.App) {
-	v1 := app.Group("/")
-	repositories.Routes(v1)
-	user := app.Group("/user")
-	users.Routes(user)
 	auth := app.Group("/auth")
 	authentication.Routes(auth)
+	user := app.Group("/user")
+	users.Routes(user)
+	v1 := app.Group("/")
+	repositories.Routes(v1)
+
 }

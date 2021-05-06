@@ -5,5 +5,5 @@ import (
 )
 
 func Routes(route fiber.Router) {
-	route.Get("/login", Login)
+	route.Post("/login", Login)
 }
