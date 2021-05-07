@@ -10,6 +10,7 @@ import (
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -51,10 +52,10 @@ func Login(c *fiber.Ctx) error {
 		Password string `json:"password"`
 	}
 	type UserData struct {
-		ID       uint   `json:"id"`
-		Username string `json:"username"`
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		ID       uuid.UUID `json:"id"`
+		Username string    `json:"username"`
+		Email    string    `json:"email"`
+		Password string    `json:"password"`
 	}
 	var input LoginInput
 	var ud UserData
