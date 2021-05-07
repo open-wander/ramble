@@ -1,15 +1,19 @@
 package models
 
-import "rmbl/pkg/database"
+import (
+	"rmbl/pkg/database"
+
+	"github.com/google/uuid"
+)
 
 // Repository Struct
 type Repository struct {
 	database.DefaultModel
-	Name        string `json:"name"`
-	UserID      uint   `json:"username" gorm:"not null" gorm:"index"`
-	Version     string `json:"version"`
-	Description string `json:"description"`
-	URL         string `json:"url"`
+	Name        string    `json:"name"`
+	UserID      uuid.UUID `json:"username" gorm:"not null" gorm:"index"`
+	Version     string    `json:"version"`
+	Description string    `json:"description"`
+	URL         string    `json:"url"`
 }
 
 type RepositoryViewStruct struct {

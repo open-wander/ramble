@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -23,7 +24,7 @@ func Paginate(c *fiber.Ctx) func(db *gorm.DB) *gorm.DB {
 }
 
 // GetUser by name
-func getUserIDByUserName(username string) (id uint) {
+func getUserIDByUserName(username string) (id uuid.UUID) {
 	db := database.DB
 	var user models.User
 	db.Where("username LIKE ?", "%"+username+"%").Find(&user)
