@@ -41,19 +41,15 @@ func GetAllRepositories(c *fiber.Ctx) error {
 	var userRepos []models.RepositoryViewStruct
 
 	order := c.Query("order", "true")
-	limit := c.Query("limit", "25")
 	search := c.Query("search")
 
 	dbquery := db.Debug().Model(&repositories).Joins("inner join users on users.id = repositories.user_id")
-	dbquery.Count(&data.TotalData)
 	dbquery.Order(order)
+	dbquery.Count(&data.TotalData)
 	dbquery.Scopes(h.Search(search), Paginate(c))
 	dbquery.Select("repositories.id, repositories.created_at, repositories.updated_at, repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
 	dbquery.Count(&data.FilteredData)
 	filtereddata := &data.FilteredData
-	pagelimit := h.Limit(limit)
-	var pagesize int64 = int64(pagelimit)
-	fmt.Println(pagesize)
 	data.FilteredData = *filtereddata
 	data.Data = userRepos
 
@@ -64,22 +60,38 @@ func GetAllRepositories(c *fiber.Ctx) error {
 // you can use ?limit=25&offset=0&order=desc to override the defaults
 
 func GetUserRepositories(c *fiber.Ctx) error {
-	search := c.Query("search")
-	order := c.Query("order", "DESC")
 	username := c.Params("user")
 	db := database.DB
 	var repositories []models.Repository
+	var data models.Data
 	userRepos := []models.RepositoryViewStruct{}
 	userid := getUserIDByUserName(username)
 
-	if search != "" {
-		db.Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name "+order).Scopes(Paginate(c)).Where(&models.Repository{UserID: userid}).Where("name LIKE ?", "%"+search+"%").
-			Select("repositories.id, repositories.created_at, repositories.updated_at, repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
-	} else {
-		db.Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name " + order).Scopes(Paginate(c)).Where(&models.Repository{UserID: userid}).
-			Select("repositories.id, repositories.created_at, repositories.updated_at, repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
-	}
-	return c.JSON(userRepos)
+	order := c.Query("order", "true")
+	search := c.Query("search")
+
+	dbquery := db.Debug().Model(&repositories).Joins("inner join users on users.id = repositories.user_id")
+
+	dbquery.Order(order)
+	dbquery.Where(&models.Repository{UserID: userid})
+	dbquery.Count(&data.TotalData)
+	dbquery.Scopes(h.Search(search), Paginate(c))
+	dbquery.Select("repositories.id, repositories.created_at, repositories.updated_at, repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
+	dbquery.Count(&data.FilteredData)
+	filtereddata := &data.FilteredData
+	data.FilteredData = *filtereddata
+	data.Data = userRepos
+
+	return c.JSON(data)
+
+	// if search != "" {
+	// 	db.Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name "+order).Scopes(Paginate(c)).Where(&models.Repository{UserID: userid}).Where("name LIKE ?", "%"+search+"%").
+	// 		Select("repositories.id, repositories.created_at, repositories.updated_at, repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
+	// } else {
+	// 	db.Model(&repositories).Joins("inner join users on users.id = repositories.user_id").Order("name " + order).Scopes(Paginate(c)).Where(&models.Repository{UserID: userid}).
+	// 		Select("repositories.id, repositories.created_at, repositories.updated_at, repositories.name, repositories.version, repositories.description, repositories.url, users.username").Scan(&userRepos)
+	// }
+	// return c.JSON(userRepos)
 }
 
 func GetRepository(c *fiber.Ctx) error {
