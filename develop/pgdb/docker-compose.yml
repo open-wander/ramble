@@ -14,3 +14,4 @@ services:
       #PGDATA: pgdata
     volumes:
       - $PWD/dbdata:/var/lib/postgresql/data
+      - $PWD/scripts:/docker-entrypoint-initdb.d
