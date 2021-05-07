@@ -5,10 +5,10 @@ import (
 	"rmbl/api/authentication"
 	"rmbl/models"
 	"rmbl/pkg/database"
-	"strconv"
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -18,14 +18,11 @@ func hashPassword(password string) (string, error) {
 	return string(bytes), err
 }
 
-func validToken(t *jwt.Token, id string) bool {
-	n, err := strconv.Atoi(id)
-	if err != nil {
-		return false
-	}
+func validToken(t *jwt.Token, id uuid.UUID) bool {
+	n := id
 
 	claims := t.Claims.(jwt.MapClaims)
-	uid := int(claims["user_id"].(float64))
+	uid := claims["user_id"].(uuid.UUID)
 
 	if uid != n {
 		return false
@@ -34,7 +31,7 @@ func validToken(t *jwt.Token, id string) bool {
 	return true
 }
 
-func validUser(id string, p string) bool {
+func validUser(id uuid.UUID, p string) bool {
 	db := database.DB
 	var user models.User
 	db.First(&user, id)
@@ -66,7 +63,14 @@ func GetAllUsers(c *fiber.Ctx) error {
 
 // GetUser get a user
 func GetUser(c *fiber.Ctx) error {
-	id := c.Params("id")
+	var id uuid.UUID
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": true,
+			"msg":   err.Error(),
+		})
+	}
 	db := database.DB
 	var user models.User
 	db.Preload("Repositories").Find(&user, id)
@@ -120,7 +124,14 @@ func UpdateUser(c *fiber.Ctx) error {
 	if err := c.BodyParser(&uui); err != nil {
 		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Review your input", "data": err})
 	}
-	id := c.Params("id")
+	var id uuid.UUID
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": true,
+			"msg":   err.Error(),
+		})
+	}
 	token := c.Locals("user").(*jwt.Token)
 
 	if !validToken(token, id) {
@@ -145,7 +156,13 @@ func DeleteUser(c *fiber.Ctx) error {
 	if err := c.BodyParser(&pi); err != nil {
 		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Review your input", "data": err})
 	}
-	id := c.Params("id")
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": true,
+			"msg":   err.Error(),
+		})
+	}
 	token := c.Locals("user").(*jwt.Token)
 
 	if !validToken(token, id) {
