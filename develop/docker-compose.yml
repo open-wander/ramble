@@ -4,14 +4,16 @@ services:
   PostgreSQL:
     container_name: pgsql-rmbl
     restart: always
-    image: postgres:9.6
+    build: pgdb
+    image: rmbl-pgdb
     ports:
       - "5432:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: rmbldb
-      #PGDATA: pgdata
     volumes:
-      - $PWD/dbdata:/var/lib/postgresql/data
-      - $PWD/scripts:/docker-entrypoint-initdb.d
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

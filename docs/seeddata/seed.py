@@ -11,7 +11,7 @@ def genUser():
   return user
 
 def getUser(username):
-  requests.get('http://localhost:10000/_catalog', params=params)
+  requests.get('http://host.docker.internal:10000/_catalog', params=params)
 
 def genRepo():
   name = chance.word(language='en')
@@ -25,14 +25,14 @@ for u in range(10):
   user = genUser()
   print(user['username'])
   print(user['password'])
-  posturl = 'http://localhost:10000/user/'
+  posturl = 'http://host.docker.internal:10000/user/'
   response = requests.post(posturl, data=user)
   params = {"format": "json"}
-  geturl = 'http://localhost:10000/user/'
+  geturl = 'http://host.docker.internal:10000/user/'
   siteusers = requests.get(geturl, params)
   print("Get Site Users")
   userlist = siteusers.json()
-  # print(siteusers.json()
+  print(siteusers.json())
   for userid in range(len(userlist['data'])):
     userdata = userlist['data'][userid]
     # print(userdata['id'])
@@ -42,5 +42,5 @@ for u in range(10):
       repo = genRepo()
       # print(repo)
       username = userdata["username"]
-      url = 'http://localhost:10000/'+username
+      url = 'http://host.docker.internal:10000/'+username
       response = requests.post(url, json=repo)
