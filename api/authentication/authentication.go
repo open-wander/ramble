@@ -137,7 +137,7 @@ func Signup(c *fiber.Ctx) error {
 	org := new(models.Organization)
 	uname := strings.ToLower(userdata.Username)
 
-	org.Name = uname
+	org.OrgName = uname
 
 	hash, err := helpers.HashPassword(userdata.Password)
 	if err != nil {
