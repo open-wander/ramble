@@ -9,25 +9,18 @@ import (
 // Repository Struct
 type Repository struct {
 	database.DefaultModel
-	Name        string    `json:"name"`
-	UserID      uuid.UUID `json:"username" gorm:"not null" gorm:"index"`
-	Version     string    `json:"version"`
-	Description string    `json:"description"`
-	URL         string    `json:"url"`
+	Name           string    `json:"name"`
+	Version        string    `json:"version"`
+	Description    string    `json:"description"`
+	URL            string    `json:"url"`
+	OrganizationID uuid.UUID `json:"orgid"`
 }
 
 type RepositoryViewStruct struct {
 	database.DefaultModel
 	Name        string `json:"name"`
-	UserName    string `json:"username" gorm:"column:username"`
 	Version     string `json:"version"`
 	Description string `json:"description"`
 	URL         string `json:"url"`
-}
-
-// Data is mainly generated for filtering and pagination
-type Data struct {
-	TotalData    int64
-	FilteredData int64
-	Data         []RepositoryViewStruct
+	OrgName     string `json:"orgname"`
 }
