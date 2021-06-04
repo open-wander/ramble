@@ -5,21 +5,16 @@ import (
 	"rmbl/models"
 	appconfig "rmbl/pkg/config"
 	"rmbl/pkg/database"
+	"rmbl/pkg/helpers"
+	"strings"
 
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
-
-// CheckPasswordHash compare password with hash
-func CheckPasswordHash(password, hash string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err == nil
-}
 
 func getUserByEmail(e string) (*models.User, error) {
 	db := database.DB
@@ -96,7 +91,7 @@ func Login(c *fiber.Ctx) error {
 		}
 	}
 
-	if !CheckPasswordHash(pass, ud.Password) {
+	if !helpers.CheckPasswordHash(pass, ud.Password) {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Invalid Credentials", "data": nil})
 	}
 
@@ -113,4 +108,53 @@ func Login(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"status": "success", "message": "Success login", "data": t})
+}
+
+// Login get user and password
+func Signup(c *fiber.Ctx) error {
+	c.Accepts("application/json")
+	type NewUser struct {
+		Username string `json:"username"`
+		Email    string `json:"email"`
+	}
+	type UserData struct {
+		ID       uuid.UUID `json:"id"`
+		Username string    `json:"username"`
+		Email    string    `json:"email"`
+		Password string    `json:"password"`
+	}
+
+	var userdata UserData
+
+	if err := c.BodyParser(&userdata); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Error on signup request", "data": err})
+	}
+
+	db := database.DB
+	user := new(models.User)
+	org := new(models.Organization)
+	uname := strings.ToLower(userdata.Username)
+
+	org.Name = uname
+
+	hash, err := helpers.HashPassword(userdata.Password)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Couldn't hash password", "data": err})
+
+	}
+
+	user.Email = userdata.Email
+	user.Username = uname
+	user.Password = hash
+	user.Organization = *org
+	if err := db.Create(&user).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Couldn't create user", "data": err})
+	}
+
+	newUser := NewUser{
+		Email:    user.Email,
+		Username: user.Username,
+	}
+
+	return c.JSON(fiber.Map{"status": "success", "message": "Created user", "data": newUser})
 }
