@@ -115,7 +115,7 @@ func Login(c *fiber.Ctx) error {
 func Signup(c *fiber.Ctx) error {
 	c.Accepts("application/json")
 	type NewUser struct {
-		ID       uuid.UUID `json:"id`
+		ID       uuid.UUID `json:"id"`
 		Username string    `json:"username"`
 		Email    string    `json:"email"`
 	}
