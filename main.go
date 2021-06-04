@@ -22,8 +22,9 @@ func main() {
 	app := server.Create()
 
 	// Migrations
-	database.DB.AutoMigrate(&models.User{})
+	database.DB.AutoMigrate(&models.Organization{})
 	database.DB.AutoMigrate(&models.Repository{})
+	database.DB.AutoMigrate(&models.User{})
 
 	// Api routes
 	api.Setup(app)
