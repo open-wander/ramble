@@ -6,12 +6,8 @@ def genUser():
   username = chance.first()
   email = chance.email()
   password = chance.string(minimum=5, maximum=20)
-  names = chance.name()
-  user = {"username": username, "email": email, "password": password, "names": names}
+  user = {"username": username, "email": email, "password": password}
   return user
-
-def getUser(username):
-  requests.get('http://host.docker.internal:10000/_catalog', params=params)
 
 def genRepo():
   name = chance.word(language='en')
@@ -21,26 +17,18 @@ def genRepo():
   repo = {"name": name, "description": description, "version": version, "url": url}
   return repo
 
-for u in range(10):
+for u in range(40):
   user = genUser()
   print(user['username'])
   print(user['password'])
-  posturl = 'http://host.docker.internal:10000/user/'
+  posturl = 'http://host.docker.internal:10000/auth/signup'
+  # posturl = 'http://localhost:10000/auth/signup'
   response = requests.post(posturl, data=user)
-  params = {"format": "json"}
-  geturl = 'http://host.docker.internal:10000/user/'
-  siteusers = requests.get(geturl, params)
-  print("Get Site Users")
-  userlist = siteusers.json()
-  print(siteusers.json())
-  for userid in range(len(userlist['data'])):
-    userdata = userlist['data'][userid]
-    # print(userdata['id'])
-    # print(userdata["username"])
-    usersid = userdata['id']
-    for repo in range(10):
+  resp = response.json()
+  userdata = resp['Data']
+  for repo in range(10):
       repo = genRepo()
-      # print(repo)
       username = userdata["username"]
       url = 'http://host.docker.internal:10000/'+username
+      # url = 'http://localhost:10000/'+username
       response = requests.post(url, json=repo)
