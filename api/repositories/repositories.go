@@ -2,7 +2,6 @@ package repositories
 
 import (
 	"errors"
-	"fmt"
 	"rmbl/models"
 	"rmbl/pkg/apperr"
 	"rmbl/pkg/database"
@@ -42,7 +41,7 @@ func GetAllRepositories(c *fiber.Ctx) error {
 	var data models.RepoData
 
 	order := c.Query("order", "true")
-	search := c.Query("search")
+	search := strings.ToLower(c.Query("search"))
 	dbquery := db.Model(&models.Repository{}).Joins("inner join organizations on organizations.id = repositories.organization_id")
 	dbquery.Order(order)
 	dbquery.Scopes(helpers.Search(search))
@@ -66,14 +65,14 @@ func GetAllRepositories(c *fiber.Ctx) error {
 // you can use ?limit=25&offset=0&order=desc to override the defaults
 
 func GetOrgRepositories(c *fiber.Ctx) error {
-	orgname := c.Params("org")
+	orgname := strings.ToLower(c.Params("org"))
 	orgid := getOrganizationIDByUserName(orgname)
 	db := database.DB
 	var repositories []models.RepositoryViewStruct
 	var data models.RepoData
 
 	order := c.Query("order", "true")
-	search := c.Query("search")
+	search := strings.ToLower(c.Query("search"))
 	dbquery := db.Model(&models.Repository{}).Joins("inner join organizations on organizations.id = repositories.organization_id")
 	dbquery.Where("organization_id = ?", orgid)
 	dbquery.Order(order)
@@ -97,8 +96,8 @@ func GetOrgRepositories(c *fiber.Ctx) error {
 //Get an individual repository detail
 
 func GetRepository(c *fiber.Ctx) error {
-	orgname := c.Params("org")
-	reponame := c.Params("reponame")
+	orgname := strings.ToLower(c.Params("org"))
+	reponame := strings.ToLower(c.Params("reponame"))
 	orgid := getOrganizationIDByUserName(orgname)
 	// Get Useragent from request
 	useragent := string(c.Context().UserAgent())
@@ -127,7 +126,6 @@ func NewRepository(c *fiber.Ctx) error {
 	user := c.Locals("user").(*jwt.Token)
 	claims := user.Claims.(jwt.MapClaims)
 	username := claims["username"].(string)
-
 	db := database.DB
 
 	var organization models.Organization
@@ -191,9 +189,6 @@ func DeleteRepository(c *fiber.Ctx) error {
 	claims := user.Claims.(jwt.MapClaims)
 	username := claims["username"].(string)
 	userorg_id, _ := uuid.Parse(claims["userorg_id"].(string))
-
-	fmt.Println(username)
-	fmt.Println(userorg_id)
 
 	db := database.DB
 	orgid := getOrganizationIDByUserName(orgname)
