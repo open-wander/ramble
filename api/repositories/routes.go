@@ -5,7 +5,7 @@ import (
 )
 
 func Routes(route fiber.Router) {
-	route.Get("/_catalog", GetAllRepositories)
+	route.Get("/", GetAllRepositories)
 	route.Get("/:org", GetOrgRepositories)
 	route.Get("/:org/:reponame/*", GetRepository)
 	route.Put("/:org/:reponame", UpdateRepository)
