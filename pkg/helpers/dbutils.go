@@ -41,6 +41,16 @@ func Search(search string) func(db *gorm.DB) *gorm.DB {
 	}
 }
 
+// Search adds where to search keywords
+func UserSearch(search string) func(db *gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		if search != "" {
+			db = db.Where("username LIKE ?", "%"+search+"%")
+		}
+		return db
+	}
+}
+
 // ToSnakeCase changes string to database table
 func ToSnakeCase(str string) string {
 	var matchFirstCap = regexp.MustCompile("(.)([A-Z][a-z]+)")
