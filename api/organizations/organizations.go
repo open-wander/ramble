@@ -1,7 +1,6 @@
 package organizations
 
 import (
-	"fmt"
 	"rmbl/models"
 	"rmbl/pkg/database"
 	h "rmbl/pkg/helpers"
@@ -36,6 +35,5 @@ func GetAllOrgs(c *fiber.Ctx) error {
 	data.Data = organizations
 	data.Status = "Success"
 	data.Message = "Records found"
-	fmt.Println("Organizations Endpoint")
 	return c.JSON(data)
 }
