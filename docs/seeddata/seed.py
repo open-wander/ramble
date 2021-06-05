@@ -21,14 +21,14 @@ for u in range(40):
   user = genUser()
   print(user['username'])
   print(user['password'])
-  # posturl = 'http://host.docker.internal:10000/auth/signup'
-  posturl = 'http://localhost:10000/auth/signup'
+  posturl = 'http://host.docker.internal:10000/auth/signup'
+  # posturl = 'http://localhost:10000/auth/signup'
   response = requests.post(posturl, data=user)
   resp = response.json()
   userdata = resp['Data']
   for repo in range(10):
       repo = genRepo()
       username = userdata["username"]
-      # url = 'http://host.docker.internal:10000/'+username
-      url = 'http://localhost:10000/'+username
+      url = 'http://host.docker.internal:10000/'+username
+      # url = 'http://localhost:10000/'+username
       response = requests.post(url, json=repo)
