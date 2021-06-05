@@ -3,7 +3,7 @@ module rmbl
 go 1.16
 
 require (
-	github.com/dgrijalva/jwt-go v3.2.0+incompatible
+	github.com/form3tech-oss/jwt-go v3.2.3+incompatible
 	github.com/gofiber/fiber/v2 v2.8.0
 	github.com/gofiber/helmet/v2 v2.1.1
 	github.com/gofiber/jwt/v2 v2.2.1

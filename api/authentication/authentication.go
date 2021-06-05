@@ -1,7 +1,6 @@
 package authentication
 
 import (
-	"errors"
 	"fmt"
 	"rmbl/models"
 	appconfig "rmbl/pkg/config"
@@ -11,35 +10,10 @@ import (
 
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
+	jwt "github.com/form3tech-oss/jwt-go"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 )
-
-func getUserByEmail(e string) (*models.User, error) {
-	db := database.DB
-	var user models.User
-	if err := db.Where(&models.User{Email: e}).First(&user).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &user, nil
-}
-
-func getUserByUsername(u string) (*models.User, error) {
-	db := database.DB
-	var user models.User
-	if err := db.Where(&models.User{Username: u}).First(&user).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &user, nil
-}
 
 // Login get user and password
 func Login(c *fiber.Ctx) error {
@@ -62,12 +36,12 @@ func Login(c *fiber.Ctx) error {
 	identity := strings.ToLower(input.Identity)
 	pass := input.Password
 
-	email, err := getUserByEmail(identity)
+	email, err := helpers.GetUserByEmail(identity)
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Error on email", "Data": err})
 	}
 
-	user, err := getUserByUsername(identity)
+	user, err := helpers.GetUserByUsername(identity)
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Error on username", "Data": err})
 	}
@@ -92,6 +66,8 @@ func Login(c *fiber.Ctx) error {
 		}
 	}
 
+	orgid := helpers.GetORGIDByUserid(ud.ID)
+
 	if !helpers.CheckPasswordHash(pass, ud.Password) {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Invalid Credentials", "Data": nil})
 	}
@@ -101,14 +77,16 @@ func Login(c *fiber.Ctx) error {
 	claims := token.Claims.(jwt.MapClaims)
 	claims["username"] = ud.Username
 	claims["user_id"] = ud.ID
-	claims["exp"] = time.Now().Add(time.Hour * 72).Unix()
+	claims["userorg_id"] = orgid
+	claims["expires"] = time.Now().Add(time.Hour * 72).Unix()
 
 	t, err := token.SignedString([]byte(appconfig.Config.Server.JWTSecret))
 	if err != nil {
 		return c.SendStatus(fiber.StatusInternalServerError)
 	}
-
-	return c.JSON(fiber.Map{"status": "success", "message": "Success login", "Data": t})
+	var authtoken models.JWTToken
+	authtoken.Token = t
+	return c.JSON(fiber.Map{"status": "success", "message": "Success login", "Data": authtoken})
 }
 
 // Login get user and password

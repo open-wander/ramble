@@ -1,16 +1,15 @@
 package users
 
 import (
+	"rmbl/pkg/auth"
+
 	"github.com/gofiber/fiber/v2"
 )
 
 func Routes(route fiber.Router) {
-	route.Get("/", GetAllUsers)
-	route.Get("/:id", GetUser)
-	route.Get("/:username", GetUser)
-	route.Patch("/:id", UpdateUser)
-	route.Delete("/:id", DeleteUser)
-	// route.Post("/", middleware.Protected(), CreateUser)
-	// route.Patch("/:id", middleware.Protected(), UpdateUser)
-	// route.Delete("/:id", middleware.Protected(), DeleteUser)
+	route.Get("/", auth.Protected(), GetAllUsers)
+	route.Get("/:id", auth.Protected(), GetUser)
+	route.Get("/:username", auth.Protected(), GetUser)
+	route.Patch("/:id", auth.Protected(), UpdateUser)
+	route.Delete("/:id", auth.Protected(), DeleteUser)
 }
