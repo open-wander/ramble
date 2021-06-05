@@ -2,6 +2,7 @@ package api
 
 import (
 	"rmbl/api/authentication"
+	"rmbl/api/organizations"
 	"rmbl/api/repositories"
 	"rmbl/api/users"
 
@@ -13,6 +14,8 @@ func Setup(app *fiber.App) {
 	authentication.Routes(auth)
 	user := app.Group("/user")
 	users.Routes(user)
+	org := app.Group("/org")
+	organizations.Routes(org)
 	v1 := app.Group("/")
 	repositories.Routes(v1)
 
