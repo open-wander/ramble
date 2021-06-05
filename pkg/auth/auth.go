@@ -1,4 +1,4 @@
-package middleware
+package auth
 
 import (
 	appconfig "rmbl/pkg/config"

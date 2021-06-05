@@ -1,13 +1,55 @@
 package helpers
 
 import (
+	"errors"
 	"rmbl/models"
 	"rmbl/pkg/database"
 
-	"github.com/dgrijalva/jwt-go"
+	jwt "github.com/form3tech-oss/jwt-go"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
+
+func GetUserByEmail(e string) (*models.User, error) {
+	db := database.DB
+	var user models.User
+	if err := db.Where(&models.User{Email: e}).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
+func GetUserByUsername(u string) (*models.User, error) {
+	db := database.DB
+	var user models.User
+	if err := db.Where(&models.User{Username: u}).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
+// GetUserID by name
+func GetUserIDByUserName(username string) (id uuid.UUID) {
+	db := database.DB
+	var user models.User
+	db.Where("username = ?", username).Find(&user)
+	return uuid.UUID(user.ID)
+}
+
+// GetUserORGID by userid
+func GetORGIDByUserid(id uuid.UUID) (orgid uuid.UUID) {
+	db := database.DB
+	var organization models.Organization
+	db.Where("user_id = ?", id).Find(&organization)
+	return uuid.UUID(organization.ID)
+}
 
 func HashPassword(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)

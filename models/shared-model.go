@@ -23,3 +23,7 @@ type UserData struct {
 	TotalRecords int64
 	Data         []User
 }
+
+type JWTToken struct {
+	Token string
+}
