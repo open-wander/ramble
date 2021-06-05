@@ -1,7 +1,6 @@
 package authentication
 
 import (
-	"fmt"
 	"rmbl/models"
 	appconfig "rmbl/pkg/config"
 	"rmbl/pkg/database"
@@ -130,8 +129,6 @@ func Signup(c *fiber.Ctx) error {
 	if err := db.Create(&user).Error; err != nil {
 		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Couldn't create user", "Data": err})
 	}
-	fmt.Println("UserID")
-	fmt.Println(user.ID)
 	newUser := NewUser{
 		ID:       user.ID,
 		Email:    user.Email,
