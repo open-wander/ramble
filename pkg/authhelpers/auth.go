@@ -1,4 +1,4 @@
-package auth
+package authhelpers
 
 import (
 	appconfig "rmbl/pkg/config"
