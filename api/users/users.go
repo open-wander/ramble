@@ -4,7 +4,6 @@ import (
 	"rmbl/models"
 	"rmbl/pkg/database"
 	"rmbl/pkg/helpers"
-	h "rmbl/pkg/helpers"
 	"strconv"
 
 	jwt "github.com/form3tech-oss/jwt-go"
@@ -40,7 +39,7 @@ func GetAllUsers(c *fiber.Ctx) error {
 	search := c.Query("search")
 	dbquery := db.Model(&users).Preload("Organization")
 	dbquery.Order(order)
-	dbquery.Scopes(h.UserSearch(search))
+	dbquery.Scopes(helpers.UserSearch(search))
 	dbquery.Count(&data.TotalRecords)
 	dbquery.Scopes(Paginate(c))
 	dbquery.Find(&users)
@@ -94,27 +93,43 @@ func GetUser(c *fiber.Ctx) error {
 // UpdateUser update user
 func UpdateUser(c *fiber.Ctx) error {
 	c.Accepts("application/json")
+	var data models.UserData
+	var id uuid.UUID
+	var user_id uuid.UUID
 	user_token := c.Locals("user").(*jwt.Token)
 	claims := user_token.Claims.(jwt.MapClaims)
-	is_site_admin := claims["site_admin_user"].(bool)
+	token_user_id := claims["user_id"].(string)
+	user_id, tokenerr := uuid.Parse(token_user_id)
+	if tokenerr != nil {
+		data.Status = "Failure"
+		data.Message = "id not valid"
+		data.Data = nil
+		return c.JSON(data)
+	}
 
-	if !is_site_admin {
+	// Convert the id parameter to a UUID for later use
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		data.Status = "Failure"
+		data.Message = "id not valid"
+		data.Data = nil
+		return c.JSON(data)
+	}
+
+	// Check ID in the url against the ID in the Claim
+	if id != user_id {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Unauthorized", "Data": nil})
 	}
+
+	// JSON Input for Userupdate.
 	type UpdateUserInput struct {
-		Names string `json:"names"`
+		EmailAddress    string `json:"email"`
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
 	}
 	var uui UpdateUserInput
 	if err := c.BodyParser(&uui); err != nil {
 		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Review your input", "data": err})
-	}
-	var id uuid.UUID
-	id, err := uuid.Parse(c.Params("id"))
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": true,
-			"msg":   err.Error(),
-		})
 	}
 
 	if !helpers.ValidToken(user_token, id) {
@@ -123,8 +138,19 @@ func UpdateUser(c *fiber.Ctx) error {
 
 	db := database.DB
 	var user models.User
-
 	db.First(&user, id)
+	if !helpers.ValidUser(id, uui.CurrentPassword) {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Invalid Credentials", "Data": err})
+	}
+	if uui.NewPassword != "" {
+		hash, err := helpers.HashPassword(uui.NewPassword)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Couldn't hash password", "Data": err})
+		}
+		user.Password = hash
+	} else if uui.EmailAddress != "" {
+		user.Email = uui.EmailAddress
+	}
 	db.Save(&user)
 
 	return c.JSON(fiber.Map{"status": "success", "message": "User successfully updated", "data": user})
@@ -132,11 +158,31 @@ func UpdateUser(c *fiber.Ctx) error {
 
 // DeleteUser delete user
 func DeleteUser(c *fiber.Ctx) error {
+	var data models.UserData
 	user_token := c.Locals("user").(*jwt.Token)
 	claims := user_token.Claims.(jwt.MapClaims)
-	is_site_admin := claims["site_admin_user"].(bool)
+	token_user_id := claims["user_id"].(string)
 
-	if !is_site_admin {
+	// Get Userid from token
+	user_id, tokenerr := uuid.Parse(token_user_id)
+	if tokenerr != nil {
+		data.Status = "Failure"
+		data.Message = "id not valid"
+		data.Data = nil
+		return c.JSON(data)
+	}
+
+	// Convert the id parameter to a UUID for later use
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		data.Status = "Failure"
+		data.Message = "id not valid"
+		data.Data = nil
+		return c.JSON(data)
+	}
+
+	// Check ID in the url against the ID in the Claim
+	if id != user_id {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Unauthorized", "Data": nil})
 	}
 	type PasswordInput struct {
@@ -145,13 +191,6 @@ func DeleteUser(c *fiber.Ctx) error {
 	var pi PasswordInput
 	if err := c.BodyParser(&pi); err != nil {
 		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Review your input", "data": err})
-	}
-	id, err := uuid.Parse(c.Params("id"))
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": true,
-			"msg":   err.Error(),
-		})
 	}
 
 	if !helpers.ValidToken(user_token, id) {

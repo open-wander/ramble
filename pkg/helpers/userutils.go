@@ -2,6 +2,7 @@ package helpers
 
 import (
 	"errors"
+	"fmt"
 	"rmbl/models"
 	"rmbl/pkg/database"
 
@@ -63,11 +64,14 @@ func CheckPasswordHash(password, hash string) bool {
 }
 
 func ValidToken(t *jwt.Token, id uuid.UUID) bool {
+	fmt.Println("Reached Helper VAkid")
 	n := id
 
 	claims := t.Claims.(jwt.MapClaims)
-	uid := claims["user_id"].(uuid.UUID)
-
+	uid, err := uuid.Parse(claims["user_id"].(string))
+	if err != nil {
+		fmt.Println("Not a Valid UUID")
+	}
 	if uid != n {
 		return false
 	}

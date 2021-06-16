@@ -10,6 +10,6 @@ func Routes(route fiber.Router) {
 	route.Get("/", authhelpers.Protected(), GetAllUsers)
 	route.Get("/:id", authhelpers.Protected(), GetUser)
 	route.Get("/:username", authhelpers.Protected(), GetUser)
-	route.Patch("/:id", authhelpers.Protected(), UpdateUser)
+	route.Put("/:id", authhelpers.Protected(), UpdateUser)
 	route.Delete("/:id", authhelpers.Protected(), DeleteUser)
 }
