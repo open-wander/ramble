@@ -3,7 +3,7 @@ package organizations
 import (
 	"rmbl/models"
 	"rmbl/pkg/database"
-	h "rmbl/pkg/helpers"
+	"rmbl/pkg/helpers"
 	"strconv"
 
 	jwt "github.com/form3tech-oss/jwt-go"
@@ -24,8 +24,8 @@ func Paginate(c *fiber.Ctx) func(db *gorm.DB) *gorm.DB {
 func GetAllOrgs(c *fiber.Ctx) error {
 	user_token := c.Locals("user").(*jwt.Token)
 	claims := user_token.Claims.(jwt.MapClaims)
-	is_site_admin := claims["site_admin_user"].(bool)
-
+	is_site_admin := claims["site_admin"].(bool)
+	repos := c.Query("repositories", "false")
 	if !is_site_admin {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Unauthorized", "Data": nil})
 	}
@@ -35,11 +35,15 @@ func GetAllOrgs(c *fiber.Ctx) error {
 
 	order := c.Query("order", "true")
 	search := c.Query("search")
-	dbquery := db.Model(&organizations).Preload("Repositories")
+	dbquery := db.Model(&organizations)
+	if repos == "true" {
+		dbquery.Preload("Repositories")
+	}
 	dbquery.Order(order)
-	dbquery.Scopes(h.Search(search))
+	dbquery.Scopes(helpers.Search(search))
 	dbquery.Count(&data.TotalRecords)
-	dbquery.Scopes(Paginate(c)).Find(&organizations)
+	dbquery.Scopes(Paginate(c))
+	dbquery.Find(&organizations)
 	data.Data = organizations
 	data.Status = "Success"
 	data.Message = "Records found"
