@@ -1,7 +1,6 @@
 package authentication
 
 import (
-	"errors"
 	"rmbl/models"
 	appconfig "rmbl/pkg/config"
 	"rmbl/pkg/database"
@@ -10,35 +9,10 @@ import (
 
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
+	jwt "github.com/form3tech-oss/jwt-go"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 )
-
-func getUserByEmail(e string) (*models.User, error) {
-	db := database.DB
-	var user models.User
-	if err := db.Where(&models.User{Email: e}).First(&user).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &user, nil
-}
-
-func getUserByUsername(u string) (*models.User, error) {
-	db := database.DB
-	var user models.User
-	if err := db.Where(&models.User{Username: u}).First(&user).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &user, nil
-}
 
 // Login get user and password
 func Login(c *fiber.Ctx) error {
@@ -47,10 +21,11 @@ func Login(c *fiber.Ctx) error {
 		Password string `json:"password"`
 	}
 	type UserData struct {
-		ID       uuid.UUID `json:"id"`
-		Username string    `json:"username"`
-		Email    string    `json:"email"`
-		Password string    `json:"password"`
+		ID        uuid.UUID `json:"id"`
+		Username  string    `json:"username"`
+		Email     string    `json:"email"`
+		Password  string    `json:"password"`
+		SiteAdmin bool      `json:"-"`
 	}
 	var input LoginInput
 	var ud UserData
@@ -61,35 +36,24 @@ func Login(c *fiber.Ctx) error {
 	identity := strings.ToLower(input.Identity)
 	pass := input.Password
 
-	email, err := getUserByEmail(identity)
+	email, err := helpers.GetUserByEmail(identity)
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Error on email", "Data": err})
 	}
 
-	user, err := getUserByUsername(identity)
-	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Error on username", "Data": err})
-	}
-
-	if email == nil && user == nil {
+	if email == nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Invalid Credentials", "Data": err})
 	}
 
-	if email == nil {
-		ud = UserData{
-			ID:       user.ID,
-			Username: user.Username,
-			Email:    user.Email,
-			Password: user.Password,
-		}
-	} else {
-		ud = UserData{
-			ID:       email.ID,
-			Username: email.Username,
-			Email:    email.Email,
-			Password: email.Password,
-		}
+	ud = UserData{
+		ID:        email.ID,
+		Username:  email.Username,
+		Email:     email.Email,
+		SiteAdmin: email.SiteAdmin,
+		Password:  email.Password,
 	}
+
+	orgid := helpers.GetORGIDByUserid(ud.ID)
 
 	if !helpers.CheckPasswordHash(pass, ud.Password) {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Invalid Credentials", "Data": nil})
@@ -100,14 +64,17 @@ func Login(c *fiber.Ctx) error {
 	claims := token.Claims.(jwt.MapClaims)
 	claims["username"] = ud.Username
 	claims["user_id"] = ud.ID
-	claims["exp"] = time.Now().Add(time.Hour * 72).Unix()
+	claims["userorg_id"] = orgid
+	claims["site_admin"] = ud.SiteAdmin
+	claims["expires"] = time.Now().Add(time.Hour * 72).Unix()
 
 	t, err := token.SignedString([]byte(appconfig.Config.Server.JWTSecret))
 	if err != nil {
 		return c.SendStatus(fiber.StatusInternalServerError)
 	}
-
-	return c.JSON(fiber.Map{"status": "success", "message": "Success login", "Data": t})
+	var authtoken models.JWTToken
+	authtoken.Token = t
+	return c.JSON(fiber.Map{"status": "success", "message": "Success login", "Data": authtoken})
 }
 
 // Login get user and password
