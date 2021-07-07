@@ -14,4 +14,3 @@ server:
   # Fiber Logging Either true or ""
   EnableLogger: "true"
   JWTSecret: "SECREPHRASE"
-  GithubAuthToken: "0AUTHTOKEN"

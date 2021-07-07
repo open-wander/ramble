@@ -31,8 +31,9 @@ I started this project as I wanted to have a central space where people who were
 * Make a copy of the config.yml.example file and rename it to config.yml
 * Edit the file and:
   * add the Server port
-  * add the Github username that owns the repositories
-  * add the Github auth token for acessing the github API
+  * add the JWT Secret passphrase
+  * Enable logging if you need it.
+  * Configure your Postgres DB details
 * run ./rmbl-server
 
 ## Features
@@ -43,18 +44,44 @@ List of features ready and TODOs for future development
 * When adding a new repository it downloads the URL's and Readme
 
 ## API Endpoints
+`/auth/signup`
+POST = user signup
 
-`/v1/_catalog`
+### Payload should look like this
+
+```json
+{
+  "username": "eveld",
+  "email": "email@email.com",
+  "password": "password"
+}
+```
+
+`/auth/login`
+POST = user login
+
+### Payload should look like this
+
+```json
+{
+  "identity": "email@email.com",
+  "password": "password"
+}
+```
+
+`/`
 GET = Gets list of all repos
 
-`/v1/:user`
+`/:org`
 GET = Gets the details of all Org repositories
 
-`/v1/:user/:name`
+`/:org/:reponame`
 GET = Gets the details of a Specific repo
 
-`/v1/:user/`
+`/:org/`
 POST = Create a new repo entry with the following payload
+
+### Payload should look like this
 
 ```JSON
 {
@@ -66,7 +93,7 @@ POST = Create a new repo entry with the following payload
 }
 ```
 
-`/v1/:user/:name`
+`/:org/:name`
 PUT = Update a Repo to the latest details.
 
 ### Payload should look like this
@@ -81,13 +108,11 @@ PUT = Update a Repo to the latest details.
 }
 ```
 
-`/v1/:user/:name`
+`/:org/:name`
 DELETE = Delete a repo that is no longer needed. (only marks it as deleted at the moment)
 
 
-## - - - TODO - - - -
-
-`/v1/?limit=25&offset=0&order=DESC&search=hello`
+`/?limit=25&offset=0&order=DESC&search=hello`
 Search Repos using the search term.
 You can stipulate the following:
 
@@ -96,7 +121,7 @@ You can stipulate the following:
 * Sort=ID (Sort Field)
 * Order=ASC/DESC
 
-`/v1/:user/?limit=25&offset=0ID&order=DESC&search=hello`
+`/:org/?limit=25&offset=0ID&order=DESC&search=hello`
 Search Repos using the search term.
 You can stipulate the following:
 
