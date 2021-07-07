@@ -5,10 +5,11 @@ import (
 	"rmbl/models"
 	"rmbl/pkg/apperr"
 	"rmbl/pkg/database"
-	h "rmbl/pkg/helpers"
+	"rmbl/pkg/helpers"
 	"strconv"
 	"strings"
 
+	jwt "github.com/form3tech-oss/jwt-go"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -43,7 +44,7 @@ func GetAllRepositories(c *fiber.Ctx) error {
 	search := strings.ToLower(c.Query("search"))
 	dbquery := db.Model(&models.Repository{}).Joins("inner join organizations on organizations.id = repositories.organization_id")
 	dbquery.Order(order)
-	dbquery.Scopes(h.Search(search))
+	dbquery.Scopes(helpers.Search(search))
 	dbquery.Select("repositories.id, repositories.name, repositories.version, repositories.description, repositories.url, organizations.org_name")
 	dbquery.Count(&data.TotalRecords)
 	dbquery.Scopes(Paginate(c))
@@ -75,7 +76,7 @@ func GetOrgRepositories(c *fiber.Ctx) error {
 	dbquery := db.Model(&models.Repository{}).Joins("inner join organizations on organizations.id = repositories.organization_id")
 	dbquery.Where("organization_id = ?", orgid)
 	dbquery.Order(order)
-	dbquery.Scopes(h.Search(search))
+	dbquery.Scopes(helpers.Search(search))
 	dbquery.Select("repositories.id, repositories.name, repositories.version, repositories.description, repositories.url, organizations.org_name")
 	dbquery.Count(&data.TotalRecords)
 	dbquery.Scopes(Paginate(c))
@@ -120,26 +121,65 @@ func GetRepository(c *fiber.Ctx) error {
 //Create a new repository
 func NewRepository(c *fiber.Ctx) error {
 	c.Accepts("application/json")
-	org := strings.ToLower(c.Params("org"))
+	var id uuid.UUID
+	orgname := strings.ToLower(c.Params("org"))
+
+	user_token := c.Locals("user").(*jwt.Token)
+	claims := user_token.Claims.(jwt.MapClaims)
+	username := claims["username"].(string)
+	// userorg_id := claims["userorg_id"].(uuid.UUID)
+	is_siteadmin := claims["site_admin"].(bool)
 	db := database.DB
+	// orgid := getOrganizationIDByUserName(orgname)
+	id = helpers.GetUserIDByUserName(username)
 	var organization models.Organization
 	repository := new(models.Repository)
-	db.Where("org_name = ?", org).Find(&organization)
+	// check JSON input
 	if err := c.BodyParser(repository); err != nil {
 		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Review your repository input", "Data": err})
 	}
-	db.Model(&organization).Where("org_name = ?", org).Association("Repositories").Append(repository)
+
+	// Check for a valid token
+	if !helpers.ValidToken(user_token, id) {
+		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Invalid token id", "data": nil})
+	}
+	// find the org in the organization table
+	db.Where("org_name = ?", orgname).Find(&organization)
+	if username != orgname {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Unauthorized", "Data": nil})
+	}
+	if username == orgname || is_siteadmin {
+		db.Model(&organization).Where("org_name = ?", orgname).Association("Repositories").Append(repository)
+	}
 	return c.JSON(repository)
 }
 
 //Update a repository
 func UpdateRepository(c *fiber.Ctx) error {
 	c.Accepts("application/json")
-	orgname := strings.ToLower(c.Params("org"))
-	reponame := strings.ToLower(c.Params("reponame"))
+	var id uuid.UUID
+	orgname := c.Params("org")
+	reponame := c.Params("reponame")
+
+	user_token := c.Locals("user").(*jwt.Token)
+	claims := user_token.Claims.(jwt.MapClaims)
+	username := claims["username"].(string)
+	is_siteadmin := claims["site_admin"].(bool)
+	userorg_id := claims["userorg_id"].(uuid.UUID)
+
 	db := database.DB
 	orgid := getOrganizationIDByUserName(orgname)
 	var repository models.Repository
+	if err := c.BodyParser(repository); err != nil {
+		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Review your repository input", "Data": err})
+	}
+
+	if !helpers.ValidToken(user_token, id) {
+		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Invalid token id", "data": nil})
+	}
+	if userorg_id != orgid || username != orgname {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Unauthorized", "Data": nil})
+	}
 	err := db.Where(&models.Repository{OrganizationID: orgid}).Where("name = ?", reponame).First(&repository).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -150,27 +190,37 @@ func UpdateRepository(c *fiber.Ctx) error {
 
 	updatedRepository := new(models.Repository)
 
-	if err := c.BodyParser(updatedRepository); err != nil {
-		return apperr.BadRequest("Invalid params")
-	}
+	// if err := c.BodyParser(updatedRepository); err != nil {
+	// 	return apperr.BadRequest("Invalid params")
+	// }
 
 	updatedRepository = &models.Repository{Name: updatedRepository.Name, OrganizationID: updatedRepository.OrganizationID, Version: updatedRepository.Version, Description: updatedRepository.Description, URL: updatedRepository.URL}
 	updatedRepository.OrganizationID = orgid
 	updatedRepository.Name = reponame
-	if err = db.Where(&models.Repository{OrganizationID: orgid}).Model(&repository).Where("name = ?", reponame).Updates(updatedRepository).Error; err != nil {
-		return apperr.Unexpected(err.Error())
+	if userorg_id == orgid || username == orgname || is_siteadmin {
+		if err = db.Where(&models.Repository{OrganizationID: orgid}).Model(&repository).Where("name = ?", reponame).Updates(updatedRepository).Error; err != nil {
+			return apperr.Unexpected(err.Error())
+		}
 	}
-
 	return c.SendStatus(204)
 }
 
 func DeleteRepository(c *fiber.Ctx) error {
-	orgname := strings.ToLower(c.Params("org"))
-	reponame := strings.ToLower(c.Params("reponame"))
+	orgname := c.Params("org")
+	reponame := c.Params("reponame")
+	user := c.Locals("user").(*jwt.Token)
+	claims := user.Claims.(jwt.MapClaims)
+	username := claims["username"].(string)
+	is_siteadmin := claims["site_admin"].(bool)
+	userorg_id, _ := uuid.Parse(claims["userorg_id"].(string))
+
 	db := database.DB
 	orgid := getOrganizationIDByUserName(orgname)
 
 	var repository models.Repository
+	if userorg_id != orgid || username != orgname {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Unauthorized", "Data": nil})
+	}
 	err := db.Where(&models.Repository{OrganizationID: orgid}).Where("name = ?", reponame).First(&repository).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -178,7 +228,8 @@ func DeleteRepository(c *fiber.Ctx) error {
 	} else if err != nil {
 		return apperr.Unexpected(err.Error())
 	}
-
-	db.Delete(&repository)
+	if userorg_id == orgid || username == orgname || is_siteadmin {
+		db.Delete(&repository)
+	}
 	return c.SendStatus(204)
 }

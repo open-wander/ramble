@@ -1,4 +1,4 @@
-package middleware
+package authhelpers
 
 import (
 	appconfig "rmbl/pkg/config"

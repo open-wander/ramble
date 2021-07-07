@@ -1,6 +1,7 @@
 from chance import chance
 import json
 import requests
+from requests.auth import HTTPBasicAuth
 
 def genUser():
   username = chance.first()
@@ -19,16 +20,26 @@ def genRepo():
 
 for u in range(40):
   user = genUser()
-  print(user['username'])
-  print(user['password'])
+  # print("Initial login details")
+  # print(user['username'])
+  # print(user['password'])
   posturl = 'http://host.docker.internal:10000/auth/signup'
   # posturl = 'http://localhost:10000/auth/signup'
   response = requests.post(posturl, data=user)
   resp = response.json()
   userdata = resp['Data']
+  loginurl = 'http://host.docker.internal:10000/auth/login'
+  # loginurl = 'http://localhost:10000/auth/login'
+  login_user = {  "identity": user['email'], "password": user['password']}
+  # print("Userdetails for POST Method")
+  # print(login_user)
+  login_response = requests.post(loginurl, data=login_user)
+  l_response = login_response.json()
+  authtoken = l_response["Data"]["Token"]
   for repo in range(10):
       repo = genRepo()
       username = userdata["username"]
+      auth_headers = {'Authorization' : 'Bearer '+ authtoken}
       url = 'http://host.docker.internal:10000/'+username
       # url = 'http://localhost:10000/'+username
-      response = requests.post(url, json=repo)
+      response = requests.post(url, headers=auth_headers, json=repo)
