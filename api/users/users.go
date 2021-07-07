@@ -26,7 +26,7 @@ func Paginate(c *fiber.Ctx) func(db *gorm.DB) *gorm.DB {
 func GetAllUsers(c *fiber.Ctx) error {
 	user_token := c.Locals("user").(*jwt.Token)
 	claims := user_token.Claims.(jwt.MapClaims)
-	is_site_admin := claims["site_admin_user"].(bool)
+	is_site_admin := claims["site_admin"].(bool)
 
 	if !is_site_admin {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Unauthorized", "Data": nil})
@@ -62,21 +62,21 @@ func GetAllUsers(c *fiber.Ctx) error {
 func GetUser(c *fiber.Ctx) error {
 	user_token := c.Locals("user").(*jwt.Token)
 	claims := user_token.Claims.(jwt.MapClaims)
-	is_site_admin := claims["site_admin_user"].(bool)
-
-	if !is_site_admin {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Unauthorized", "Data": nil})
-	}
+	is_site_admin := claims["site_admin"].(bool)
+	username := claims["username"].(string)
+	user_id := helpers.GetUserIDByUserName(username)
 	var id uuid.UUID
-	var data models.UserData
-	repos := c.Query("repositories", "false")
 	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {
-		data.Status = "Failure"
-		data.Message = "id not valid"
-		data.Data = nil
-		return c.JSON(data)
+		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Invalid ID", "Data": nil})
 	}
+
+	if user_id != id || !is_site_admin {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Unauthorized", "Data": nil})
+	}
+
+	repos := c.Query("repositories", "false")
+
 	db := database.DB
 	var user models.User
 	dbquery := db.Model(&user).Preload("Organization")
@@ -93,31 +93,25 @@ func GetUser(c *fiber.Ctx) error {
 // UpdateUser update user
 func UpdateUser(c *fiber.Ctx) error {
 	c.Accepts("application/json")
-	var data models.UserData
 	var id uuid.UUID
 	var user_id uuid.UUID
 	user_token := c.Locals("user").(*jwt.Token)
 	claims := user_token.Claims.(jwt.MapClaims)
 	token_user_id := claims["user_id"].(string)
+	is_site_admin := claims["site_admin"].(bool)
 	user_id, tokenerr := uuid.Parse(token_user_id)
 	if tokenerr != nil {
-		data.Status = "Failure"
-		data.Message = "id not valid"
-		data.Data = nil
-		return c.JSON(data)
+		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Invalid User ID", "Data": nil})
 	}
 
 	// Convert the id parameter to a UUID for later use
 	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {
-		data.Status = "Failure"
-		data.Message = "id not valid"
-		data.Data = nil
-		return c.JSON(data)
+		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Invalid ID", "Data": nil})
 	}
 
 	// Check ID in the url against the ID in the Claim
-	if id != user_id {
+	if id != user_id || !is_site_admin {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Unauthorized", "Data": nil})
 	}
 
@@ -139,7 +133,7 @@ func UpdateUser(c *fiber.Ctx) error {
 	db := database.DB
 	var user models.User
 	db.First(&user, id)
-	if !helpers.ValidUser(id, uui.CurrentPassword) {
+	if !helpers.ValidUser(id, uui.CurrentPassword) || !is_site_admin {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Invalid Credentials", "Data": err})
 	}
 	if uui.NewPassword != "" {
@@ -162,6 +156,7 @@ func DeleteUser(c *fiber.Ctx) error {
 	user_token := c.Locals("user").(*jwt.Token)
 	claims := user_token.Claims.(jwt.MapClaims)
 	token_user_id := claims["user_id"].(string)
+	is_site_admin := claims["site_admin"].(bool)
 
 	// Get Userid from token
 	user_id, tokenerr := uuid.Parse(token_user_id)
@@ -182,7 +177,7 @@ func DeleteUser(c *fiber.Ctx) error {
 	}
 
 	// Check ID in the url against the ID in the Claim
-	if id != user_id {
+	if id != user_id || !is_site_admin {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Unauthorized", "Data": nil})
 	}
 	type PasswordInput struct {
@@ -193,12 +188,12 @@ func DeleteUser(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Review your input", "data": err})
 	}
 
-	if !helpers.ValidToken(user_token, id) {
+	if !helpers.ValidToken(user_token, id) || !is_site_admin {
 		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Invalid token id", "data": nil})
 
 	}
 
-	if !helpers.ValidUser(id, pi.Password) {
+	if !helpers.ValidUser(id, pi.Password) || is_site_admin {
 		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Not valid user", "data": nil})
 
 	}

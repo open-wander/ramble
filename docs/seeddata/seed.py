@@ -23,14 +23,14 @@ for u in range(40):
   # print("Initial login details")
   # print(user['username'])
   # print(user['password'])
-  # posturl = 'http://host.docker.internal:10000/auth/signup'
-  posturl = 'http://localhost:10000/auth/signup'
+  posturl = 'http://host.docker.internal:10000/auth/signup'
+  # posturl = 'http://localhost:10000/auth/signup'
   response = requests.post(posturl, data=user)
   resp = response.json()
   userdata = resp['Data']
-  # loginurl = 'http://host.docker.internal:10000/auth/login'
-  loginurl = 'http://localhost:10000/auth/login'
-  login_user = {  "identity": user['username'], "password": user['password']}
+  loginurl = 'http://host.docker.internal:10000/auth/login'
+  # loginurl = 'http://localhost:10000/auth/login'
+  login_user = {  "identity": user['email'], "password": user['password']}
   # print("Userdetails for POST Method")
   # print(login_user)
   login_response = requests.post(loginurl, data=login_user)
@@ -40,6 +40,6 @@ for u in range(40):
       repo = genRepo()
       username = userdata["username"]
       auth_headers = {'Authorization' : 'Bearer '+ authtoken}
-      # url = 'http://host.docker.internal:10000/'+username
-      url = 'http://localhost:10000/'+username
+      url = 'http://host.docker.internal:10000/'+username
+      # url = 'http://localhost:10000/'+username
       response = requests.post(url, headers=auth_headers, json=repo)

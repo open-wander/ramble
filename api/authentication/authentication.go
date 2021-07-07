@@ -21,10 +21,11 @@ func Login(c *fiber.Ctx) error {
 		Password string `json:"password"`
 	}
 	type UserData struct {
-		ID       uuid.UUID `json:"id"`
-		Username string    `json:"username"`
-		Email    string    `json:"email"`
-		Password string    `json:"password"`
+		ID        uuid.UUID `json:"id"`
+		Username  string    `json:"username"`
+		Email     string    `json:"email"`
+		Password  string    `json:"password"`
+		SiteAdmin bool      `json:"-"`
 	}
 	var input LoginInput
 	var ud UserData
@@ -40,29 +41,16 @@ func Login(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Error on email", "Data": err})
 	}
 
-	user, err := helpers.GetUserByUsername(identity)
-	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Error on username", "Data": err})
-	}
-
-	if email == nil && user == nil {
+	if email == nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Invalid Credentials", "Data": err})
 	}
 
-	if email == nil {
-		ud = UserData{
-			ID:       user.ID,
-			Username: user.Username,
-			Email:    user.Email,
-			Password: user.Password,
-		}
-	} else {
-		ud = UserData{
-			ID:       email.ID,
-			Username: email.Username,
-			Email:    email.Email,
-			Password: email.Password,
-		}
+	ud = UserData{
+		ID:        email.ID,
+		Username:  email.Username,
+		Email:     email.Email,
+		SiteAdmin: email.SiteAdmin,
+		Password:  email.Password,
 	}
 
 	orgid := helpers.GetORGIDByUserid(ud.ID)
@@ -77,6 +65,7 @@ func Login(c *fiber.Ctx) error {
 	claims["username"] = ud.Username
 	claims["user_id"] = ud.ID
 	claims["userorg_id"] = orgid
+	claims["site_admin"] = ud.SiteAdmin
 	claims["expires"] = time.Now().Add(time.Hour * 72).Unix()
 
 	t, err := token.SignedString([]byte(appconfig.Config.Server.JWTSecret))
