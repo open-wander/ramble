@@ -4,8 +4,7 @@ RUN apt update && apt -y install curl
 RUN mkdir /etc/rmbl
 # configuration volume
 VOLUME /etc/rmbl
-# Set the releae environment for gin
-ENV GIN_MODE="release"
 COPY rmbl-server /
+RUN chmod +x /rmbl-server
 # EXPOSE 10000
 ENTRYPOINT ["/rmbl-server"]
