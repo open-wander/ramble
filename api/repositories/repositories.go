@@ -50,15 +50,15 @@ func GetAllRepositories(c *fiber.Ctx) error {
 	dbquery.Scopes(Paginate(c))
 	dbquery.Scan(&repositories)
 	if dbquery.RowsAffected == 0 {
-		data.Status = "Failure"
+		data.Status = "Success"
 		data.Message = "No Records found"
 		data.Data = repositories
-		return c.JSON(data)
+		return c.Status(200).JSON(data)
 	}
 	data.Data = repositories
 	data.Status = "Success"
 	data.Message = "Records found"
-	return c.JSON(data)
+	return c.Status(200).JSON(data)
 }
 
 // Get All Org Repositories limited to 25 results
@@ -82,15 +82,15 @@ func GetOrgRepositories(c *fiber.Ctx) error {
 	dbquery.Scopes(Paginate(c))
 	dbquery.Scan(&repositories)
 	if dbquery.RowsAffected == 0 {
-		data.Status = "Failure"
+		data.Status = "Success"
 		data.Message = "No Records found"
 		data.Data = repositories
-		return c.JSON(data)
+		return c.Status(200).JSON(data)
 	}
 	data.Data = repositories
 	data.Status = "Success"
 	data.Message = "Records found"
-	return c.JSON(data)
+	return c.Status(200).JSON(data)
 }
 
 //Get an individual repository detail
