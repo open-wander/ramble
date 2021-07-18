@@ -48,11 +48,11 @@ func Create() *fiber.App {
 		// Override default error handler
 		ErrorHandler: func(ctx *fiber.Ctx, err error) error {
 			if e, ok := err.(*apperr.Error); ok {
-				return ctx.Status(e.Status).JSON(e)
+				return ctx.Status(e.Code).JSON(e)
 			} else if e, ok := err.(*fiber.Error); ok {
-				return ctx.Status(e.Code).JSON(apperr.Error{Status: e.Code, Code: "internal-server", Message: e.Message})
+				return ctx.Status(e.Code).JSON(apperr.Error{Status: "internal-server", Code: e.Code, Message: e.Message})
 			} else {
-				return ctx.Status(500).JSON(apperr.Error{Status: 500, Code: "internal-server", Message: err.Error()})
+				return ctx.Status(fiber.StatusInternalServerError).JSON(apperr.Error{Status: "internal-server", Code: 500, Message: err.Error()})
 			}
 		},
 	})
