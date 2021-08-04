@@ -64,11 +64,11 @@ func CheckPasswordHash(password, hash string) bool {
 }
 
 func ValidToken(t *jwt.Token, id uuid.UUID) bool {
-	fmt.Println("Reached Helper VAkid")
 	n := id
 
 	claims := t.Claims.(jwt.MapClaims)
 	uid, err := uuid.Parse(claims["user_id"].(string))
+	// TODO deal with this error in a better way
 	if err != nil {
 		fmt.Println("Not a Valid UUID")
 	}

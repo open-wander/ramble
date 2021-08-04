@@ -7,8 +7,15 @@ import (
 	"testing"
 )
 
-//Testing API / path
+func TestSetup(t *testing.T) {
+	fmt.Println("Setup Empty DB")
+	e := apptest.FiberHTTPTester(t)
+	e.GET("/").Expect().Status(http.StatusOK)
+}
+
+// Testing API / path
 func TestIndex(t *testing.T) {
+	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
 	fmt.Println("Test Empty DB Index")
 	index_exist_object := e.GET("/").Expect().
@@ -29,6 +36,7 @@ func TestIndex(t *testing.T) {
 	index_not_exist_object.ValueEqual("Message", "No Records found")
 	index_not_exist_object.ValueEqual("TotalRecords", 0)
 	index_not_exist_object.ValueEqual("Data", nil)
+
 	fmt.Println("")
 	fmt.Println("")
 }
@@ -280,9 +288,175 @@ func TestLogin(t *testing.T) {
 		Status(http.StatusOK).
 		JSON().Object()
 	user_login_success.Keys().ContainsOnly("Status", "Message", "Data")
-	user_login_success.ValueEqual("Status", "success")
+	user_login_success.ValueEqual("Status", "Success")
 	user_login_success.ValueEqual("Message", "Success login")
 	user_login_success.Value("Data").Object().Keys().ContainsOnly("Token")
+
+	fmt.Println("")
+	fmt.Println("")
+}
+
+// Testing the Repository workflow
+// Order CRUD
+
+func TestRepoCreate(t *testing.T) {
+	apptest.DropTables()
+	e := apptest.FiberHTTPTester(t)
+
+	user_for_login := map[string]interface{}{
+		"username": "hydrogen",
+		"email":    "hydrogen@ptable.element",
+		"password": "P@ssw0rd1",
+	}
+
+	user := map[string]interface{}{
+		"identity": "hydrogen@ptable.element",
+		"password": "P@ssw0rd1",
+	}
+
+	repo_empty_json := map[string]interface{}{
+		"name":        "",
+		"description": "",
+		"version":     "",
+		"url":         "",
+	}
+
+	repo := map[string]interface{}{
+		"name":        "testrepo",
+		"description": "some cool description",
+		"version":     "v1.0.0",
+		"url":         "https://github.com/hydrogen/testrepo",
+	}
+	update_repo := map[string]interface{}{
+		"name":        "testrepo",
+		"description": "some cool description",
+		"version":     "v1.0.1",
+		"url":         "https://github.com/hydrogen/testrepo",
+	}
+
+	// user_empty := map[string]interface{}{
+	// 	"identity": "",
+	// 	"password": "",
+	// }
+
+	fmt.Println("Create User for Create Repo tests")
+	user_signup := e.POST("/auth/signup").WithJSON(user_for_login).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	user_signup.Keys().ContainsOnly("Status", "Message", "Data")
+	user_signup.ValueEqual("Status", "Success")
+	user_signup.ValueEqual("Message", "Created User")
+	user_signup.ContainsMap(map[string]interface{}{
+		"Data": map[string]interface{}{
+			"username": "hydrogen",
+			"email":    "hydrogen@ptable.element",
+		},
+	})
+
+	fmt.Println("Login User for Create Repo Tests")
+	user_login_success := e.POST("/auth/login").WithJSON(user).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	user_login_success.Keys().ContainsOnly("Status", "Message", "Data")
+	user_login_success.ValueEqual("Status", "Success")
+	user_login_success.ValueEqual("Message", "Success login")
+	user_login_success.Value("Data").Object().Keys().ContainsOnly("Token")
+
+	token := user_login_success.Value("Data").Object().Value("Token").String().Raw()
+
+	fmt.Println("Create Repo Without Login")
+	create_repo_without_login := e.POST("/hydrogen").WithJSON(repo).
+		Expect().
+		Status(http.StatusBadRequest).
+		JSON().Object()
+	create_repo_without_login.Keys().ContainsOnly("Status", "Message", "Data")
+	create_repo_without_login.ValueEqual("Status", "Error")
+	create_repo_without_login.ValueEqual("Message", "Missing or malformed JWT")
+	create_repo_without_login.ValueEqual("Data", nil)
+
+	fmt.Println("Create Repo With No JSON")
+	create_repo_with_no_json := e.POST("/hydrogen").WithHeader("Authorization", "Bearer "+token).
+		Expect().
+		Status(http.StatusUnsupportedMediaType).
+		JSON().Object()
+	create_repo_with_no_json.Keys().ContainsOnly("Status", "Message", "Code")
+	create_repo_with_no_json.ValueEqual("Status", "unsupported-media-type")
+	create_repo_with_no_json.ValueEqual("Message", "Not Valid Content Type, Expect application/json")
+	create_repo_with_no_json.ValueEqual("Code", 415)
+
+	fmt.Println("Create Repo With Empty JSON")
+	create_repo_with_empty_json := e.POST("/hydrogen").WithHeader("Authorization", "Bearer "+token).WithJSON(repo_empty_json).
+		Expect().
+		Status(http.StatusBadRequest).
+		JSON().Object()
+	create_repo_with_empty_json.Keys().ContainsOnly("Status", "Message")
+	create_repo_with_empty_json.ValueEqual("Status", "validation-error")
+	create_repo_with_empty_json.ContainsMap(map[string]interface{}{
+		"Message": map[string]interface{}{
+			"description": "validation failed on field 'description', condition: required",
+			"name":        "validation failed on field 'name', condition: required",
+			"url":         "validation failed on field 'url', condition: required",
+			"version":     "validation failed on field 'version', condition: required",
+		},
+	})
+
+	fmt.Println("Create Repo With Login")
+	create_repo_with_login := e.POST("/hydrogen").WithHeader("Authorization", "Bearer "+token).WithJSON(repo).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	create_repo_with_login.Keys().ContainsOnly("name", "version", "description", "url", "orgid", "id")
+	create_repo_with_login.ValueEqual("name", "testrepo")
+	create_repo_with_login.ValueEqual("description", "some cool description")
+	create_repo_with_login.ValueEqual("version", "v1.0.0")
+	create_repo_with_login.ValueEqual("url", "https://github.com/hydrogen/testrepo")
+	create_repo_with_login.ContainsKey("id")
+	create_repo_with_login.ContainsKey("orgid")
+
+	fmt.Println("Update Repo Without Login")
+	update_repo_without_login := e.PUT("/hydrogen/testrepo").WithJSON(update_repo).
+		Expect().
+		Status(http.StatusBadRequest).
+		JSON().Object()
+	update_repo_without_login.Keys().ContainsOnly("Status", "Message", "Data")
+	update_repo_without_login.ValueEqual("Status", "Error")
+	update_repo_without_login.ValueEqual("Message", "Missing or malformed JWT")
+	update_repo_without_login.ValueEqual("Data", nil)
+
+	fmt.Println("Update Repo With Login")
+	update_repo_with_login := e.PUT("/hydrogen/testrepo").WithHeader("Authorization", "Bearer "+token).WithJSON(update_repo).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	update_repo_with_login.Keys().ContainsOnly("name", "version", "description", "url", "orgid", "id")
+	update_repo_with_login.ValueEqual("name", "testrepo")
+	update_repo_with_login.ValueEqual("description", "some cool description")
+	update_repo_with_login.ValueEqual("version", "v1.0.1")
+	update_repo_with_login.ValueEqual("url", "https://github.com/hydrogen/testrepo")
+	update_repo_with_login.ContainsKey("id")
+	update_repo_with_login.ContainsKey("orgid")
+
+	fmt.Println("Delete Repo Without Login")
+	delete_repo_without_login := e.DELETE("/hydrogen/testrepo").
+		Expect().
+		Status(http.StatusBadRequest).
+		JSON().Object()
+	delete_repo_without_login.Keys().ContainsOnly("Status", "Message", "Data")
+	delete_repo_without_login.ValueEqual("Status", "Error")
+	delete_repo_without_login.ValueEqual("Message", "Missing or malformed JWT")
+	delete_repo_without_login.ValueEqual("Data", nil)
+
+	fmt.Println("Delete Repo With Login")
+	delete_repo_with_login := e.DELETE("/hydrogen/testrepo").WithHeader("Authorization", "Bearer "+token).WithJSON(update_repo).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	delete_repo_with_login.Keys().ContainsOnly("Status", "Message", "Data")
+	delete_repo_with_login.ValueEqual("Status", "Success")
+	delete_repo_with_login.ValueEqual("Message", "testrepo Deleted")
+	delete_repo_with_login.ValueEqual("Data", nil)
 
 	fmt.Println("")
 	fmt.Println("")
