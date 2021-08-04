@@ -7,6 +7,7 @@ import (
 	"testing"
 )
 
+//Testing API / path
 func TestIndex(t *testing.T) {
 	e := apptest.FiberHTTPTester(t)
 	fmt.Println("Test Empty DB Index")
@@ -28,9 +29,13 @@ func TestIndex(t *testing.T) {
 	index_not_exist_object.ValueEqual("Message", "No Records found")
 	index_not_exist_object.ValueEqual("TotalRecords", 0)
 	index_not_exist_object.ValueEqual("Data", nil)
+	fmt.Println("")
+	fmt.Println("")
 }
 
+// Testing the /auth/signup path
 func TestSignUp(t *testing.T) {
+	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
 
 	user_empty := map[string]interface{}{
@@ -52,8 +57,8 @@ func TestSignUp(t *testing.T) {
 	}
 
 	user_empty_password := map[string]interface{}{
-		"username": "hydrogen",
-		"email":    "hydrogen@ptable.element",
+		"username": "hydrogen2",
+		"email":    "hydrogen2@ptable.element",
 		"password": "",
 	}
 
@@ -151,4 +156,134 @@ func TestSignUp(t *testing.T) {
 	user_signup_account_exists.ValueEqual("Status", "Error")
 	user_signup_account_exists.ValueEqual("Message", "Couldn't create user")
 	user_signup_account_exists.ValueEqual("Data", "Username or Email Already Exists")
+
+	fmt.Println("")
+	fmt.Println("")
+}
+
+// test /auth/login path
+func TestLogin(t *testing.T) {
+	apptest.DropTables()
+	e := apptest.FiberHTTPTester(t)
+
+	user_for_login := map[string]interface{}{
+		"username": "hydrogen",
+		"email":    "hydrogen@ptable.element",
+		"password": "P@ssw0rd1",
+	}
+
+	user_empty := map[string]interface{}{
+		"identity": "",
+		"password": "",
+	}
+
+	user_empty_email := map[string]interface{}{
+		"identity": "",
+		"password": "P@ssw0rd1",
+	}
+
+	user_empty_password := map[string]interface{}{
+		"identity": "hydrogen@ptable.element",
+		"password": "",
+	}
+
+	user_non_standard_email := map[string]interface{}{
+		"identity": "hydrogen@ptableelement",
+		"password": "P@ssw0rd1",
+	}
+
+	user := map[string]interface{}{
+		"identity": "hydrogen@ptable.element",
+		"password": "P@ssw0rd1",
+	}
+
+	fmt.Println("Create User for Login tests")
+	user_signup := e.POST("/auth/signup").WithJSON(user_for_login).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	user_signup.Keys().ContainsOnly("Status", "Message", "Data")
+	user_signup.ValueEqual("Status", "Success")
+	user_signup.ValueEqual("Message", "Created User")
+	user_signup.ContainsMap(map[string]interface{}{
+		"Data": map[string]interface{}{
+			"username": "hydrogen",
+			"email":    "hydrogen@ptable.element",
+		},
+	})
+
+	fmt.Println("Test User Login No JSON")
+	user_login_nojson := e.POST("/auth/login").
+		Expect().
+		Status(http.StatusUnsupportedMediaType).
+		JSON().Object()
+	user_login_nojson.Keys().ContainsOnly("Message", "Status", "Code")
+	user_login_nojson.ValueEqual("Status", "unsupported-media-type")
+	user_login_nojson.ValueEqual("Message", "Not Valid Content Type, Expect application/json")
+	user_login_nojson.ValueEqual("Code", 415)
+
+	fmt.Println("Test User Login Empty JSON")
+	user_login_emptyjson := e.POST("/auth/login").WithJSON(user_empty).
+		Expect().
+		Status(http.StatusBadRequest).
+		JSON().Object()
+	user_login_emptyjson.Keys().ContainsOnly("Status", "Message")
+	user_login_emptyjson.ValueEqual("Status", "validation-error")
+	user_login_emptyjson.ContainsMap(map[string]interface{}{
+		"Message": map[string]interface{}{
+			"identity": "validation failed on field 'identity', condition: required",
+		},
+	})
+
+	fmt.Println("Test User Login Empty Email")
+	user_login_empty_email := e.POST("/auth/login").WithJSON(user_empty_email).
+		Expect().
+		Status(http.StatusBadRequest).
+		JSON().Object()
+	user_login_empty_email.Keys().ContainsOnly("Status", "Message")
+	user_login_empty_email.ValueEqual("Status", "validation-error")
+	user_login_empty_email.ContainsMap(map[string]interface{}{
+		"Message": map[string]interface{}{
+			"identity": "validation failed on field 'identity', condition: required",
+		},
+	})
+
+	fmt.Println("Test User Login Empty Password")
+	user_login_empty_password := e.POST("/auth/login").WithJSON(user_empty_password).
+		Expect().
+		Status(http.StatusBadRequest).
+		JSON().Object()
+	user_login_empty_password.Keys().ContainsOnly("Status", "Message")
+	user_login_empty_password.ValueEqual("Status", "validation-error")
+	user_login_empty_password.ContainsMap(map[string]interface{}{
+		"Message": map[string]interface{}{
+			"password": "validation failed on field 'password', condition: required",
+		},
+	})
+
+	fmt.Println("Test User Login Non Standard Email")
+	user_login_non_standard_email := e.POST("/auth/login").WithJSON(user_non_standard_email).
+		Expect().
+		Status(http.StatusBadRequest).
+		JSON().Object()
+	user_login_non_standard_email.Keys().ContainsOnly("Status", "Message")
+	user_login_non_standard_email.ValueEqual("Status", "validation-error")
+	user_login_non_standard_email.ContainsMap(map[string]interface{}{
+		"Message": map[string]interface{}{
+			"identity": "validation failed on field 'identity', condition: email, actual: hydrogen@ptableelement",
+		},
+	})
+
+	fmt.Println("Test User Login Success")
+	user_login_success := e.POST("/auth/login").WithJSON(user).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	user_login_success.Keys().ContainsOnly("Status", "Message", "Data")
+	user_login_success.ValueEqual("Status", "success")
+	user_login_success.ValueEqual("Message", "Success login")
+	user_login_success.Value("Data").Object().Keys().ContainsOnly("Token")
+
+	fmt.Println("")
+	fmt.Println("")
 }
