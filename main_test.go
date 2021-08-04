@@ -408,6 +408,103 @@ func TestRepoCreate(t *testing.T) {
 	fmt.Println("")
 }
 
+func TestRepoRead(t *testing.T) {
+	apptest.DropTables()
+	e := apptest.FiberHTTPTester(t)
+
+	user_for_login := map[string]interface{}{
+		"username": "hydrogen",
+		"email":    "hydrogen@ptable.element",
+		"password": "P@ssw0rd1",
+	}
+
+	user := map[string]interface{}{
+		"identity": "hydrogen@ptable.element",
+		"password": "P@ssw0rd1",
+	}
+
+	fmt.Println("Create User for Create Repo tests")
+	user_signup := e.POST("/auth/signup").WithJSON(user_for_login).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	user_signup.Keys().ContainsOnly("Status", "Message", "Data")
+	user_signup.ValueEqual("Status", "Success")
+	user_signup.ValueEqual("Message", "Created User")
+	user_signup.ContainsMap(map[string]interface{}{
+		"Data": map[string]interface{}{
+			"username": "hydrogen",
+			"email":    "hydrogen@ptable.element",
+		},
+	})
+
+	fmt.Println("Login User for Create Repo Tests")
+	user_login_success := e.POST("/auth/login").WithJSON(user).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	user_login_success.Keys().ContainsOnly("Status", "Message", "Data")
+	user_login_success.ValueEqual("Status", "Success")
+	user_login_success.ValueEqual("Message", "Success login")
+	user_login_success.Value("Data").Object().Keys().ContainsOnly("Token")
+
+	token := user_login_success.Value("Data").Object().Value("Token").String().Raw()
+
+	fmt.Println("Create Repos With Login")
+	for i := 0; i < 30; i++ {
+		repo := map[string]interface{}{
+			"name":        "testrepo" + fmt.Sprint(i),
+			"description": "some cool description" + fmt.Sprint(i),
+			"version":     "v1.0." + fmt.Sprint(i),
+			"url":         "https://github.com/hydrogen/testrepo" + fmt.Sprint(i),
+		}
+		create_repos_with_login := e.POST("/hydrogen").WithHeader("Authorization", "Bearer "+token).WithJSON(repo).
+			Expect().
+			Status(http.StatusOK).
+			JSON().Object()
+		create_repos_with_login.Keys().ContainsOnly("name", "version", "description", "url", "orgid", "id")
+	}
+
+	fmt.Println("Get All Repositories")
+	get_repos := e.GET("/").
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	get_repos.Keys().ContainsOnly("Data", "Status", "Message", "TotalRecords")
+	get_repos.ValueEqual("TotalRecords", 30)
+
+	fmt.Println("Get Repository Detail For hydrogen/testrepo2")
+	get_repo_detail_repo := e.GET("/hydrogen/testrepo2").
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	get_repo_detail_repo.Keys().ContainsOnly("Data", "Status", "Message")
+	get_repo_detail_repo.ValueEqual("Status", "Success")
+	get_repo_detail_repo.ValueEqual("Message", "Repository Found")
+	get_repo_detail_repo.ContainsMap(map[string]interface{}{
+		"Data": map[string]interface{}{
+			"description": "some cool description2",
+			"name":        "testrepo2",
+			"orgname":     "hydrogen",
+			"url":         "https://github.com/hydrogen/testrepo2",
+			"version":     "v1.0.2",
+		},
+	})
+
+	// TODO test redirect for Nomad
+
+	fmt.Println("Get All Repositories For hydrogen")
+	get_repos_test_repo := e.GET("/hydrogen").
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	get_repos_test_repo.Keys().ContainsOnly("Data", "Status", "Message", "TotalRecords")
+	get_repos_test_repo.ValueEqual("TotalRecords", 30)
+
+	fmt.Println("")
+	fmt.Println("")
+}
+
 func TestRepoUpdate(t *testing.T) {
 	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
