@@ -27,7 +27,7 @@ func GetAllOrgs(c *fiber.Ctx) error {
 	is_site_admin := claims["site_admin"].(bool)
 	repos := c.Query("repositories", "false")
 	if !is_site_admin {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Unauthorized", "Data": nil})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"Status": "Error", "Message": "Unauthorized", "Data": nil})
 	}
 	db := database.DB
 	var organizations []models.Organization

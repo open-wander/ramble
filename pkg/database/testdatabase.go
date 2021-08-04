@@ -40,8 +40,8 @@ func SetupTestDatabase() {
 
 	if err != nil {
 		log.Fatal(err)
-		panic("Failed to connect database")
+		panic("Failed to connect to test database")
 	}
 
-	fmt.Println("Connection Opened to Database")
+	fmt.Println("Connection Opened to Test Database")
 }

@@ -152,5 +152,5 @@ func Login(c *fiber.Ctx) error {
 	}
 	var authtoken models.JWTToken
 	authtoken.Token = t
-	return c.JSON(fiber.Map{"Status": "success", "Message": "Success login", "Data": authtoken})
+	return c.JSON(fiber.Map{"Status": "Success", "Message": "Success login", "Data": authtoken})
 }
