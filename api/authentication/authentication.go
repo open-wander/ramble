@@ -101,11 +101,11 @@ func Login(c *fiber.Ctx) error {
 	}
 
 	if err := c.BodyParser(&input); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Error on login request", "Data": err})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"Status": "Error", "Message": "Error on login request", "Data": err})
 	}
 
 	validate := appvalid.NewValidator()
-	if validateerr := validate.Struct(userdata); validateerr != nil {
+	if validateerr := validate.Struct(input); validateerr != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"Status":  "validation-error",
 			"Message": appvalid.ValidationErrors(validateerr),
@@ -116,11 +116,11 @@ func Login(c *fiber.Ctx) error {
 
 	email, err := helpers.GetUserByEmail(identity)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Error on email", "Data": err})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"Status": "Error", "Message": "Error on email", "Data": err})
 	}
 
 	if email == nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Invalid Credentials", "Data": err})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"Status": "Error", "Message": "Invalid Credentials", "Data": err})
 	}
 
 	userdata = UserData{
@@ -134,7 +134,7 @@ func Login(c *fiber.Ctx) error {
 	orgid := helpers.GetORGIDByUserid(userdata.ID)
 
 	if !helpers.CheckPasswordHash(pass, userdata.Password) {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Invalid Credentials", "Data": nil})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"Status": "Error", "Message": "Invalid Credentials", "Data": nil})
 	}
 
 	token := jwt.New(jwt.SigningMethodHS256)
@@ -152,5 +152,5 @@ func Login(c *fiber.Ctx) error {
 	}
 	var authtoken models.JWTToken
 	authtoken.Token = t
-	return c.JSON(fiber.Map{"status": "success", "message": "Success login", "Data": authtoken})
+	return c.JSON(fiber.Map{"Status": "success", "Message": "Success login", "Data": authtoken})
 }
