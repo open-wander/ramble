@@ -327,17 +327,6 @@ func TestRepoCreate(t *testing.T) {
 		"version":     "v1.0.0",
 		"url":         "https://github.com/hydrogen/testrepo",
 	}
-	update_repo := map[string]interface{}{
-		"name":        "testrepo",
-		"description": "some cool description",
-		"version":     "v1.0.1",
-		"url":         "https://github.com/hydrogen/testrepo",
-	}
-
-	// user_empty := map[string]interface{}{
-	// 	"identity": "",
-	// 	"password": "",
-	// }
 
 	fmt.Println("Create User for Create Repo tests")
 	user_signup := e.POST("/auth/signup").WithJSON(user_for_login).
@@ -415,6 +404,78 @@ func TestRepoCreate(t *testing.T) {
 	create_repo_with_login.ContainsKey("id")
 	create_repo_with_login.ContainsKey("orgid")
 
+	fmt.Println("")
+	fmt.Println("")
+}
+
+func TestRepoUpdate(t *testing.T) {
+	apptest.DropTables()
+	e := apptest.FiberHTTPTester(t)
+
+	user_for_login := map[string]interface{}{
+		"username": "hydrogen",
+		"email":    "hydrogen@ptable.element",
+		"password": "P@ssw0rd1",
+	}
+
+	user := map[string]interface{}{
+		"identity": "hydrogen@ptable.element",
+		"password": "P@ssw0rd1",
+	}
+
+	repo := map[string]interface{}{
+		"name":        "testrepo",
+		"description": "some cool description",
+		"version":     "v1.0.0",
+		"url":         "https://github.com/hydrogen/testrepo",
+	}
+	update_repo := map[string]interface{}{
+		"name":        "testrepo",
+		"description": "some cool description",
+		"version":     "v1.0.1",
+		"url":         "https://github.com/hydrogen/testrepo",
+	}
+
+	fmt.Println("Create User for Create Repo tests")
+	user_signup := e.POST("/auth/signup").WithJSON(user_for_login).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	user_signup.Keys().ContainsOnly("Status", "Message", "Data")
+	user_signup.ValueEqual("Status", "Success")
+	user_signup.ValueEqual("Message", "Created User")
+	user_signup.ContainsMap(map[string]interface{}{
+		"Data": map[string]interface{}{
+			"username": "hydrogen",
+			"email":    "hydrogen@ptable.element",
+		},
+	})
+
+	fmt.Println("Login User for Create Repo Tests")
+	user_login_success := e.POST("/auth/login").WithJSON(user).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	user_login_success.Keys().ContainsOnly("Status", "Message", "Data")
+	user_login_success.ValueEqual("Status", "Success")
+	user_login_success.ValueEqual("Message", "Success login")
+	user_login_success.Value("Data").Object().Keys().ContainsOnly("Token")
+
+	token := user_login_success.Value("Data").Object().Value("Token").String().Raw()
+
+	fmt.Println("Create Repo With Login")
+	create_repo_with_login := e.POST("/hydrogen").WithHeader("Authorization", "Bearer "+token).WithJSON(repo).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	create_repo_with_login.Keys().ContainsOnly("name", "version", "description", "url", "orgid", "id")
+	create_repo_with_login.ValueEqual("name", "testrepo")
+	create_repo_with_login.ValueEqual("description", "some cool description")
+	create_repo_with_login.ValueEqual("version", "v1.0.0")
+	create_repo_with_login.ValueEqual("url", "https://github.com/hydrogen/testrepo")
+	create_repo_with_login.ContainsKey("id")
+	create_repo_with_login.ContainsKey("orgid")
+
 	fmt.Println("Update Repo Without Login")
 	update_repo_without_login := e.PUT("/hydrogen/testrepo").WithJSON(update_repo).
 		Expect().
@@ -437,6 +498,78 @@ func TestRepoCreate(t *testing.T) {
 	update_repo_with_login.ValueEqual("url", "https://github.com/hydrogen/testrepo")
 	update_repo_with_login.ContainsKey("id")
 	update_repo_with_login.ContainsKey("orgid")
+
+	fmt.Println("")
+	fmt.Println("")
+}
+
+func TestRepoDelete(t *testing.T) {
+	apptest.DropTables()
+	e := apptest.FiberHTTPTester(t)
+
+	user_for_login := map[string]interface{}{
+		"username": "hydrogen",
+		"email":    "hydrogen@ptable.element",
+		"password": "P@ssw0rd1",
+	}
+
+	user := map[string]interface{}{
+		"identity": "hydrogen@ptable.element",
+		"password": "P@ssw0rd1",
+	}
+
+	repo := map[string]interface{}{
+		"name":        "testrepo",
+		"description": "some cool description",
+		"version":     "v1.0.0",
+		"url":         "https://github.com/hydrogen/testrepo",
+	}
+	update_repo := map[string]interface{}{
+		"name":        "testrepo",
+		"description": "some cool description",
+		"version":     "v1.0.1",
+		"url":         "https://github.com/hydrogen/testrepo",
+	}
+
+	fmt.Println("Create User for Create Repo tests")
+	user_signup := e.POST("/auth/signup").WithJSON(user_for_login).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	user_signup.Keys().ContainsOnly("Status", "Message", "Data")
+	user_signup.ValueEqual("Status", "Success")
+	user_signup.ValueEqual("Message", "Created User")
+	user_signup.ContainsMap(map[string]interface{}{
+		"Data": map[string]interface{}{
+			"username": "hydrogen",
+			"email":    "hydrogen@ptable.element",
+		},
+	})
+
+	fmt.Println("Login User for Create Repo Tests")
+	user_login_success := e.POST("/auth/login").WithJSON(user).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	user_login_success.Keys().ContainsOnly("Status", "Message", "Data")
+	user_login_success.ValueEqual("Status", "Success")
+	user_login_success.ValueEqual("Message", "Success login")
+	user_login_success.Value("Data").Object().Keys().ContainsOnly("Token")
+
+	token := user_login_success.Value("Data").Object().Value("Token").String().Raw()
+
+	fmt.Println("Create Repo For Delete Test")
+	create_repo_with_login := e.POST("/hydrogen").WithHeader("Authorization", "Bearer "+token).WithJSON(repo).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	create_repo_with_login.Keys().ContainsOnly("name", "version", "description", "url", "orgid", "id")
+	create_repo_with_login.ValueEqual("name", "testrepo")
+	create_repo_with_login.ValueEqual("description", "some cool description")
+	create_repo_with_login.ValueEqual("version", "v1.0.0")
+	create_repo_with_login.ValueEqual("url", "https://github.com/hydrogen/testrepo")
+	create_repo_with_login.ContainsKey("id")
+	create_repo_with_login.ContainsKey("orgid")
 
 	fmt.Println("Delete Repo Without Login")
 	delete_repo_without_login := e.DELETE("/hydrogen/testrepo").
