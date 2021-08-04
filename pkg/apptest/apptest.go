@@ -1,12 +1,17 @@
-package server
+package apptest
 
 import (
 	"fmt"
+	"net/http"
+	"rmbl/api"
+	"rmbl/models"
 	"rmbl/pkg/apperr"
 	appconfig "rmbl/pkg/config"
 	"rmbl/pkg/database"
+	"testing"
 	"time"
 
+	"github.com/gavv/httpexpect/v2"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/compress"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -41,9 +46,8 @@ func setupMiddlewares(app *fiber.App) {
 	}
 }
 
-func Create() *fiber.App {
-	database.SetupDatabase()
-
+func create() *fiber.App {
+	database.SetupTestDatabase()
 	app := fiber.New(fiber.Config{
 		// Override default error handler
 		ErrorHandler: func(ctx *fiber.Ctx, err error) error {
@@ -56,20 +60,40 @@ func Create() *fiber.App {
 			}
 		},
 	})
+	database.DB.AutoMigrate(&models.Organization{})
+	database.DB.AutoMigrate(&models.Repository{})
+	database.DB.AutoMigrate(&models.User{})
 
 	setupMiddlewares(app)
 
 	return app
 }
 
-func Listen(app *fiber.App) error {
-	appconfig := appconfig.GetConfig()
+// Drop Tables after each test run
+func DropTables() {
+	database.DB.Migrator().DropTable(&models.User{})
+	database.DB.Migrator().DropTable(&models.Repository{})
+	database.DB.Migrator().DropTable(&models.Organization{})
+	fmt.Println("Tables Dropped")
+}
 
-	// 404 Handler
-	app.Use(func(c *fiber.Ctx) error {
-		return c.SendStatus(404)
+func setupTestApp() *fiber.App {
+	app := create()
+	api.Setup(app)
+
+	return app
+}
+
+//fiberHTTPTester returns a new Expect instance to test fiberHandler().
+func FiberHTTPTester(t *testing.T) *httpexpect.Expect {
+	app := setupTestApp()
+	return httpexpect.WithConfig(httpexpect.Config{
+		// Pass requests directly to FastHTTPHandler.
+		Client: &http.Client{
+			Transport: httpexpect.NewFastBinder(app.Handler()),
+			Jar:       httpexpect.NewJar(),
+		},
+		// Report errors using testify.
+		Reporter: httpexpect.NewAssertReporter(t),
 	})
-	fmt.Println("Rest API v0.1 - RMBL API")
-	return app.Listen(fmt.Sprintf("%s:%s", appconfig.Server.RMBLServerHost, appconfig.Server.RMBLServerPort))
-
 }

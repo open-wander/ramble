@@ -6,6 +6,7 @@ import (
 	"rmbl/pkg/apperr"
 	"rmbl/pkg/database"
 	"rmbl/pkg/helpers"
+	appvalid "rmbl/pkg/validator"
 	"strconv"
 	"strings"
 
@@ -50,15 +51,15 @@ func GetAllRepositories(c *fiber.Ctx) error {
 	dbquery.Scopes(Paginate(c))
 	dbquery.Scan(&repositories)
 	if dbquery.RowsAffected == 0 {
-		data.Status = "Failure"
+		data.Status = "Success"
 		data.Message = "No Records found"
 		data.Data = repositories
-		return c.JSON(data)
+		return c.Status(200).JSON(data)
 	}
 	data.Data = repositories
 	data.Status = "Success"
 	data.Message = "Records found"
-	return c.JSON(data)
+	return c.Status(200).JSON(data)
 }
 
 // Get All Org Repositories limited to 25 results
@@ -82,15 +83,15 @@ func GetOrgRepositories(c *fiber.Ctx) error {
 	dbquery.Scopes(Paginate(c))
 	dbquery.Scan(&repositories)
 	if dbquery.RowsAffected == 0 {
-		data.Status = "Failure"
+		data.Status = "Success"
 		data.Message = "No Records found"
 		data.Data = repositories
-		return c.JSON(data)
+		return c.Status(200).JSON(data)
 	}
 	data.Data = repositories
 	data.Status = "Success"
 	data.Message = "Records found"
-	return c.JSON(data)
+	return c.Status(200).JSON(data)
 }
 
 //Get an individual repository detail
@@ -108,19 +109,23 @@ func GetRepository(c *fiber.Ctx) error {
 	dbquery.Select("repositories.id, repositories.name, repositories.version, repositories.description, repositories.url, organizations.org_name")
 	dbquery.Scan(&repositories)
 	if dbquery.RowsAffected == 0 {
-		return c.Status(404).JSON(fiber.Map{"Status": "error", "Message": "No repository found with that name", "Data": nil})
+		return c.Status(404).JSON(fiber.Map{"Status": "Error", "Message": "No repository found with that name", "Data": nil})
 	}
 	if strings.HasPrefix(useragent, "git") {
 		p := "/" + c.Params("*") + "?" + string(c.Context().QueryArgs().QueryString())
 		return c.Redirect(repositories.URL+p, 302)
 	} else {
-		return c.JSON(fiber.Map{"Status": "success", "Message": "Repository Found", "Data": repositories})
+		return c.JSON(fiber.Map{"Status": "Success", "Message": "Repository Found", "Data": repositories})
 	}
 }
 
 //Create a new repository
 func NewRepository(c *fiber.Ctx) error {
 	c.Accepts("application/json")
+	// Valid Header
+	if !helpers.ValidRequestHeader(c) {
+		return apperr.UnsupportedMediaType("Not Valid Content Type, Expect application/json")
+	}
 	var id uuid.UUID
 	orgname := strings.ToLower(c.Params("org"))
 
@@ -134,19 +139,28 @@ func NewRepository(c *fiber.Ctx) error {
 	id = helpers.GetUserIDByUserName(username)
 	var organization models.Organization
 	repository := new(models.Repository)
+
 	// check JSON input
 	if err := c.BodyParser(repository); err != nil {
-		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Review your repository input", "Data": err})
+		return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Review your repository input", "Data": err})
+	}
+
+	validate := appvalid.NewValidator()
+	if validateerr := validate.Struct(repository); validateerr != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"Status":  "validation-error",
+			"Message": appvalid.ValidationErrors(validateerr),
+		})
 	}
 
 	// Check for a valid token
 	if !helpers.ValidToken(user_token, id) {
-		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Invalid token id", "data": nil})
+		return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Invalid token id", "Data": nil})
 	}
 	// find the org in the organization table
 	db.Where("org_name = ?", orgname).Find(&organization)
 	if username != orgname {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Unauthorized", "Data": nil})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"Status": "Error", "Message": "Unauthorized", "Data": nil})
 	}
 	if username == orgname || is_siteadmin {
 		db.Model(&organization).Where("org_name = ?", orgname).Association("Repositories").Append(repository)
@@ -157,6 +171,10 @@ func NewRepository(c *fiber.Ctx) error {
 //Update a repository
 func UpdateRepository(c *fiber.Ctx) error {
 	c.Accepts("application/json")
+	// Valid Header
+	if !helpers.ValidRequestHeader(c) {
+		return apperr.UnsupportedMediaType("Not Valid Content Type, Expect application/json")
+	}
 	var id uuid.UUID
 	orgname := c.Params("org")
 	reponame := c.Params("reponame")
@@ -165,20 +183,31 @@ func UpdateRepository(c *fiber.Ctx) error {
 	claims := user_token.Claims.(jwt.MapClaims)
 	username := claims["username"].(string)
 	is_siteadmin := claims["site_admin"].(bool)
-	userorg_id := claims["userorg_id"].(uuid.UUID)
+	userorg_id, _ := uuid.Parse(claims["userorg_id"].(string))
+	id = helpers.GetUserIDByUserName(username)
 
 	db := database.DB
 	orgid := getOrganizationIDByUserName(orgname)
-	var repository models.Repository
-	if err := c.BodyParser(repository); err != nil {
-		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Review your repository input", "Data": err})
+	repository := new(models.Repository)
+	updatedRepository := new(models.Repository)
+
+	if err := c.BodyParser(updatedRepository); err != nil {
+		return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Review your repository input", "Data": err})
+	}
+
+	validate := appvalid.NewValidator()
+	if validateerr := validate.Struct(updatedRepository); validateerr != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"Status":  "validation-error",
+			"Message": appvalid.ValidationErrors(validateerr),
+		})
 	}
 
 	if !helpers.ValidToken(user_token, id) {
-		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Invalid token id", "data": nil})
+		return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Invalid token id", "Data": nil})
 	}
 	if userorg_id != orgid || username != orgname {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Unauthorized", "Data": nil})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"Status": "Error", "Message": "Unauthorized", "Data": nil})
 	}
 	err := db.Where(&models.Repository{OrganizationID: orgid}).Where("name = ?", reponame).First(&repository).Error
 
@@ -188,21 +217,13 @@ func UpdateRepository(c *fiber.Ctx) error {
 		return apperr.Unexpected(err.Error())
 	}
 
-	updatedRepository := new(models.Repository)
-
-	// if err := c.BodyParser(updatedRepository); err != nil {
-	// 	return apperr.BadRequest("Invalid params")
-	// }
-
-	updatedRepository = &models.Repository{Name: updatedRepository.Name, OrganizationID: updatedRepository.OrganizationID, Version: updatedRepository.Version, Description: updatedRepository.Description, URL: updatedRepository.URL}
-	updatedRepository.OrganizationID = orgid
-	updatedRepository.Name = reponame
 	if userorg_id == orgid || username == orgname || is_siteadmin {
 		if err = db.Where(&models.Repository{OrganizationID: orgid}).Model(&repository).Where("name = ?", reponame).Updates(updatedRepository).Error; err != nil {
 			return apperr.Unexpected(err.Error())
 		}
 	}
-	return c.SendStatus(204)
+	// return c.SendStatus(204)
+	return c.JSON(updatedRepository)
 }
 
 func DeleteRepository(c *fiber.Ctx) error {
@@ -219,7 +240,7 @@ func DeleteRepository(c *fiber.Ctx) error {
 
 	var repository models.Repository
 	if userorg_id != orgid || username != orgname {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "error", "message": "Unauthorized", "Data": nil})
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"Status": "Error", "Message": "Unauthorized", "Data": nil})
 	}
 	err := db.Where(&models.Repository{OrganizationID: orgid}).Where("name = ?", reponame).First(&repository).Error
 
@@ -231,5 +252,5 @@ func DeleteRepository(c *fiber.Ctx) error {
 	if userorg_id == orgid || username == orgname || is_siteadmin {
 		db.Delete(&repository)
 	}
-	return c.SendStatus(204)
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"Status": "Success", "Message": reponame + " Deleted", "Data": nil})
 }
