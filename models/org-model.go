@@ -10,6 +10,6 @@ import (
 type Organization struct {
 	database.DefaultModel
 	UserID       uuid.UUID    `json:"userid"`
-	OrgName      string       `json:"orgname"`
+	OrgName      string       `json:"orgname" gorm:"uniqueIndex"`
 	Repositories []Repository `json:"repositories"`
 }
