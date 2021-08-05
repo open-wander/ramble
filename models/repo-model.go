@@ -9,7 +9,7 @@ import (
 // Repository Struct
 type Repository struct {
 	database.DefaultModel
-	Name           string    `json:"name" validate:"required,min=5,max=32"`
+	Name           string    `json:"name" validate:"required,min=5,max=32" gorm:"index"`
 	Version        string    `json:"version" validate:"required,min=2,max=32"`
 	Description    string    `json:"description" validate:"required,min=5,max=256"`
 	URL            string    `json:"url" validate:"required,url,min=5,max=256"`

@@ -18,7 +18,7 @@ var (
 )
 
 type DefaultModel struct {
-	ID        uuid.UUID  `gorm:"type:uuid;primaryKey;default:uuid_generate_v4()" json:"id"`
+	ID        uuid.UUID  `gorm:"type:uuid;index:,type:btree;primaryKey;default:uuid_generate_v4()" json:"id"`
 	CreatedAt time.Time  `json:"-"`
 	UpdatedAt time.Time  `json:"-"`
 	DeletedAt *time.Time `json:"-"`
