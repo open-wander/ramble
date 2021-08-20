@@ -628,7 +628,7 @@ func TestRepoDelete(t *testing.T) {
 		"url":         "https://github.com/hydrogen/testrepo",
 	}
 
-	fmt.Println("Create User for Create Repo tests")
+	fmt.Println("Create User for Delete Repo tests")
 	user_signup := e.POST("/auth/signup").WithJSON(user_for_login).
 		Expect().
 		Status(http.StatusOK).
@@ -643,7 +643,7 @@ func TestRepoDelete(t *testing.T) {
 		},
 	})
 
-	fmt.Println("Login User for Create Repo Tests")
+	fmt.Println("Login User for Delete Repo Tests")
 	user_login_success := e.POST("/auth/login").WithJSON(user).
 		Expect().
 		Status(http.StatusOK).
@@ -690,4 +690,84 @@ func TestRepoDelete(t *testing.T) {
 
 	fmt.Println("")
 	fmt.Println("")
+}
+
+func TestRepoSearch(t *testing.T) {
+	apptest.DropTables()
+	e := apptest.FiberHTTPTester(t)
+
+	user_for_login := map[string]interface{}{
+		"username": "hydrogen",
+		"email":    "hydrogen@ptable.element",
+		"password": "P@ssw0rd1",
+	}
+
+	user := map[string]interface{}{
+		"identity": "hydrogen@ptable.element",
+		"password": "P@ssw0rd1",
+	}
+
+	fmt.Println("Create User for Search Repo tests")
+	user_signup := e.POST("/auth/signup").WithJSON(user_for_login).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	user_signup.Keys().ContainsOnly("Status", "Message", "Data")
+	user_signup.ValueEqual("Status", "Success")
+	user_signup.ValueEqual("Message", "Created User")
+	user_signup.ContainsMap(map[string]interface{}{
+		"Data": map[string]interface{}{
+			"username": "hydrogen",
+			"email":    "hydrogen@ptable.element",
+		},
+	})
+
+	fmt.Println("Login User for Search Repo Tests")
+	user_login_success := e.POST("/auth/login").WithJSON(user).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	user_login_success.Keys().ContainsOnly("Status", "Message", "Data")
+	user_login_success.ValueEqual("Status", "Success")
+	user_login_success.ValueEqual("Message", "Success login")
+	user_login_success.Value("Data").Object().Keys().ContainsOnly("Token")
+
+	token := user_login_success.Value("Data").Object().Value("Token").String().Raw()
+
+	fmt.Println("Create Repos With Login")
+	for i := 0; i < 30; i++ {
+		repo := map[string]interface{}{
+			"name":        "testrepo" + fmt.Sprint(i),
+			"description": "some cool description" + fmt.Sprint(i),
+			"version":     "v1.0." + fmt.Sprint(i),
+			"url":         "https://github.com/hydrogen/testrepo" + fmt.Sprint(i),
+		}
+		create_repos_with_login := e.POST("/hydrogen").WithHeader("Authorization", "Bearer "+token).WithJSON(repo).
+			Expect().
+			Status(http.StatusOK).
+			JSON().Object()
+		create_repos_with_login.Keys().ContainsOnly("name", "version", "description", "url", "orgid", "id")
+	}
+
+	fmt.Println("Get All Repositories that contains testrepo20")
+	search_repos_single := e.GET("/").
+		WithQuery("search", "testrepo20").
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	search_repos_single.Keys().ContainsOnly("Data", "Status", "Message", "TotalRecords")
+	search_repos_single.ValueEqual("Status", "Success")
+	search_repos_single.ValueEqual("Message", "Records found")
+	search_repos_single.ValueEqual("TotalRecords", 1)
+
+	fmt.Println("Get All Repositories that contains testrepo2")
+	search_repos_multiple := e.GET("/").
+		WithQuery("search", "testrepo2").
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	search_repos_multiple.Keys().ContainsOnly("Data", "Status", "Message", "TotalRecords")
+	search_repos_multiple.ValueEqual("Status", "Success")
+	search_repos_multiple.ValueEqual("Message", "Records found")
+	search_repos_multiple.ValueEqual("TotalRecords", 11)
 }
