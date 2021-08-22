@@ -159,7 +159,7 @@ func DeleteUser(c *fiber.Ctx) error {
 	is_site_admin := claims["site_admin"].(bool)
 
 	// Get Userid from token
-	user_id, tokenerr := uuid.Parse(token_user_id)
+	token_u_id, tokenerr := uuid.Parse(token_user_id)
 	if tokenerr != nil {
 		data.Status = "Failure"
 		data.Message = "id not valid"
@@ -168,7 +168,7 @@ func DeleteUser(c *fiber.Ctx) error {
 	}
 
 	// Convert the id parameter to a UUID for later use
-	id, err := uuid.Parse(c.Params("id"))
+	param_user_id, err := uuid.Parse(c.Params("id"))
 	if err != nil {
 		data.Status = "Failure"
 		data.Message = "id not valid"
@@ -176,35 +176,53 @@ func DeleteUser(c *fiber.Ctx) error {
 		return c.JSON(data)
 	}
 
-	// Check ID in the url against the ID in the Claim
-	if id != user_id || !is_site_admin {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"Status": "Error", "Message": "Unauthorized", "Data": nil})
-	}
 	type PasswordInput struct {
 		Password string `json:"password"`
 	}
+
 	var pi PasswordInput
-	if err := c.BodyParser(&pi); err != nil {
-		return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Review your input", "data": err})
-	}
 
-	if !helpers.ValidToken(user_token, id) || !is_site_admin {
-		return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Invalid token id", "data": nil})
+	if is_site_admin {
+		if err := c.BodyParser(&pi); err != nil {
+			return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Review your input", "Data": nil})
+		}
 
-	}
+		// if !helpers.ValidUserToken(user_token, email) {
+		// 	return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Invalid token id", "Data": nil})
+		// }
 
-	if !helpers.ValidUser(id, pi.Password) || is_site_admin {
-		return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Not valid user", "data": nil})
+		// if !helpers.ValidUser(param_user_id, pi.Password) {
+		// 	return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Not valid user", "Data": nil})
+
+		// }
+	} else {
+		// Check ID in the url against the ID in the Claim
+		if param_user_id != token_u_id {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"Status": "Error", "Message": "Unauthorized", "Data": nil})
+		}
+
+		if err := c.BodyParser(&pi); err != nil {
+			return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Review your input", "Data": nil})
+		}
+
+		if !helpers.ValidToken(user_token, param_user_id) {
+			return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Invalid token id", "Data": nil})
+		}
+
+		if !helpers.ValidUser(param_user_id, pi.Password) {
+			return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Not valid user", "Data": nil})
+
+		}
 
 	}
 
 	db := database.DB
 	var user models.User
 
-	db.Preload("Organization").First(&user, id)
+	db.Preload("Organization").First(&user, param_user_id)
 
 	// When Users are Deleted their repositories are deleted at the same time.
 
 	db.Select("Organization").Delete(&user)
-	return c.JSON(fiber.Map{"Status": "Success", "Message": "User successfully deleted", "data": nil})
+	return c.JSON(fiber.Map{"Status": "Success", "Message": "User successfully deleted", "Data": nil})
 }
