@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"rmbl/pkg/apptest"
+	"rmbl/pkg/helpers"
 	"testing"
 )
 
@@ -11,6 +12,47 @@ func TestSetup(t *testing.T) {
 	fmt.Println("Setup Empty DB")
 	e := apptest.FiberHTTPTester(t)
 	e.GET("/").Expect().Status(http.StatusOK)
+
+	fmt.Println("")
+	fmt.Println("")
+}
+
+// System User Tests
+func TestSystemUserCreate(t *testing.T) {
+	apptest.DropTables()
+	e := apptest.FiberHTTPTester(t)
+
+	system_user_email := "test@test.int"
+
+	systemPassword := helpers.CreateSystemUser(system_user_email)
+
+	system_user := map[string]interface{}{
+		"identity": system_user_email,
+		"password": systemPassword,
+	}
+
+	fmt.Println("Login System User for System User Tests")
+	user_login_success := e.POST("/auth/login").WithJSON(system_user).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	user_login_success.Keys().ContainsOnly("Status", "Message", "Data")
+	user_login_success.ValueEqual("Status", "Success")
+	user_login_success.ValueEqual("Message", "Success login")
+	user_login_success.Value("Data").Object().Keys().ContainsOnly("Token")
+
+	token := user_login_success.Value("Data").Object().Value("Token").String().Raw()
+
+	fmt.Println("Get System Organisation")
+	get_repos := e.GET("/org").WithHeader("Authorization", "Bearer "+token).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	get_repos.Keys().ContainsOnly("Data", "Status", "Message", "TotalRecords")
+	get_repos.ValueEqual("TotalRecords", 1)
+
+	fmt.Println("")
+	fmt.Println("")
 }
 
 // Testing API / path
@@ -42,7 +84,7 @@ func TestIndex(t *testing.T) {
 }
 
 // Testing the /auth/signup path
-func TestSignUp(t *testing.T) {
+func TestUserSignUp(t *testing.T) {
 	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
 
@@ -170,7 +212,7 @@ func TestSignUp(t *testing.T) {
 }
 
 // test /auth/login path
-func TestLogin(t *testing.T) {
+func TestUserLogin(t *testing.T) {
 	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
 
@@ -296,6 +338,73 @@ func TestLogin(t *testing.T) {
 	fmt.Println("")
 }
 
+func TestUserDeleteSelf(t *testing.T) {
+	apptest.DropTables()
+	e := apptest.FiberHTTPTester(t)
+
+	user_for_login := map[string]interface{}{
+		"username": "hydrogen",
+		"email":    "hydrogen@ptable.element",
+		"password": "P@ssw0rd1",
+	}
+
+	user_password := map[string]interface{}{
+		"password": "P@ssw0rd1",
+	}
+
+	user := map[string]interface{}{
+		"identity": "hydrogen@ptable.element",
+		"password": "P@ssw0rd1",
+	}
+
+	// Create User for User Delete tests
+	user_signup := e.POST("/auth/signup").WithJSON(user_for_login).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	user_id_for_delete_test := user_signup.Value("Data").Object().Value("id").String().Raw()
+
+	// User Login for User Delet Tests
+	user_login_success := e.POST("/auth/login").WithJSON(user).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	user_token := user_login_success.Value("Data").Object().Value("Token").String().Raw()
+
+	fmt.Println("User Tries to Delete Themself Without logging in")
+	delete_user_with_no_login := e.DELETE("/user/" + user_id_for_delete_test).
+		Expect().
+		Status(http.StatusBadRequest).
+		JSON().Object()
+	delete_user_with_no_login.Keys().ContainsOnly("Status", "Message", "Data")
+	delete_user_with_no_login.ValueEqual("Status", "Error")
+	delete_user_with_no_login.ValueEqual("Message", "Missing or malformed JWT")
+	delete_user_with_no_login.ValueEqual("Data", nil)
+
+	fmt.Println("User Tries to Delete Themself With No Password")
+	delete_user_with_no_password := e.DELETE("/user/"+user_id_for_delete_test).WithHeader("Authorization", "Bearer "+user_token).
+		Expect().
+		Status(http.StatusInternalServerError).
+		JSON().Object()
+	delete_user_with_no_password.Keys().ContainsOnly("Status", "Message", "Data")
+	delete_user_with_no_password.ValueEqual("Status", "Error")
+	delete_user_with_no_password.ValueEqual("Message", "Review your input")
+	delete_user_with_no_password.ValueEqual("Data", nil)
+
+	fmt.Println("User Deletes Themself With Password")
+	delete_user_with_login := e.DELETE("/user/"+user_id_for_delete_test).WithHeader("Authorization", "Bearer "+user_token).WithJSON(user_password).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	delete_user_with_login.Keys().ContainsOnly("Status", "Message", "Data")
+	delete_user_with_login.ValueEqual("Status", "Success")
+	delete_user_with_login.ValueEqual("Message", "User successfully deleted")
+	delete_user_with_login.ValueEqual("Data", nil)
+
+	fmt.Println("")
+	fmt.Println("")
+}
+
 // Testing the Repository workflow
 // Order CRUD
 
@@ -303,7 +412,7 @@ func TestRepoCreate(t *testing.T) {
 	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
 
-	user_for_login := map[string]interface{}{
+	user_for_create := map[string]interface{}{
 		"username": "hydrogen",
 		"email":    "hydrogen@ptable.element",
 		"password": "P@ssw0rd1",
@@ -329,7 +438,7 @@ func TestRepoCreate(t *testing.T) {
 	}
 
 	fmt.Println("Create User for Create Repo tests")
-	user_signup := e.POST("/auth/signup").WithJSON(user_for_login).
+	user_signup := e.POST("/auth/signup").WithJSON(user_for_create).
 		Expect().
 		Status(http.StatusOK).
 		JSON().Object()
@@ -412,7 +521,7 @@ func TestRepoRead(t *testing.T) {
 	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
 
-	user_for_login := map[string]interface{}{
+	user_for_read := map[string]interface{}{
 		"username": "hydrogen",
 		"email":    "hydrogen@ptable.element",
 		"password": "P@ssw0rd1",
@@ -423,8 +532,8 @@ func TestRepoRead(t *testing.T) {
 		"password": "P@ssw0rd1",
 	}
 
-	fmt.Println("Create User for Create Repo tests")
-	user_signup := e.POST("/auth/signup").WithJSON(user_for_login).
+	fmt.Println("Create User for Read Repo tests")
+	user_signup := e.POST("/auth/signup").WithJSON(user_for_read).
 		Expect().
 		Status(http.StatusOK).
 		JSON().Object()
@@ -438,7 +547,7 @@ func TestRepoRead(t *testing.T) {
 		},
 	})
 
-	fmt.Println("Login User for Create Repo Tests")
+	fmt.Println("Login User for Read Repo Tests")
 	user_login_success := e.POST("/auth/login").WithJSON(user).
 		Expect().
 		Status(http.StatusOK).
@@ -509,7 +618,7 @@ func TestRepoUpdate(t *testing.T) {
 	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
 
-	user_for_login := map[string]interface{}{
+	user_for_update := map[string]interface{}{
 		"username": "hydrogen",
 		"email":    "hydrogen@ptable.element",
 		"password": "P@ssw0rd1",
@@ -533,8 +642,8 @@ func TestRepoUpdate(t *testing.T) {
 		"url":         "https://github.com/hydrogen/testrepo",
 	}
 
-	fmt.Println("Create User for Create Repo tests")
-	user_signup := e.POST("/auth/signup").WithJSON(user_for_login).
+	fmt.Println("Create User for Update Repo tests")
+	user_signup := e.POST("/auth/signup").WithJSON(user_for_update).
 		Expect().
 		Status(http.StatusOK).
 		JSON().Object()
@@ -548,7 +657,7 @@ func TestRepoUpdate(t *testing.T) {
 		},
 	})
 
-	fmt.Println("Login User for Create Repo Tests")
+	fmt.Println("Login User for Update Repo Tests")
 	user_login_success := e.POST("/auth/login").WithJSON(user).
 		Expect().
 		Status(http.StatusOK).
@@ -600,11 +709,12 @@ func TestRepoUpdate(t *testing.T) {
 	fmt.Println("")
 }
 
+// Test Repository Delete
 func TestRepoDelete(t *testing.T) {
 	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
 
-	user_for_login := map[string]interface{}{
+	user_for_delete := map[string]interface{}{
 		"username": "hydrogen",
 		"email":    "hydrogen@ptable.element",
 		"password": "P@ssw0rd1",
@@ -629,7 +739,7 @@ func TestRepoDelete(t *testing.T) {
 	}
 
 	fmt.Println("Create User for Delete Repo tests")
-	user_signup := e.POST("/auth/signup").WithJSON(user_for_login).
+	user_signup := e.POST("/auth/signup").WithJSON(user_for_delete).
 		Expect().
 		Status(http.StatusOK).
 		JSON().Object()
@@ -696,7 +806,7 @@ func TestRepoSearch(t *testing.T) {
 	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
 
-	user_for_login := map[string]interface{}{
+	user_for_search := map[string]interface{}{
 		"username": "hydrogen",
 		"email":    "hydrogen@ptable.element",
 		"password": "P@ssw0rd1",
@@ -708,7 +818,7 @@ func TestRepoSearch(t *testing.T) {
 	}
 
 	fmt.Println("Create User for Search Repo tests")
-	user_signup := e.POST("/auth/signup").WithJSON(user_for_login).
+	user_signup := e.POST("/auth/signup").WithJSON(user_for_search).
 		Expect().
 		Status(http.StatusOK).
 		JSON().Object()
@@ -770,4 +880,175 @@ func TestRepoSearch(t *testing.T) {
 	search_repos_multiple.ValueEqual("Status", "Success")
 	search_repos_multiple.ValueEqual("Message", "Records found")
 	search_repos_multiple.ValueEqual("TotalRecords", 11)
+
+	fmt.Println("")
+	fmt.Println("")
+}
+
+func TestSystemUserOrgs(t *testing.T) {
+	fmt.Println("System User Access to Organisations Test")
+	apptest.DropTables()
+	e := apptest.FiberHTTPTester(t)
+
+	system_user_email := "test@test.int"
+
+	systemPassword := helpers.CreateSystemUser(system_user_email)
+
+	system_user := map[string]interface{}{
+		"identity": system_user_email,
+		"password": systemPassword,
+	}
+
+	user_for_org_create := map[string]interface{}{
+		"username": "hydrogen",
+		"email":    "hydrogen@ptable.element",
+		"password": "P@ssw0rd1",
+	}
+
+	// Login System User to test organisation access
+	system_user_login_success := e.POST("/auth/login").WithJSON(system_user).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+
+	system_user_token := system_user_login_success.Value("Data").Object().Value("Token").String().Raw()
+	fmt.Println("Generated Token for System User")
+	fmt.Println(system_user_token)
+	// Create User to generate additional organisation for testing
+	e.POST("/auth/signup").WithJSON(user_for_org_create).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+
+	fmt.Println("Get All Organisations Without Auth")
+	get_orgs_noauth := e.GET("/org").
+		Expect().
+		Status(http.StatusBadRequest).
+		JSON().Object()
+	get_orgs_noauth.Keys().ContainsOnly("Status", "Message", "Data")
+	get_orgs_noauth.ValueEqual("Status", "Error")
+	get_orgs_noauth.ValueEqual("Message", "Missing or malformed JWT")
+	get_orgs_noauth.ValueEqual("Data", nil)
+
+	fmt.Println("Get All Organisations With Auth")
+	get_orgs_auth := e.GET("/org").WithHeader("Authorization", "Bearer "+system_user_token).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	get_orgs_auth.Keys().ContainsOnly("Data", "Status", "Message", "TotalRecords")
+	get_orgs_auth.ValueEqual("TotalRecords", 2)
+
+	fmt.Println("Get All Users Without Auth")
+	get_users_noauth := e.GET("/user").
+		Expect().
+		Status(http.StatusBadRequest).
+		JSON().Object()
+	get_users_noauth.Keys().ContainsOnly("Status", "Message", "Data")
+	get_users_noauth.ValueEqual("Status", "Error")
+	get_users_noauth.ValueEqual("Message", "Missing or malformed JWT")
+	get_users_noauth.ValueEqual("Data", nil)
+
+	fmt.Println("Get All Users")
+	get_users_auth := e.GET("/user").WithHeader("Authorization", "Bearer "+system_user_token).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	get_users_auth.Keys().ContainsOnly("Data", "Status", "Message", "TotalRecords")
+	get_users_auth.ValueEqual("TotalRecords", 2)
+
+	fmt.Println("")
+	fmt.Println("")
+}
+
+func TestSystemUserCRUDUsers(t *testing.T) {
+	fmt.Println("System User CRUD on Users")
+	fmt.Println("")
+	fmt.Println("")
+	apptest.DropTables()
+	e := apptest.FiberHTTPTester(t)
+
+	system_user_email := "test@test.int"
+
+	systemPassword := helpers.CreateSystemUser(system_user_email)
+
+	system_user := map[string]interface{}{
+		"identity": system_user_email,
+		"password": systemPassword,
+	}
+	system_user_password := map[string]interface{}{
+		"password": systemPassword,
+	}
+
+	user_for_org_create := map[string]interface{}{
+		"username": "hydrogen",
+		"email":    "hydrogen@ptable.element",
+		"password": "P@ssw0rd1",
+	}
+
+	user_login := map[string]interface{}{
+		"identity": "hydrogen@ptable.element",
+		"password": "P@ssw0rd1",
+	}
+
+	repo := map[string]interface{}{
+		"name":        "testrepo",
+		"description": "some cool description",
+		"version":     "v1.0.0",
+		"url":         "https://github.com/hydrogen/testrepo",
+	}
+
+	// Login System User to test organisation access
+	system_user_login_success := e.POST("/auth/login").WithJSON(system_user).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+
+	system_user_token := system_user_login_success.Value("Data").Object().Value("Token").String().Raw()
+	fmt.Println("Generated Token for System User")
+	fmt.Println(system_user_token)
+	// Create User to generate additional organisation for testing
+	user_signup := e.POST("/auth/signup").WithJSON(user_for_org_create).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	user_id_for_delete_test := user_signup.Value("Data").Object().Value("id").String().Raw()
+
+	// Login User for Delete Org Tests
+	user_login_success := e.POST("/auth/login").WithJSON(user_login).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+
+	user_token_for_delete_test := user_login_success.Value("Data").Object().Value("Token").String().Raw()
+
+	// Create Repo For Delete Test
+	e.POST("/hydrogen").WithHeader("Authorization", "Bearer "+user_token_for_delete_test).WithJSON(repo).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+
+	fmt.Println("Delete User With System User Login No Password")
+	delete_user_with_system_login_no_password := e.DELETE("/user/"+user_id_for_delete_test).WithHeader("Authorization", "Bearer "+system_user_token).
+		Expect().
+		Status(http.StatusInternalServerError).
+		JSON().Object()
+	delete_user_with_system_login_no_password.Keys().ContainsOnly("Status", "Message", "Data")
+	delete_user_with_system_login_no_password.ValueEqual("Status", "Error")
+	delete_user_with_system_login_no_password.ValueEqual("Message", "Review your input")
+	delete_user_with_system_login_no_password.ValueEqual("Data", nil)
+
+	// TODO - Figure out a way to make sure the admin token is valid.
+	// THERE IS NO PROPER ADMIN CHECK RIGHT NOW
+	fmt.Println("Delete User With System User Login")
+	delete_user_with_system_login := e.DELETE("/user/"+user_id_for_delete_test).WithHeader("Authorization", "Bearer "+system_user_token).WithJSON(system_user_password).
+		Expect().
+		Status(http.StatusOK).
+		JSON().Object()
+	delete_user_with_system_login.Keys().ContainsOnly("Status", "Message", "Data")
+	delete_user_with_system_login.ValueEqual("Status", "Success")
+	delete_user_with_system_login.ValueEqual("Message", "User successfully deleted")
+	delete_user_with_system_login.ValueEqual("Data", nil)
+
+	fmt.Println("")
+	fmt.Println("")
 }
