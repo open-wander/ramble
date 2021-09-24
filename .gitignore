@@ -21,3 +21,4 @@ config.yml
 tmp/air.log
 tmp/rmbl-server
 develop/pgdb/dbdata/*
+develop/tmp/build-errors.log
