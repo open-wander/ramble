@@ -18,7 +18,6 @@ dist
 *.db
 .DS_Store
 config.yml
-tmp/air.log
-tmp/rmbl-server
+**/tmp/*
 develop/pgdb/dbdata/*
 develop/tmp/build-errors.log
