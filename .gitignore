@@ -20,4 +20,3 @@ dist
 config.yml
 **/tmp/*
 develop/pgdb/dbdata/*
-develop/tmp/build-errors.log
