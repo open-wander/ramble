@@ -4,7 +4,8 @@ database:
   password: "postgres"
   host: "127.0.0.1"
   port: "5432"
-  # Gormlogger Level Error || Info
+  # Enable Gorm logger for db query view
+  # Gormlogger Level Error || Info ||
   gormlogger: "Info"
 
 server:

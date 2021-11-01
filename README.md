@@ -51,7 +51,7 @@ POST = user signup
 
 ```json
 {
-  "username": "eveld",
+  "username": "user",
   "email": "email@email.com",
   "password": "password"
 }
@@ -86,10 +86,10 @@ POST = Create a new repo entry with the following payload
 ```JSON
 {
   "name": "fabio_lb",
-  "user": "nsreg",
+  "user": "rmbl",
   "version": "0.2.1",
   "description": "Fabio LoadBalancer",
-  "url": "https://github.com/nsreg/fabio_lb"
+  "url": "https://github.com/rmbl/fabio_lb"
 }
 ```
 
@@ -101,10 +101,10 @@ PUT = Update a Repo to the latest details.
 ```JSON
 {
   "name": "fabio_lb",
-  "user": "nsreg",
+  "user": "rmbl",
   "version": "0.2.1",
   "description": "Fabio LoadBalancer",
-  "url": "https://github.com/nsreg/fabio_lb"
+  "url": "https://github.com/rmbl/fabio_lb"
 }
 ```
 
