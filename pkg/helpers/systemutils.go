@@ -4,13 +4,14 @@ import (
 	"crypto/rand"
 	"fmt"
 	"log"
+
 	"rmbl/models"
 	"rmbl/pkg/database"
 )
 
 const letters = "01234567890!@#$%^&*()abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-//Generate Random Password for System User
+// Generate Random Password for System User
 func generateRandomString(length int) (string, error) {
 	bytes := make([]byte, length)
 	if _, err := rand.Read(bytes); err != nil {

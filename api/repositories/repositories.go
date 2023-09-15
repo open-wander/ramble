@@ -2,13 +2,14 @@ package repositories
 
 import (
 	"errors"
+	"strconv"
+	"strings"
+
 	"rmbl/models"
 	"rmbl/pkg/apperr"
 	"rmbl/pkg/database"
 	"rmbl/pkg/helpers"
 	appvalid "rmbl/pkg/validator"
-	"strconv"
-	"strings"
 
 	jwt "github.com/form3tech-oss/jwt-go"
 	"github.com/gofiber/fiber/v2"
@@ -36,7 +37,6 @@ func getOrganizationIDByUserName(username string) (id uuid.UUID) {
 // you can use ?limit=25&offset=0&order=desc to override the defaults
 
 func GetAllRepositories(c *fiber.Ctx) error {
-
 	db := database.DB
 	var repositories []models.RepositoryViewStruct
 	var data models.RepoData
@@ -94,8 +94,7 @@ func GetOrgRepositories(c *fiber.Ctx) error {
 	return c.Status(200).JSON(data)
 }
 
-//Get an individual repository detail
-
+// Get an individual repository detail
 func GetRepository(c *fiber.Ctx) error {
 	orgname := strings.ToLower(c.Params("org"))
 	reponame := strings.ToLower(c.Params("reponame"))
@@ -119,7 +118,7 @@ func GetRepository(c *fiber.Ctx) error {
 	}
 }
 
-//Create a new repository
+// Create a new repository
 func NewRepository(c *fiber.Ctx) error {
 	c.Accepts("application/json")
 	// Valid Header
@@ -168,7 +167,7 @@ func NewRepository(c *fiber.Ctx) error {
 	return c.JSON(repository)
 }
 
-//Update a repository
+// Update a repository
 func UpdateRepository(c *fiber.Ctx) error {
 	c.Accepts("application/json")
 	// Valid Header

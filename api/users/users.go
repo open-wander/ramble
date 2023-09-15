@@ -1,10 +1,11 @@
 package users
 
 import (
+	"strconv"
+
 	"rmbl/models"
 	"rmbl/pkg/database"
 	"rmbl/pkg/helpers"
-	"strconv"
 
 	jwt "github.com/form3tech-oss/jwt-go"
 	"github.com/gofiber/fiber/v2"
@@ -211,7 +212,6 @@ func DeleteUser(c *fiber.Ctx) error {
 
 		if !helpers.ValidUser(param_user_id, pi.Password) {
 			return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Not valid user", "Data": nil})
-
 		}
 
 	}

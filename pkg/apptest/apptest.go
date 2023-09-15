@@ -3,13 +3,14 @@ package apptest
 import (
 	"fmt"
 	"net/http"
+	"testing"
+	"time"
+
 	"rmbl/api"
 	"rmbl/models"
 	"rmbl/pkg/apperr"
 	appconfig "rmbl/pkg/config"
 	"rmbl/pkg/database"
-	"testing"
-	"time"
 
 	"github.com/gavv/httpexpect/v2"
 	"github.com/gofiber/fiber/v2"
@@ -84,7 +85,7 @@ func setupTestApp() *fiber.App {
 	return app
 }
 
-//fiberHTTPTester returns a new Expect instance to test fiberHandler().
+// fiberHTTPTester returns a new Expect instance to test fiberHandler().
 func FiberHTTPTester(t *testing.T) *httpexpect.Expect {
 	app := setupTestApp()
 	return httpexpect.WithConfig(httpexpect.Config{

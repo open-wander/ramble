@@ -2,10 +2,11 @@ package server
 
 import (
 	"fmt"
+	"time"
+
 	"rmbl/pkg/apperr"
 	appconfig "rmbl/pkg/config"
 	"rmbl/pkg/database"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/compress"
@@ -71,5 +72,4 @@ func Listen(app *fiber.App) error {
 	})
 	fmt.Println("Rest API v0.1 - RMBL API")
 	return app.Listen(fmt.Sprintf("%s:%s", appconfig.Server.RMBLServerHost, appconfig.Server.RMBLServerPort))
-
 }

@@ -1,10 +1,11 @@
 package organizations
 
 import (
+	"strconv"
+
 	"rmbl/models"
 	"rmbl/pkg/database"
 	"rmbl/pkg/helpers"
-	"strconv"
 
 	jwt "github.com/form3tech-oss/jwt-go"
 	"github.com/gofiber/fiber/v2"

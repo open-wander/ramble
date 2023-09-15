@@ -13,9 +13,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-var (
-	DB *gorm.DB
-)
+var DB *gorm.DB
 
 type DefaultModel struct {
 	ID        uuid.UUID  `gorm:"type:uuid;index:,type:btree;primaryKey;default:uuid_generate_v4()" json:"id"`
