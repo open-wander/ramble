@@ -1,14 +1,14 @@
 package authentication
 
 import (
+	"strings"
+	"time"
+
 	"rmbl/models"
 	"rmbl/pkg/apperr"
 	appconfig "rmbl/pkg/config"
 	"rmbl/pkg/database"
 	"rmbl/pkg/helpers"
-	"strings"
-
-	"time"
 
 	appvalid "rmbl/pkg/validator"
 
@@ -64,7 +64,6 @@ func Signup(c *fiber.Ctx) error {
 	hash, err := helpers.HashPassword(userdata.Password)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Couldn't hash password", "Data": err})
-
 	}
 
 	user.Email = userdata.Email
@@ -85,7 +84,6 @@ func Signup(c *fiber.Ctx) error {
 
 // Login get user and password
 func Login(c *fiber.Ctx) error {
-
 	type UserData struct {
 		ID        uuid.UUID `json:"id"`
 		Username  string    `json:"username"`

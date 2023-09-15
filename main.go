@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+
 	"rmbl/api"
 	"rmbl/models"
 	appconfig "rmbl/pkg/config"
@@ -16,7 +17,6 @@ func init() {
 }
 
 func main() {
-
 	// Server initialization
 	app := server.Create()
 

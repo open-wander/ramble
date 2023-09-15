@@ -3,9 +3,10 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"testing"
+
 	"rmbl/pkg/apptest"
 	"rmbl/pkg/helpers"
-	"testing"
 )
 
 func TestSetup(t *testing.T) {

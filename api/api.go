@@ -18,5 +18,4 @@ func Setup(app *fiber.App) {
 	organizations.Routes(org)
 	v1 := app.Group("/")
 	repositories.Routes(v1)
-
 }
