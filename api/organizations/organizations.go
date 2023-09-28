@@ -34,13 +34,12 @@ func GetAllOrgs(c *fiber.Ctx) error {
 	var organizations []models.Organization
 	var data models.OrgData
 
-	order := c.Query("order", "true")
 	search := c.Query("search")
 	dbquery := db.Model(&organizations)
 	if repos == "true" {
 		dbquery.Preload("Repositories")
 	}
-	dbquery.Order(order)
+	dbquery.Order("org_name DESC")
 	dbquery.Scopes(helpers.Search(search))
 	dbquery.Count(&data.TotalRecords)
 	dbquery.Scopes(Paginate(c))
