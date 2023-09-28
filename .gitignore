@@ -21,3 +21,4 @@ config.yml
 **/tmp/*
 develop/pgdb/dbdata/*
 .vscode
+.idea

@@ -17,10 +17,19 @@ import (
 	"gorm.io/gorm"
 )
 
+// Paginate returns a function which can be used to paginate results.
+// Deprecated: please use repositories.paginate instead.
 func Paginate(c *fiber.Ctx) func(db *gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
 		offset, _ := strconv.Atoi(c.Query("offset", "0"))
 		limit, _ := strconv.Atoi(c.Query("limit", "25"))
+		return db.Offset(offset).Limit(limit)
+	}
+}
+
+// paginate returns a function which can be used to paginate results.
+func paginate(offset int, limit int) func(db *gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
 		return db.Offset(offset).Limit(limit)
 	}
 }
@@ -33,32 +42,35 @@ func getOrganizationIDByUserName(username string) (id uuid.UUID) {
 	return uuid.UUID(org.ID)
 }
 
-// Get All Repositories limited to 25 results
-// you can use ?limit=25&offset=0&order=desc to override the defaults
+// GetAllRepositories returns all the repositories in the database.
+func GetAllRepositories(order bool, search string, limit int, offset int) models.RepoData {
+	// TODO: We may want to validate the incoming parameters, and in the future
+	// consider using the Options pattern to ensure sane defaults.
 
-func GetAllRepositories(c *fiber.Ctx) error {
 	db := database.DB
+	search = strings.ToLower(search)
+
 	var repositories []models.RepositoryViewStruct
 	var data models.RepoData
 
-	search := strings.ToLower(c.Query("search"))
-	dbquery := db.Model(&models.Repository{}).Joins("inner join organizations on organizations.id = repositories.organization_id")
-	dbquery.Order("org_name DESC")
-	dbquery.Scopes(helpers.Search(search))
-	dbquery.Select("repositories.id, repositories.name, repositories.version, repositories.description, repositories.url, organizations.org_name")
-	dbquery.Count(&data.TotalRecords)
-	dbquery.Scopes(Paginate(c))
-	dbquery.Scan(&repositories)
-	if dbquery.RowsAffected == 0 {
-		data.Status = "Success"
-		data.Message = "No Records found"
-		data.Data = repositories
-		return c.Status(200).JSON(data)
-	}
-	data.Data = repositories
+	dbQuery := db.Model(&models.Repository{}).Joins("inner join organizations on organizations.id = repositories.organization_id")
+	dbQuery.Order(order)
+	dbQuery.Scopes(helpers.Search(search))
+	dbQuery.Select("repositories.id, repositories.name, repositories.version, repositories.description, repositories.url, organizations.org_name")
+	dbQuery.Count(&data.TotalRecords)
+	dbQuery.Scopes(paginate(offset, limit))
+	dbQuery.Scan(&repositories)
+
 	data.Status = "Success"
 	data.Message = "Records found"
-	return c.Status(200).JSON(data)
+	data.Data = repositories
+
+	// Override the message if there were no records.
+	if dbQuery.RowsAffected == 0 {
+		data.Message = "No Records found"
+	}
+
+	return data
 }
 
 // Get All Org Repositories limited to 25 results
