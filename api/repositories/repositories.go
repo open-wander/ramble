@@ -41,10 +41,9 @@ func GetAllRepositories(c *fiber.Ctx) error {
 	var repositories []models.RepositoryViewStruct
 	var data models.RepoData
 
-	order := c.Query("order", "true")
 	search := strings.ToLower(c.Query("search"))
 	dbquery := db.Model(&models.Repository{}).Joins("inner join organizations on organizations.id = repositories.organization_id")
-	dbquery.Order(order)
+	dbquery.Order("org_name DESC")
 	dbquery.Scopes(helpers.Search(search))
 	dbquery.Select("repositories.id, repositories.name, repositories.version, repositories.description, repositories.url, organizations.org_name")
 	dbquery.Count(&data.TotalRecords)
@@ -72,11 +71,10 @@ func GetOrgRepositories(c *fiber.Ctx) error {
 	var repositories []models.RepositoryViewStruct
 	var data models.RepoData
 
-	order := c.Query("order", "true")
 	search := strings.ToLower(c.Query("search"))
 	dbquery := db.Model(&models.Repository{}).Joins("inner join organizations on organizations.id = repositories.organization_id")
 	dbquery.Where("organization_id = ?", orgid)
-	dbquery.Order(order)
+	dbquery.Order("repositories.name DESC")
 	dbquery.Scopes(helpers.Search(search))
 	dbquery.Select("repositories.id, repositories.name, repositories.version, repositories.description, repositories.url, organizations.org_name")
 	dbquery.Count(&data.TotalRecords)

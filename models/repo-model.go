@@ -13,7 +13,7 @@ type Repository struct {
 	Version        string    `json:"version" validate:"required,min=2,max=32"`
 	Description    string    `json:"description" validate:"required,min=5,max=256"`
 	URL            string    `json:"url" validate:"required,url,min=5,max=256"`
-	OrganizationID uuid.UUID `json:"orgid"`
+	OrganizationID uuid.UUID `json:"orgid" "gorm:foreignKey:ID"`
 }
 
 type RepositoryViewStruct struct {

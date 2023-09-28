@@ -11,5 +11,5 @@ type User struct {
 	Email        string       `json:"email" gorm:"uniqueIndex"`
 	Password     string       `json:"-"`
 	SiteAdmin    bool         `json:"-"`
-	Organization Organization `json:"organization" gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	Organization Organization `json:"organization" gorm:"foreignKey:UserID"`
 }

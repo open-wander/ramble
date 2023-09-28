@@ -1,6 +1,7 @@
 package users
 
 import (
+	"fmt"
 	"strconv"
 
 	"rmbl/models"
@@ -36,10 +37,9 @@ func GetAllUsers(c *fiber.Ctx) error {
 	var users []models.User
 	var data models.UserData
 
-	order := c.Query("order", "true")
 	search := c.Query("search")
 	dbquery := db.Model(&users).Preload("Organization")
-	dbquery.Order(order)
+	dbquery.Order("username DESC")
 	dbquery.Scopes(helpers.UserSearch(search))
 	dbquery.Count(&data.TotalRecords)
 	dbquery.Scopes(Paginate(c))
@@ -224,5 +224,7 @@ func DeleteUser(c *fiber.Ctx) error {
 	// When Users are Deleted their repositories are deleted at the same time.
 
 	db.Select("Organization").Delete(&user)
+	fmt.Println("User to be deleted")
+	fmt.Println(&user.Username)
 	return c.JSON(fiber.Map{"Status": "Success", "Message": "User successfully deleted", "Data": nil})
 }
