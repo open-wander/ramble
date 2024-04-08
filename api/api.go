@@ -1,21 +1,22 @@
 package api
 
 import (
-	"rmbl/api/authentication"
 	"rmbl/api/controllers"
-	"rmbl/api/organizations"
-	"rmbl/api/users"
 
 	"github.com/gofiber/fiber/v2"
 )
 
+// Setup sets up the routes for the API endpoints.
+// It takes an instance of the fiber.App and configures the routes for authentication,
+// user management, organization management, and repository management.
+// The routes are grouped under different paths ("/auth", "/user", "/org", and "/").
 func Setup(app *fiber.App) {
 	auth := app.Group("/auth")
-	authentication.Routes(auth)
+	controllers.AuthRoutes(auth)
 	user := app.Group("/user")
-	users.Routes(user)
+	controllers.UserRoutes(user)
 	org := app.Group("/org")
-	organizations.Routes(org)
+	controllers.OrgRoutes(org)
 	v1 := app.Group("/")
-	controllers.Routes(v1)
+	controllers.RepoRoutes(v1)
 }

@@ -16,7 +16,8 @@ type Configuration struct {
 	Database DatabaseConfiguration
 }
 
-// Setup initialize configuration
+// Setup initializes the configuration by reading the config file and unmarshaling it into the Configuration struct.
+// It searches for the config file in multiple paths and sets the global Config variable.
 func Setup() {
 	var configuration *Configuration
 

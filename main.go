@@ -28,8 +28,13 @@ func main() {
 	// Api routes
 	api.Setup(app)
 
+	helperservice, herr := helpers.NewHelperService(database.DB)
+	if herr != nil {
+		fmt.Println("Error Server failure")
+	}
+
 	// Setup System User
-	systemPassword := helpers.CreateSystemUser(appconfig.Config.Server.AdminEmailAddress)
+	systemPassword := helperservice.CreateSystemUser(appconfig.Config.Server.AdminEmailAddress)
 	if systemPassword != "" {
 		fmt.Println("")
 		fmt.Println("!!!!!IMPORTANT!!!!!")

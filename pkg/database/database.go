@@ -22,6 +22,14 @@ type DefaultModel struct {
 	DeletedAt *time.Time `json:"-"`
 }
 
+// SetupDatabase initializes the database connection using the configuration values from appconfig.
+// It establishes a connection to the database using the provided credentials and opens the connection.
+// The connection configuration can be customized based on the GormLogger value in appconfig.
+// If the GormLogger is set to "Error", the logger will log only error messages.
+// If the GormLogger is set to "Info", the logger will log both error and info messages.
+// If the GormLogger is not set to "Error" or "Info", the logger will be silent and not log any messages.
+// If there is an error during the connection setup, it will be logged and the program will exit.
+// After a successful connection, a message will be printed to indicate that the connection is open.
 func SetupDatabase() {
 	appconfig := appconfig.GetConfig()
 	username := appconfig.Database.Username
@@ -49,7 +57,6 @@ func SetupDatabase() {
 	}
 
 	DB, err = gorm.Open(postgres.Open(dsn), &config)
-
 	if err != nil {
 		log.Fatal(err)
 		panic("Failed to connect database")

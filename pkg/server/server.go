@@ -18,6 +18,10 @@ import (
 	"github.com/gofiber/helmet/v2"
 )
 
+// setupMiddlewares sets up the middlewares for the Fiber app.
+// It takes an instance of the Fiber app as a parameter and applies various middlewares to it.
+// The middlewares include helmet, recover, cors, compress, etag, limiter, and logger.
+// The specific configuration for each middleware is defined in the appconfig.
 func setupMiddlewares(app *fiber.App) {
 	appconfig := appconfig.GetConfig()
 	app.Use(helmet.New())
@@ -42,20 +46,22 @@ func setupMiddlewares(app *fiber.App) {
 	}
 }
 
+// Create creates a new instance of the fiber.App and returns it.
+// It also sets up the database and adds middlewares to the app.
 func Create() *fiber.App {
 	database.SetupDatabase()
 
 	app := fiber.New(fiber.Config{
-		// Override default error handler
-		ErrorHandler: func(ctx *fiber.Ctx, err error) error {
-			if e, ok := err.(*apperr.Error); ok {
-				return ctx.Status(e.Code).JSON(e)
-			} else if e, ok := err.(*fiber.Error); ok {
-				return ctx.Status(e.Code).JSON(apperr.Error{Status: "internal-server", Code: e.Code, Message: e.Message})
-			} else {
-				return ctx.Status(fiber.StatusInternalServerError).JSON(apperr.Error{Status: "internal-server", Code: 500, Message: err.Error()})
-			}
-		},
+		// // Override default error handler
+		// ErrorHandler: func(ctx *fiber.Ctx, err error) error {
+		// 	if e, ok := err.(*apperr.Error); ok {
+		// 		return ctx.Status(e.Code).JSON(e)
+		// 	} else if e, ok := err.(*fiber.Error); ok {
+		// 		return ctx.Status(e.Code).JSON(apperr.Error{Status: "internal-server", Code: e.Code, Message: e.Message})
+		// 	} else {
+		// 		return ctx.Status(fiber.StatusInternalServerError).JSON(apperr.Error{Status: "internal-server", Code: 500, Message: err.Error()})
+		// 	}
+		// },
 	})
 
 	setupMiddlewares(app)
@@ -63,6 +69,11 @@ func Create() *fiber.App {
 	return app
 }
 
+// Listen starts the server and listens for incoming requests.
+// It takes an instance of the fiber.App as a parameter.
+// Returns an error if there was a problem starting the server.
+// The server listens on the host and port specified in the app configuration.
+// If a request is not found, a 404 status is returned.
 func Listen(app *fiber.App) error {
 	appconfig := appconfig.GetConfig()
 
