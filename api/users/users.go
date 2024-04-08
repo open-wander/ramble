@@ -1,230 +1,187 @@
 package users
 
 import (
+	"errors"
 	"fmt"
-	"strconv"
+	"log"
+	"strings"
 
 	"rmbl/models"
-	"rmbl/pkg/database"
-	"rmbl/pkg/helpers"
 
-	jwt "github.com/form3tech-oss/jwt-go"
-	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
-func Paginate(c *fiber.Ctx) func(db *gorm.DB) *gorm.DB {
+// UserService represents the authentication service.
+type UserService struct {
+	db *gorm.DB
+}
+
+// NewUserService creates a new instance of UserService with the provided database connection.
+// It performs checks on the db parameter and returns an error if it is empty or if there is an error pinging the database.
+// Parameters:
+// - dbconn: The database connection to be used by the UserService.
+// Returns:
+// - *UserService: The newly created UserService instance.
+// - error: An error if the database connection is empty or if there is an error pinging the database.
+func NewUserService(dbconn *gorm.DB) (*UserService, error) {
+	// do some checks on the db parameter in case there's an error to return
+	if dbconn == nil {
+		return nil, errors.New("database connection cannot be empty")
+	}
+	sqlDB, _ := dbconn.DB()
+	if sqlDBerr := sqlDB.Ping(); sqlDBerr != nil {
+		return &UserService{
+			db: dbconn,
+		}, sqlDBerr
+	}
+
+	return &UserService{
+		db: dbconn,
+	}, nil
+}
+
+// paginate is a higher-order function that returns a function used for pagination in database queries.
+// The returned function takes a *gorm.DB object as input and returns a modified *gorm.DB object with the specified offset and limit.
+// The offset parameter determines the number of records to skip, while the limit parameter determines the maximum number of records to retrieve.
+// Example usage: paginate(10, 20)(db) will skip the first 10 records and retrieve the next 20 records from the database.
+func paginate(offset int, limit int) func(db *gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
-		offset, _ := strconv.Atoi(c.Query("offset", "0"))
-		limit, _ := strconv.Atoi(c.Query("limit", "25"))
 		return db.Offset(offset).Limit(limit)
 	}
 }
 
-// GetAllUsers get all user
-// TODO create a filtered list of repositories as this will get bigger as time goes on
-
-func GetAllUsers(c *fiber.Ctx) error {
-	user_token := c.Locals("user").(*jwt.Token)
-	claims := user_token.Claims.(jwt.MapClaims)
-	is_site_admin := claims["site_admin"].(bool)
-
-	if !is_site_admin {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"Status": "Error", "Message": "Unauthorized", "Data": nil})
+// userSearch is a higher-order function that returns a function used for searching users in the database.
+// The returned function takes a *gorm.DB object as input and returns a modified *gorm.DB object.
+// If the search string is not empty, the returned function adds a WHERE clause to the query to filter users by username.
+// The search string is matched against the username using a LIKE operator with wildcard characters.
+func userSearch(search string) func(db *gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		if search != "" {
+			db = db.Where("username LIKE ?", "%"+search+"%")
+		}
+		return db
 	}
-	db := database.DB
+}
+
+// GetAllUsers retrieves all users from the database based on the specified parameters.
+// It returns a UserData struct containing the retrieved users, along with the total number of records.
+// The order parameter specifies the order in which the users should be sorted.
+// The search parameter is used to filter the users based on a search string.
+// The limit and offset parameters are used for pagination.
+func (s *UserService) GetAllUsers(order string, search string, limit int, offset int) models.UserData {
+	search = strings.ToLower(search)
+
 	var users []models.User
 	var data models.UserData
 
-	search := c.Query("search")
-	dbquery := db.Model(&users).Preload("Organization")
-	dbquery.Order("username DESC")
-	dbquery.Scopes(helpers.UserSearch(search))
+	dbquery := s.db.Model(&users).Preload("Organization")
+	dbquery.Order("username " + order)
+	dbquery.Scopes(userSearch(search))
 	dbquery.Count(&data.TotalRecords)
-	dbquery.Scopes(Paginate(c))
+	dbquery.Scopes(paginate(offset, limit))
 	dbquery.Find(&users)
-	if dbquery.RowsAffected == 0 {
-		data.Status = "Failure"
-		data.Message = "No Records found"
-		data.Data = users
-		return c.JSON(data)
+	if dbquery.Error != nil {
+		data.Status = "Error"
+		data.Message = "Error Retrieving Users"
+	} else {
+		data.Status = "Success"
+		data.Message = "Records found"
+
 	}
-	data.Status = "Success"
-	data.Message = "Records found"
 	data.Data = users
-	return c.JSON(data)
+
+	// Override the message if there were no records.
+	if dbquery.RowsAffected == 0 {
+		data.Message = "No Records found"
+	}
+
+	return data
 }
 
-// TODO create a function for getting all users related to an ORG
-
-// GetUser returns a user
-// if you add the query parameter ?repositories=true it will return the repositories as well.
-func GetUser(c *fiber.Ctx) error {
-	user_token := c.Locals("user").(*jwt.Token)
-	claims := user_token.Claims.(jwt.MapClaims)
-	is_site_admin := claims["site_admin"].(bool)
-	username := claims["username"].(string)
-	user_id := helpers.GetUserIDByUserName(username)
-	var id uuid.UUID
-	id, err := uuid.Parse(c.Params("id"))
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Invalid ID", "Data": nil})
-	}
-
-	if user_id != id || !is_site_admin {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"Status": "Error", "Message": "Unauthorized", "Data": nil})
-	}
-
-	repos := c.Query("repositories", "false")
-
-	db := database.DB
+// GetUser retrieves a user from the database based on the provided user ID.
+// If includeRepos is set to true, the user's associated repositories will also be loaded.
+// It returns a SingleUserData struct containing the user information.
+func (s *UserService) GetUser(userId uuid.UUID, includeRepos bool) models.SingleUserData {
 	var user models.User
-	dbquery := db.Model(&user).Preload("Organization")
-	if repos == "true" {
+	var data models.SingleUserData
+	dbquery := s.db.Model(&user).Preload("Organization")
+	if includeRepos {
 		dbquery.Preload("Organization.Repositories")
 	}
-	dbquery.Find(&user, id)
-	if user.Username == "" {
-		return c.Status(404).JSON(fiber.Map{"Status": "Error", "Message": "No user found with ID", "Data": nil})
+
+	dbquery.Find(&user, userId)
+	data.Status = "Success"
+	data.Message = "Records found"
+	data.Data = user
+	if dbquery.RowsAffected == 0 {
+		data.Status = "Error"
+		data.Message = "No user found with that id"
 	}
-	return c.JSON(fiber.Map{"Data": user, "Message": "User found", "Status": "Success"})
+	return data
 }
 
-// UpdateUser update user
-func UpdateUser(c *fiber.Ctx) error {
-	c.Accepts("application/json")
-	var id uuid.UUID
-	var user_id uuid.UUID
-	user_token := c.Locals("user").(*jwt.Token)
-	claims := user_token.Claims.(jwt.MapClaims)
-	token_user_id := claims["user_id"].(string)
-	is_site_admin := claims["site_admin"].(bool)
-	user_id, tokenerr := uuid.Parse(token_user_id)
-	if tokenerr != nil {
-		return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Invalid User ID", "Data": nil})
-	}
-
-	// Convert the id parameter to a UUID for later use
-	id, err := uuid.Parse(c.Params("id"))
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Invalid ID", "Data": nil})
-	}
-
-	// Check ID in the url against the ID in the Claim
-	if id != user_id || !is_site_admin {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"Status": "Error", "Message": "Unauthorized", "Data": nil})
-	}
-
-	// JSON Input for Userupdate.
-	type UpdateUserInput struct {
-		EmailAddress    string `json:"email"`
-		CurrentPassword string `json:"current_password"`
-		NewPassword     string `json:"new_password"`
-	}
-	var uui UpdateUserInput
-	if err := c.BodyParser(&uui); err != nil {
-		return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Review your input", "data": err})
-	}
-
-	if !helpers.ValidToken(user_token, id) {
-		return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Invalid token id", "data": nil})
-	}
-
-	db := database.DB
+// UpdateUser updates the user with the specified user_id in the database.
+// It updates the user's password and email address if provided.
+// If the user is not found, it returns an error with "user not found" message.
+// If any other error occurs during the update process, it returns an error with "something went wrong" message.
+// If the update is successful, it returns the updated user object and nil error.
+func (s *UserService) UpdateUser(user_id uuid.UUID, password string, emailAddress string) (models.User, error) {
 	var user models.User
-	db.First(&user, id)
-	if !helpers.ValidUser(id, uui.CurrentPassword) || !is_site_admin {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"Status": "Error", "Message": "Invalid Credentials", "Data": err})
+	err := s.db.First(&user, user_id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return user, fmt.Errorf("user not found")
+	} else if err != nil {
+		log.Printf("updateuser find query failed %s", err.Error())
+		return user, fmt.Errorf("something went wrong")
 	}
-	if uui.NewPassword != "" {
-		hash, err := helpers.HashPassword(uui.NewPassword)
-		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Couldn't hash password", "Data": err})
-		}
-		user.Password = hash
-	} else if uui.EmailAddress != "" {
-		user.Email = uui.EmailAddress
+	if password != "" {
+		user.Password = password
 	}
-	db.Save(&user)
+	if emailAddress != "" {
+		user.Email = emailAddress
+	}
 
-	return c.JSON(fiber.Map{"Status": "Success", "Message": "User successfully updated", "data": user})
+	if err = s.db.Save(&user).Error; err != nil {
+		log.Printf("updateuser save query failed %s", err.Error())
+		return user, fmt.Errorf("unable to save new user details")
+	}
+	return user, err
 }
 
-// DeleteUser delete user
-func DeleteUser(c *fiber.Ctx) error {
-	var data models.UserData
-	user_token := c.Locals("user").(*jwt.Token)
-	claims := user_token.Claims.(jwt.MapClaims)
-	token_user_id := claims["user_id"].(string)
-	is_site_admin := claims["site_admin"].(bool)
-
-	// Get Userid from token
-	token_u_id, tokenerr := uuid.Parse(token_user_id)
-	if tokenerr != nil {
-		data.Status = "Failure"
-		data.Message = "id not valid"
-		data.Data = nil
-		return c.JSON(data)
-	}
-
-	// Convert the id parameter to a UUID for later use
-	param_user_id, err := uuid.Parse(c.Params("id"))
-	if err != nil {
-		data.Status = "Failure"
-		data.Message = "id not valid"
-		data.Data = nil
-		return c.JSON(data)
-	}
-
-	type PasswordInput struct {
-		Password string `json:"password"`
-	}
-
-	var pi PasswordInput
-
-	if is_site_admin {
-		if err := c.BodyParser(&pi); err != nil {
-			return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Review your input", "Data": nil})
-		}
-
-		// if !helpers.ValidUserToken(user_token, email) {
-		// 	return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Invalid token id", "Data": nil})
-		// }
-
-		// if !helpers.ValidUser(param_user_id, pi.Password) {
-		// 	return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Not valid user", "Data": nil})
-
-		// }
-	} else {
-		// Check ID in the url against the ID in the Claim
-		if param_user_id != token_u_id {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"Status": "Error", "Message": "Unauthorized", "Data": nil})
-		}
-
-		if err := c.BodyParser(&pi); err != nil {
-			return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Review your input", "Data": nil})
-		}
-
-		if !helpers.ValidToken(user_token, param_user_id) {
-			return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Invalid token id", "Data": nil})
-		}
-
-		if !helpers.ValidUser(param_user_id, pi.Password) {
-			return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Not valid user", "Data": nil})
-		}
-
-	}
-
-	db := database.DB
+// DeleteUser deletes a user from the database.
+// It takes a user_id parameter of type uuid.UUID, representing the ID of the user to be deleted.
+// If the user is not found, it returns an error with the message "user not found".
+// If there is a problem finding the user to delete, it returns an error with the message "problem finding user to delete".
+// If the organization associated with the user is not found, it returns an error with the message "organization not found".
+// If there is an error while deleting the user, it returns an error with the message "unable to delete user".
+// Otherwise, it returns nil.
+func (s *UserService) DeleteUser(user_id uuid.UUID) error {
 	var user models.User
-
-	db.Preload("Organization").First(&user, param_user_id)
-
+	var org models.Organization
+	err := s.db.First(&user, user_id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("user not found")
+	} else if err != nil {
+		log.Printf("deleteuser find query failed %s", err.Error())
+		return fmt.Errorf("problem finding user to delete")
+	}
+	// find the org in the organization table
+	orgerr := s.db.Where("org_name = ?", &user.Username).Find(&org).Error
+	if errors.Is(orgerr, gorm.ErrRecordNotFound) {
+		log.Printf("organization not found")
+		return fmt.Errorf("organization not found")
+	} else if err != nil {
+		return fmt.Errorf("")
+	}
+	// Delete organizations repositories
+	s.db.Select("Repositories").Delete(&org)
+	// // Delete Users Organization
+	// db.Select("Organization").Delete(&user)
 	// When Users are Deleted their repositories are deleted at the same time.
-
-	db.Select("Organization").Delete(&user)
-	fmt.Println("User to be deleted")
-	fmt.Println(&user.Username)
-	return c.JSON(fiber.Map{"Status": "Success", "Message": "User successfully deleted", "Data": nil})
+	if err := s.db.Select("Organization").Delete(&user).Error; err != nil {
+		log.Printf("deleteuser delete query failed %s", err.Error())
+		return fmt.Errorf("unable to delete user")
+	}
+	return err
 }

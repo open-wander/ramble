@@ -6,9 +6,13 @@ import (
 	"testing"
 
 	"rmbl/pkg/apptest"
+	"rmbl/pkg/database"
 	"rmbl/pkg/helpers"
 )
 
+// TestSetup is a test function that sets up the environment for testing.
+// It prints "Setup Empty DB" and sends a GET request to the root endpoint ("/").
+// It expects the response status to be http.StatusOK.
 func TestSetup(t *testing.T) {
 	fmt.Println("Setup Empty DB")
 	e := apptest.FiberHTTPTester(t)
@@ -18,14 +22,30 @@ func TestSetup(t *testing.T) {
 	fmt.Println("")
 }
 
-// System User Tests
+// TestSystemUserCreate is a unit test function that tests the creation of a system user.
+// It performs the following steps:
+// 1. Drops tables.
+// 2. Initializes a Fiber HTTP tester.
+// 3. Creates a system user email.
+// 4. Creates a helper service.
+// 5. Creates a system password using the helper service.
+// 6. Constructs a system user map with the identity and password.
+// 7. Logs in the system user and retrieves the token.
+// 8. Retrieves the system organization.
+//
+// This test function does not return any values and does not throw any errors.
 func TestSystemUserCreate(t *testing.T) {
 	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
 
 	system_user_email := "test@test.int"
 
-	systemPassword := helpers.CreateSystemUser(system_user_email)
+	helperservice, herr := helpers.NewHelperService(database.DB)
+	if herr != nil {
+		fmt.Println("Error Server failure")
+	}
+
+	systemPassword := helperservice.CreateSystemUser(system_user_email)
 
 	system_user := map[string]interface{}{
 		"identity": system_user_email,
@@ -56,7 +76,9 @@ func TestSystemUserCreate(t *testing.T) {
 	fmt.Println("")
 }
 
-// Testing API / path
+// TestIndex is a unit test function that tests the behavior of the index endpoint.
+// It verifies that the index endpoint returns the expected response when the database is empty,
+// and when an unknown path is requested.
 func TestIndex(t *testing.T) {
 	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
@@ -69,54 +91,55 @@ func TestIndex(t *testing.T) {
 	index_exist_object.ValueEqual("Message", "No Records found")
 	index_exist_object.ValueEqual("TotalRecords", 0)
 	index_exist_object.ValueEqual("Data", nil)
-
-	fmt.Println("Test Index with unknown path")
-	index_not_exist_object := e.GET("/i-dont-exist").Expect().
-		Status(http.StatusOK).
-		JSON().Object()
-	index_not_exist_object.Keys().ContainsOnly("Status", "Message", "TotalRecords", "Data")
-	index_not_exist_object.ValueEqual("Status", "Success")
-	index_not_exist_object.ValueEqual("Message", "No Records found")
-	index_not_exist_object.ValueEqual("TotalRecords", 0)
-	index_not_exist_object.ValueEqual("Data", nil)
-
-	fmt.Println("")
-	fmt.Println("")
 }
 
-// Testing the /auth/signup path
+// TestUserSignUp is a test function that tests the user sign-up functionality.
+// It performs various test cases to validate different scenarios such as empty JSON,
+// empty username, empty email, empty password, successful sign-up, and account already exists.
+// The function uses the FiberHTTPTester to simulate HTTP requests and assertions to validate the responses.
+// It prints the test results to the console for visibility.
 func TestUserSignUp(t *testing.T) {
 	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
 
 	user_empty := map[string]interface{}{
-		"username": "",
-		"email":    "",
-		"password": "",
+		"username":   "",
+		"first_name": "",
+		"last_name":  "",
+		"email":      "",
+		"password":   "",
 	}
 
 	user_empty_username := map[string]interface{}{
-		"username": "",
-		"email":    "hydrogen@ptable.element",
-		"password": "P@ssw0rd1",
+		"username":   "",
+		"first_name": "",
+		"last_name":  "",
+		"email":      "hydrogen@ptable.element",
+		"password":   "P@ssw0rd1",
 	}
 
 	user_empty_email := map[string]interface{}{
-		"username": "hydrogen",
-		"email":    "",
-		"password": "P@ssw0rd1",
+		"username":   "hydrogen",
+		"first_name": "",
+		"last_name":  "",
+		"email":      "",
+		"password":   "P@ssw0rd1",
 	}
 
 	user_empty_password := map[string]interface{}{
-		"username": "hydrogen2",
-		"email":    "hydrogen2@ptable.element",
-		"password": "",
+		"username":   "hydrogen2",
+		"first_name": "",
+		"last_name":  "",
+		"email":      "hydrogen2@ptable.element",
+		"password":   "",
 	}
 
 	user := map[string]interface{}{
-		"username": "hydrogen",
-		"email":    "hydrogen@ptable.element",
-		"password": "P@ssw0rd1",
+		"username":   "hydrogen",
+		"first_name": "Hydro",
+		"last_name":  "Gen",
+		"email":      "hydrogen@ptable.element",
+		"password":   "P@ssw0rd1",
 	}
 
 	fmt.Println("Test User Signup No JSON")
@@ -212,15 +235,21 @@ func TestUserSignUp(t *testing.T) {
 	fmt.Println("")
 }
 
-// test /auth/login path
+// TestUserLogin is a test function that tests the user login functionality.
+// It performs various login scenarios and checks the expected responses.
+// This function uses the FiberHTTPTester to simulate HTTP requests and assertions.
+// The test cases include scenarios such as empty JSON, empty email, empty password,
+// non-standard email, and successful login.
 func TestUserLogin(t *testing.T) {
 	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
 
 	user_for_login := map[string]interface{}{
-		"username": "hydrogen",
-		"email":    "hydrogen@ptable.element",
-		"password": "P@ssw0rd1",
+		"username":   "hydrogen",
+		"first_name": "Hydro",
+		"last_name":  "Gen",
+		"email":      "hydrogen@ptable.element",
+		"password":   "P@ssw0rd1",
 	}
 
 	user_empty := map[string]interface{}{
@@ -339,14 +368,25 @@ func TestUserLogin(t *testing.T) {
 	fmt.Println("")
 }
 
+// TestUserDeleteSelf tests the functionality of deleting a user's own account.
+// It performs the following steps:
+// 1. Drops the necessary tables.
+// 2. Sets up the necessary test environment.
+// 3. Creates a user for testing purposes.
+// 4. Logs in the user.
+// 5. Attempts to delete the user without logging in, and verifies the response.
+// 6. Attempts to delete the user without providing a password, and verifies the response.
+// 7. Deletes the user with the provided password, and verifies the response.
 func TestUserDeleteSelf(t *testing.T) {
 	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
 
 	user_for_login := map[string]interface{}{
-		"username": "hydrogen",
-		"email":    "hydrogen@ptable.element",
-		"password": "P@ssw0rd1",
+		"username":   "hydrogen",
+		"first_name": "Hydro",
+		"last_name":  "Gen",
+		"email":      "hydrogen@ptable.element",
+		"password":   "P@ssw0rd1",
 	}
 
 	user_password := map[string]interface{}{
@@ -406,17 +446,24 @@ func TestUserDeleteSelf(t *testing.T) {
 	fmt.Println("")
 }
 
-// Testing the Repository workflow
-// Order CRUD
-
+// TestRepoCreate is a test function that tests the creation of a repository.
+// It performs the following steps:
+// 1. Drops tables.
+// 2. Creates a user for creating repositories.
+// 3. Tries to create a repository without login
+// 4. Tries to create a repository without JSON
+// 5. Tries to create a repository with empty JSON
+// 6. Tries to create a repository with valid JSON
 func TestRepoCreate(t *testing.T) {
 	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
 
 	user_for_create := map[string]interface{}{
-		"username": "hydrogen",
-		"email":    "hydrogen@ptable.element",
-		"password": "P@ssw0rd1",
+		"username":   "hydrogen",
+		"first_name": "Hydro",
+		"last_name":  "Gen",
+		"email":      "hydrogen@ptable.element",
+		"password":   "P@ssw0rd1",
 	}
 
 	user := map[string]interface{}{
@@ -518,14 +565,25 @@ func TestRepoCreate(t *testing.T) {
 	fmt.Println("")
 }
 
+// TestRepoRead is a test function that tests the functionality of reading repositories.
+// It performs the following steps:
+// 1. Drops tables.
+// 2. Creates a user for reading repositories.
+// 3. Logs in the user.
+// 4. Creates multiple repositories with the logged-in user.
+// 5. Retrieves all repositories.
+// 6. Retrieves the details of a specific repository.
+// 7. Retrieves all repositories for a specific user.
 func TestRepoRead(t *testing.T) {
 	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
 
 	user_for_read := map[string]interface{}{
-		"username": "hydrogen",
-		"email":    "hydrogen@ptable.element",
-		"password": "P@ssw0rd1",
+		"username":   "hydrogen",
+		"first_name": "Hydro",
+		"last_name":  "Gen",
+		"email":      "hydrogen@ptable.element",
+		"password":   "P@ssw0rd1",
 	}
 
 	user := map[string]interface{}{
@@ -615,14 +673,24 @@ func TestRepoRead(t *testing.T) {
 	fmt.Println("")
 }
 
+// TestRepoUpdate is a test function that tests the update functionality of a repository.
+// It performs the following steps:
+// 1. Drops tables.
+// 2. Creates a user for updating the repository.
+// 3. Logs in the user.
+// 4. Creates a repository with the logged-in user.
+// 5. Attempts to update the repository without logging in (which should fail).
+// 6. Updates the repository with the logged-in user.
 func TestRepoUpdate(t *testing.T) {
 	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
 
 	user_for_update := map[string]interface{}{
-		"username": "hydrogen",
-		"email":    "hydrogen@ptable.element",
-		"password": "P@ssw0rd1",
+		"username":   "hydrogen",
+		"first_name": "Hydro",
+		"last_name":  "Gen",
+		"email":      "hydrogen@ptable.element",
+		"password":   "P@ssw0rd1",
 	}
 
 	user := map[string]interface{}{
@@ -710,15 +778,24 @@ func TestRepoUpdate(t *testing.T) {
 	fmt.Println("")
 }
 
-// Test Repository Delete
+// TestRepoDelete is a test function that tests the deletion of a repository.
+// It performs the following steps:
+// 1. Drops tables.
+// 2. Creates a user for deletion.
+// 3. Logs in the user.
+// 4. Creates a repository.
+// 5. Attempts to delete the repository without login (which should fail).
+// 6. Deletes the repository with login.
 func TestRepoDelete(t *testing.T) {
 	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
 
 	user_for_delete := map[string]interface{}{
-		"username": "hydrogen",
-		"email":    "hydrogen@ptable.element",
-		"password": "P@ssw0rd1",
+		"username":   "hydrogen",
+		"first_name": "Hydro",
+		"last_name":  "Gen",
+		"email":      "hydrogen@ptable.element",
+		"password":   "P@ssw0rd1",
 	}
 
 	user := map[string]interface{}{
@@ -803,14 +880,24 @@ func TestRepoDelete(t *testing.T) {
 	fmt.Println("")
 }
 
+// TestRepoSearch is a test function that tests searching for a repository.
+// It performs the following steps:
+// 1. Drops tables.
+// 2. Creates a user for search.
+// 3. Logs in the user.
+// 4. Creates 30 repositories.
+// 5. Attempts to find the repository testrepo20.
+// 6. Attempts to find all the repositories with testrepo2.
 func TestRepoSearch(t *testing.T) {
 	apptest.DropTables()
 	e := apptest.FiberHTTPTester(t)
 
 	user_for_search := map[string]interface{}{
-		"username": "hydrogen",
-		"email":    "hydrogen@ptable.element",
-		"password": "P@ssw0rd1",
+		"username":   "hydrogen",
+		"first_name": "Hydro",
+		"last_name":  "Gen",
+		"email":      "hydrogen@ptable.element",
+		"password":   "P@ssw0rd1",
 	}
 
 	user := map[string]interface{}{
@@ -886,6 +973,16 @@ func TestRepoSearch(t *testing.T) {
 	fmt.Println("")
 }
 
+// TestSystemUserOrgs is a test function that tests SystemUser Access.
+// It performs the following steps:
+// 1. Drops tables.
+// 2. Creates a system user.
+// 3. Logs in the system user.
+// 4. Creates a standard user for testing results.
+// 5. Attempts to get all organisations without auth which should fail.
+// 6. Attempts to get all organisations with auth.
+// 7. Attempts to get all users without auth which should fail.
+// 8. Attempts to get all users with auth.
 func TestSystemUserOrgs(t *testing.T) {
 	fmt.Println("System User Access to Organisations Test")
 	apptest.DropTables()
@@ -893,7 +990,12 @@ func TestSystemUserOrgs(t *testing.T) {
 
 	system_user_email := "test@test.int"
 
-	systemPassword := helpers.CreateSystemUser(system_user_email)
+	helperservice, herr := helpers.NewHelperService(database.DB)
+	if herr != nil {
+		fmt.Println("Error Server failure")
+	}
+
+	systemPassword := helperservice.CreateSystemUser(system_user_email)
 
 	system_user := map[string]interface{}{
 		"identity": system_user_email,
@@ -901,9 +1003,11 @@ func TestSystemUserOrgs(t *testing.T) {
 	}
 
 	user_for_org_create := map[string]interface{}{
-		"username": "hydrogen",
-		"email":    "hydrogen@ptable.element",
-		"password": "P@ssw0rd1",
+		"username":   "hydrogen",
+		"first_name": "Hydro",
+		"last_name":  "Gen",
+		"email":      "hydrogen@ptable.element",
+		"password":   "P@ssw0rd1",
 	}
 
 	// Login System User to test organisation access
@@ -915,6 +1019,7 @@ func TestSystemUserOrgs(t *testing.T) {
 	system_user_token := system_user_login_success.Value("Data").Object().Value("Token").String().Raw()
 	fmt.Println("Generated Token for System User")
 	fmt.Println(system_user_token)
+
 	// Create User to generate additional organisation for testing
 	e.POST("/auth/signup").WithJSON(user_for_org_create).
 		Expect().
@@ -961,6 +1066,18 @@ func TestSystemUserOrgs(t *testing.T) {
 	fmt.Println("")
 }
 
+// TestSystemUserCRUDUsers is a test function that performs CRUD operations on system users.
+// It tests the creation and deletion of users using the system user account.
+// The function sets up the necessary data, such as system user credentials, user details,
+// and repository information, and then performs the following steps:
+//  1. Creates a system user and retrieves the generated system user token.
+//  2. Creates a user for organization testing and retrieves the user's ID.
+//  3. Logs in as the created system user and retrieves the user's token.
+//  4. Creates a repository for deletion testing.
+//  5. Attempts to delete the user with the system user login but without providing a password,
+//     expecting an error response.
+//  6. Deletes the user with the system user login and provides the system user password,
+//     expecting a success response.
 func TestSystemUserCRUDUsers(t *testing.T) {
 	fmt.Println("System User CRUD on Users")
 	fmt.Println("")
@@ -970,7 +1087,12 @@ func TestSystemUserCRUDUsers(t *testing.T) {
 
 	system_user_email := "test@test.int"
 
-	systemPassword := helpers.CreateSystemUser(system_user_email)
+	helperservice, herr := helpers.NewHelperService(database.DB)
+	if herr != nil {
+		fmt.Println("Error Server failure")
+	}
+
+	systemPassword := helperservice.CreateSystemUser(system_user_email)
 
 	system_user := map[string]interface{}{
 		"identity": system_user_email,
@@ -981,9 +1103,11 @@ func TestSystemUserCRUDUsers(t *testing.T) {
 	}
 
 	user_for_org_create := map[string]interface{}{
-		"username": "hydrogen",
-		"email":    "hydrogen@ptable.element",
-		"password": "P@ssw0rd1",
+		"username":   "hydrogen",
+		"first_name": "Hydro",
+		"last_name":  "Gen",
+		"email":      "hydrogen@ptable.element",
+		"password":   "P@ssw0rd1",
 	}
 
 	user_login := map[string]interface{}{

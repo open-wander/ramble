@@ -72,6 +72,7 @@ func create() *fiber.App {
 
 // Drop Tables after each test run
 func DropTables() {
+	database.SetupTestDatabase()
 	database.DB.Migrator().DropTable(&models.User{})
 	database.DB.Migrator().DropTable(&models.Repository{})
 	database.DB.Migrator().DropTable(&models.Organization{})

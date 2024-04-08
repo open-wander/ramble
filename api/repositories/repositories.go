@@ -2,60 +2,102 @@ package repositories
 
 import (
 	"errors"
-	"strconv"
+	"fmt"
+	"log"
 	"strings"
 
 	"rmbl/models"
-	"rmbl/pkg/apperr"
 	"rmbl/pkg/database"
 	"rmbl/pkg/helpers"
-	appvalid "rmbl/pkg/validator"
 
-	jwt "github.com/form3tech-oss/jwt-go"
-	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
-// Paginate returns a function which can be used to paginate results.
-// Deprecated: please use repositories.paginate instead.
-func Paginate(c *fiber.Ctx) func(db *gorm.DB) *gorm.DB {
-	return func(db *gorm.DB) *gorm.DB {
-		offset, _ := strconv.Atoi(c.Query("offset", "0"))
-		limit, _ := strconv.Atoi(c.Query("limit", "25"))
-		return db.Offset(offset).Limit(limit)
-	}
+// RepoService represents a repository service.
+type RepoService struct {
+	db *gorm.DB
 }
 
-// paginate returns a function which can be used to paginate results.
+// NewRepoService creates a new instance of RepoService with the given database connection.
+// It performs checks on the db parameter to ensure it is not empty and can establish a connection.
+// If the db parameter is nil, it returns an error indicating that the database connection cannot be empty.
+// If the database connection fails, it returns an error along with the RepoService instance.
+// Otherwise, it returns the RepoService instance with the provided database connection and no error.
+func NewRepoService(dbconn *gorm.DB) (*RepoService, error) {
+	// do some checks on the db parameter in case there's an error to return
+	if dbconn == nil {
+		return nil, errors.New("database connection cannot be empty")
+	}
+	sqlDB, _ := dbconn.DB()
+	if sqlDBerr := sqlDB.Ping(); sqlDBerr != nil {
+		return &RepoService{
+			db: dbconn,
+		}, sqlDBerr
+	}
+
+	return &RepoService{
+		db: dbconn,
+	}, nil
+}
+
+// paginate is a higher-order function that returns a function used for pagination in database queries.
+// The returned function takes a *gorm.DB object as input and returns a modified *gorm.DB object with the specified offset and limit.
+// The offset parameter determines the number of records to skip, while the limit parameter determines the maximum number of records to retrieve.
+// Example usage: paginate(10, 20)(db) will skip the first 10 records and retrieve the next 20 records from the database.
 func paginate(offset int, limit int) func(db *gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {
 		return db.Offset(offset).Limit(limit)
 	}
 }
 
-// GetOrgID by name
-func getOrganizationIDByUserName(username string) (id uuid.UUID) {
-	db := database.DB
+// Search is a higher-order function that returns a function used for searching records in a database.
+// The returned function takes a *gorm.DB object as input and returns a modified *gorm.DB object.
+// The search parameter is used to filter records based on a name field using the LIKE operator.
+// If the search parameter is empty, the returned function does not apply any filtering.
+func searchterm(search string) func(db *gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		if search != "" {
+			db = db.Where("name LIKE ?", "%"+search+"%")
+		}
+		return db
+	}
+}
+
+// getOrganizationIDByUserName retrieves the organization ID associated with the given username.
+// It queries the database for the organization with the matching org_name and returns its ID.
+func (s *RepoService) getOrganizationIDByUserName(username string) (id uuid.UUID) {
 	var org models.Organization
-	db.Where("org_name = ?", username).Find(&org)
+	s.db.Where("org_name = ?", username).Find(&org)
 	return uuid.UUID(org.ID)
 }
 
-// GetAllRepositories returns all the repositories in the database.
-func GetAllRepositories(order bool, search string, limit int, offset int) models.RepoData {
+// GetUserIDByUserName retrieves the user ID associated with the given username.
+// It queries the database for a user with the matching username and returns their ID.
+func (s *RepoService) getUserIDByUserName(username string) (id uuid.UUID) {
+	var user models.User
+	s.db.Where("username = ?", username).Find(&user)
+	return uuid.UUID(user.ID)
+}
+
+// GetAllRepositories retrieves all repositories based on the provided parameters.
+// It validates the incoming parameters and uses the Options pattern to ensure sane defaults.
+// The repositories are ordered by organization name in the specified order.
+// The search parameter is used to filter repositories based on a case-insensitive search.
+// Pagination is applied using the limit and offset parameters.
+// The function returns a models.RepoData struct containing the retrieved repositories.
+func (s *RepoService) GetAllRepositories(order string, search string, limit int, offset int) models.RepoData {
 	// TODO: We may want to validate the incoming parameters, and in the future
 	// consider using the Options pattern to ensure sane defaults.
 
-	db := database.DB
 	search = strings.ToLower(search)
 
 	var repositories []models.RepositoryViewStruct
 	var data models.RepoData
 
-	dbQuery := db.Model(&models.Repository{}).Joins("inner join organizations on organizations.id = repositories.organization_id")
-	dbQuery.Order(order)
-	dbQuery.Scopes(helpers.Search(search))
+	dbQuery := s.db.Model(&models.Repository{}).Joins("inner join organizations on organizations.id = repositories.organization_id")
+	dbQuery.Order("org_name " + order)
+	dbQuery.Scopes(searchterm(search))
 	dbQuery.Select("repositories.id, repositories.name, repositories.version, repositories.description, repositories.url, organizations.org_name")
 	dbQuery.Count(&data.TotalRecords)
 	dbQuery.Scopes(paginate(offset, limit))
@@ -73,193 +115,157 @@ func GetAllRepositories(order bool, search string, limit int, offset int) models
 	return data
 }
 
-// Get All Org Repositories limited to 25 results
-// you can use ?limit=25&offset=0&order=desc to override the defaults
-
-func GetOrgRepositories(c *fiber.Ctx) error {
-	orgname := strings.ToLower(c.Params("org"))
-	orgid := getOrganizationIDByUserName(orgname)
-	db := database.DB
+// GetOrgRepositories retrieves a list of repositories belonging to a specific organization.
+// It takes the following parameters:
+// - order: the order in which the repositories should be sorted (ascending or descending).
+// - search: a search string to filter the repositories by name or description.
+// - limit: the maximum number of repositories to retrieve.
+// - offset: the number of repositories to skip before retrieving the results.
+// - orgid: the ID of the organization to which the repositories belong.
+// It returns a models.RepoData struct containing the retrieved repositories, along with the total number of records.
+// If no repositories are found, the "Message" field in the returned struct will indicate that no records were found.
+func (s *RepoService) GetOrgRepositories(order string, search string, limit int, offset int, orgid uuid.UUID) models.RepoData {
 	var repositories []models.RepositoryViewStruct
 	var data models.RepoData
 
-	search := strings.ToLower(c.Query("search"))
-	dbquery := db.Model(&models.Repository{}).Joins("inner join organizations on organizations.id = repositories.organization_id")
+	dbquery := s.db.Model(&models.Repository{}).Joins("inner join organizations on organizations.id = repositories.organization_id")
 	dbquery.Where("organization_id = ?", orgid)
-	dbquery.Order("repositories.name DESC")
-	dbquery.Scopes(helpers.Search(search))
+	dbquery.Order("repositories.name " + order)
+	dbquery.Scopes(searchterm(search))
 	dbquery.Select("repositories.id, repositories.name, repositories.version, repositories.description, repositories.url, organizations.org_name")
 	dbquery.Count(&data.TotalRecords)
-	dbquery.Scopes(Paginate(c))
+	dbquery.Scopes(paginate(offset, limit))
 	dbquery.Scan(&repositories)
-	if dbquery.RowsAffected == 0 {
-		data.Status = "Success"
-		data.Message = "No Records found"
-		data.Data = repositories
-		return c.Status(200).JSON(data)
-	}
-	data.Data = repositories
+
 	data.Status = "Success"
 	data.Message = "Records found"
-	return c.Status(200).JSON(data)
+	data.Data = repositories
+
+	if dbquery.RowsAffected == 0 {
+		data.Message = "No Records found"
+	}
+	return data
 }
 
-// Get an individual repository detail
-func GetRepository(c *fiber.Ctx) error {
-	orgname := strings.ToLower(c.Params("org"))
-	reponame := strings.ToLower(c.Params("reponame"))
-	orgid := getOrganizationIDByUserName(orgname)
-	// Get Useragent from request
-	useragent := string(c.Context().UserAgent())
-	db := database.DB
-	repositories := &models.RepositoryViewStruct{}
-	dbquery := db.Model(&models.Repository{}).Joins("inner join organizations on organizations.id = repositories.organization_id")
+// GetRepository retrieves a single repository based on the provided repository name and organization ID.
+// It returns a models.SingleRepoData struct containing the repository information.
+func (s *RepoService) GetRepository(reponame string, orgname string) models.SingleRepoData {
+	repository := &models.RepositoryViewStruct{}
+	var data models.SingleRepoData
+	helperservice, err := helpers.NewHelperService(database.DB)
+	if err != nil {
+		data.Status = "Error"
+		data.Message = "Internal Server Error"
+		return data
+	}
+	orgid, err := helperservice.GetOrganizationIDByOrgName(orgname)
+	if err != nil {
+		data.Status = "Error"
+		data.Message = "Record Not Found"
+		return data
+	}
+	dbquery := s.db.Model(&models.Repository{}).Joins("inner join organizations on organizations.id = repositories.organization_id")
 	dbquery.Where("organization_id = ? and name = ?", orgid, reponame)
 	dbquery.Select("repositories.id, repositories.name, repositories.version, repositories.description, repositories.url, organizations.org_name")
-	dbquery.Scan(&repositories)
+	dbquery.Scan(&repository)
+	data.Status = "Success"
+	data.Message = "Records found"
+	data.Data = *repository
+
 	if dbquery.RowsAffected == 0 {
-		return c.Status(404).JSON(fiber.Map{"Status": "Error", "Message": "No repository found with that name", "Data": nil})
+		data.Message = "No repository found with that name"
 	}
-	if strings.HasPrefix(useragent, "git") {
-		p := "/" + c.Params("*") + "?" + string(c.Context().QueryArgs().QueryString())
-		return c.Redirect(repositories.URL+p, 302)
-	} else {
-		return c.JSON(fiber.Map{"Status": "Success", "Message": "Repository Found", "Data": repositories})
-	}
+	return data
 }
 
-// Create a new repository
-func NewRepository(c *fiber.Ctx) error {
-	c.Accepts("application/json")
-	// Valid Header
-	if !helpers.ValidRequestHeader(c) {
-		return apperr.UnsupportedMediaType("Not Valid Content Type, Expect application/json")
-	}
-	var id uuid.UUID
-	orgname := strings.ToLower(c.Params("org"))
-
-	user_token := c.Locals("user").(*jwt.Token)
-	claims := user_token.Claims.(jwt.MapClaims)
-	username := claims["username"].(string)
-	// userorg_id := claims["userorg_id"].(uuid.UUID)
-	is_siteadmin := claims["site_admin"].(bool)
-	db := database.DB
-	// orgid := getOrganizationIDByUserName(orgname)
-	id = helpers.GetUserIDByUserName(username)
+// NewRepository creates a new repository and associates it with the specified organization.
+// It takes a repository model, organization name, and a flag indicating if the user is a site admin.
+// It returns the created repository model and an error, if any.
+func (s *RepoService) NewRepository(repository models.Repository, orgname string, is_siteadmin bool) (models.Repository, error) {
 	var organization models.Organization
-	repository := new(models.Repository)
-
-	// check JSON input
-	if err := c.BodyParser(repository); err != nil {
-		return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Review your repository input", "Data": err})
-	}
-
-	validate := appvalid.NewValidator()
-	if validateerr := validate.Struct(repository); validateerr != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"Status":  "validation-error",
-			"Message": appvalid.ValidationErrors(validateerr),
-		})
-	}
-
-	// Check for a valid token
-	if !helpers.ValidToken(user_token, id) {
-		return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Invalid token id", "Data": nil})
-	}
 	// find the org in the organization table
-	db.Where("org_name = ?", orgname).Find(&organization)
-	if username != orgname {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"Status": "Error", "Message": "Unauthorized", "Data": nil})
+	err := s.db.Where("org_name = ?", orgname).Find(&organization).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		log.Printf("organization not found")
+		return repository, fmt.Errorf("organization not found")
+	} else if err != nil {
+		return repository, fmt.Errorf("")
 	}
-	if username == orgname || is_siteadmin {
-		db.Model(&organization).Where("org_name = ?", orgname).Association("Repositories").Append(repository)
+	repository.OrganizationID = organization.ID
+
+	// db.Model(&organization).Association("Repositories")
+
+	m := s.db.Model(&organization)
+	if m == nil {
+		log.Println("model was nil")
+		fmt.Println("model was nil")
+	} else if m.Error != nil {
+		log.Printf("model error: %v", m.Error)
+		fmt.Printf("model error: %v", m.Error)
 	}
-	return c.JSON(repository)
+
+	w := m.Where("org_name = ?", orgname)
+	if w == nil {
+		log.Println("where was nil")
+		fmt.Println("where was nil")
+	} else if w.Error != nil {
+		log.Printf("where error: %v", w.Error)
+		fmt.Printf("where error: %v", w.Error)
+	}
+
+	a := w.Association("Repositories")
+	if a == nil {
+		log.Println("assoc was nil")
+		fmt.Println("assoc was nil")
+	} else if a.Error != nil {
+		log.Printf("assoc error: %v", err)
+		fmt.Printf("assoc error: %v", err)
+	}
+
+	err = a.Append(&repository)
+	if err != nil {
+		log.Printf("append error: %v", err)
+		fmt.Printf("append error: %v", err)
+	}
+
+	// repoErr := db.Model(&organization).Where("org_name = ?", orgname).Association("Repositories").Append(&repository).Error
+	// if err != nil {
+	// 	return repository, fmt.Errorf("unable to create repository: %s ", repoErr())
+	// }
+	return repository, nil
 }
 
-// Update a repository
-func UpdateRepository(c *fiber.Ctx) error {
-	c.Accepts("application/json")
-	// Valid Header
-	if !helpers.ValidRequestHeader(c) {
-		return apperr.UnsupportedMediaType("Not Valid Content Type, Expect application/json")
-	}
-	var id uuid.UUID
-	orgname := c.Params("org")
-	reponame := c.Params("reponame")
-
-	user_token := c.Locals("user").(*jwt.Token)
-	claims := user_token.Claims.(jwt.MapClaims)
-	username := claims["username"].(string)
-	is_siteadmin := claims["site_admin"].(bool)
-	userorg_id, _ := uuid.Parse(claims["userorg_id"].(string))
-	id = helpers.GetUserIDByUserName(username)
-
-	db := database.DB
-	orgid := getOrganizationIDByUserName(orgname)
+// UpdateRepository updates a repository with the given organization ID, repository name, and updated repository data.
+// It returns the updated repository and an error, if any.
+func (s *RepoService) UpdateRepository(orgid uuid.UUID, reponame string, updatedRepository models.Repository) (models.Repository, error) {
 	repository := new(models.Repository)
-	updatedRepository := new(models.Repository)
 
-	if err := c.BodyParser(updatedRepository); err != nil {
-		return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Review your repository input", "Data": err})
-	}
-
-	validate := appvalid.NewValidator()
-	if validateerr := validate.Struct(updatedRepository); validateerr != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"Status":  "validation-error",
-			"Message": appvalid.ValidationErrors(validateerr),
-		})
-	}
-
-	if !helpers.ValidToken(user_token, id) {
-		return c.Status(500).JSON(fiber.Map{"Status": "Error", "Message": "Invalid token id", "Data": nil})
-	}
-	if userorg_id != orgid || username != orgname {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"Status": "Error", "Message": "Unauthorized", "Data": nil})
-	}
-	err := db.Where(&models.Repository{OrganizationID: orgid}).Where("name = ?", reponame).First(&repository).Error
-
+	err := s.db.Where(&models.Repository{OrganizationID: orgid}).Where("name = ?", reponame).First(&repository).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return apperr.EntityNotFound("No repository found")
+		return *repository, fmt.Errorf("repository not found: %w", err)
 	} else if err != nil {
-		return apperr.Unexpected(err.Error())
+		return *repository, err
 	}
-
-	if userorg_id == orgid || username == orgname || is_siteadmin {
-		if err = db.Where(&models.Repository{OrganizationID: orgid}).Model(&repository).Where("name = ?", reponame).Updates(updatedRepository).Error; err != nil {
-			return apperr.Unexpected(err.Error())
-		}
+	if err = s.db.Where(&models.Repository{OrganizationID: orgid}).Model(&repository).Where("name = ?", reponame).Updates(updatedRepository).Error; err != nil {
+		return *repository, err
 	}
 	// return c.SendStatus(204)
-	return c.JSON(updatedRepository)
+	return updatedRepository, err
 }
 
-func DeleteRepository(c *fiber.Ctx) error {
-	orgname := c.Params("org")
-	reponame := c.Params("reponame")
-	user := c.Locals("user").(*jwt.Token)
-	claims := user.Claims.(jwt.MapClaims)
-	username := claims["username"].(string)
-	is_siteadmin := claims["site_admin"].(bool)
-	userorg_id, _ := uuid.Parse(claims["userorg_id"].(string))
-
-	db := database.DB
-	orgid := getOrganizationIDByUserName(orgname)
-
-	var repository models.Repository
-	if userorg_id != orgid || username != orgname {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"Status": "Error", "Message": "Unauthorized", "Data": nil})
-	}
-	err := db.Where(&models.Repository{OrganizationID: orgid}).Where("name = ?", reponame).First(&repository).Error
-
+// DeleteRepository deletes a repository from the database based on the organization ID and repository name.
+// It returns an error if the repository is not found or if there is an error during the deletion process.
+func (s *RepoService) DeleteRepository(orgid uuid.UUID, reponame string) error {
+	repository := new(models.Repository)
+	err := s.db.Where(&models.Repository{OrganizationID: orgid}).Where("name = ?", reponame).First(&repository).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return apperr.EntityNotFound("No Repository found")
+		return fmt.Errorf("repository not found")
 	} else if err != nil {
-		return apperr.Unexpected(err.Error())
+		return fmt.Errorf(err.Error())
 	}
-	if userorg_id == orgid || username == orgname || is_siteadmin {
-		db.Delete(&repository)
+
+	if err = s.db.Delete(&repository).Error; err != nil {
+		return fmt.Errorf(err.Error())
 	}
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{"Status": "Success", "Message": reponame + " Deleted", "Data": nil})
+	return err
 }
