@@ -1,0 +1,33 @@
+# RMBL Server Configuration Template
+# Copy this file to config.yml and update with your actual values
+# NEVER commit config.yml to git!
+
+database:
+  dbname: "ramble"
+  username: "ramble_user"
+  password: "your-secure-database-password-here"
+  host: "localhost"
+  port: "5432"
+
+server:
+  SessionSecret: "generate-a-random-secret-with-openssl-rand-base64-32"
+  BaseURL: "http://localhost:3000"
+  AutoSeed: "false"  # Set to "true" only for first run
+
+seed:
+  InitialUserUsername: "admin"
+  InitialUserEmail: "admin@example.com"
+  InitialUserPassword: "change-this-secure-password"
+
+email:
+  smtpHost: "smtp.gmail.com"
+  smtpPort: "587"
+  smtpUser: "your-email@example.com"
+  smtpPassword: "your-smtp-password-or-app-specific-password"
+  fromAddress: "no-reply@example.com"
+
+oauth:
+  githubKey: "your-github-oauth-client-id"
+  githubSecret: "your-github-oauth-client-secret"
+  gitlabKey: "your-gitlab-oauth-application-id"
+  gitlabSecret: "your-gitlab-oauth-application-secret"

@@ -1,0 +1,96 @@
+<div class="max-w-4xl mx-auto py-10 px-4 sm:px-6 lg:px-8">
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">{{.Organization.Name}} Settings</h1>
+        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Manage your organization members and settings.</p>
+    </div>
+
+    <div class="grid grid-cols-1 gap-8 lg:grid-cols-3">
+        <!-- Sidebar Navigation -->
+        <aside class="space-y-1">
+            <nav class="space-y-1">
+                <a href="#general" class="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 group flex items-center px-3 py-2 text-sm font-medium rounded-md" aria-current="page">
+                    General Settings
+                </a>
+                <a href="#members" class="text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                    Members
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Settings Area -->
+        <div class="lg:col-span-2 space-y-10">
+            <!-- General Settings -->
+            <section id="general" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+                <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">General Settings</h2>
+                <form hx-post="/orgs/{{.Organization.Name}}/update" hx-target="#general-error" hx-swap="innerHTML">
+                    <div id="general-error" class="text-red-600 text-sm mb-4"></div>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="description" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
+                            <textarea id="description" name="description" rows="3" class="mt-1 block w-full border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">{{.Organization.Description}}</textarea>
+                        </div>
+                        <div class="flex justify-end">
+                            <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium">Save Changes</button>
+                        </div>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Member Management -->
+            <section id="members" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+                <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Manage Members</h2>
+                
+                <!-- Add Member Form -->
+                <form hx-post="/orgs/{{.Organization.Name}}/members/add" hx-target="#member-error" hx-swap="innerHTML" class="mb-8">
+                    <div id="member-error" class="text-red-600 text-sm mb-2"></div>
+                    <div class="flex items-center space-x-3">
+                        <div class="flex-grow">
+                            <input type="text" name="username" placeholder="Enter username" required class="block w-full border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                        </div>
+                        <select name="role" class="block border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            <option value="member">Member</option>
+                            <option value="owner">Owner</option>
+                        </select>
+                        <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium">Add</button>
+                    </div>
+                </form>
+
+                <!-- Member List -->
+                <div class="flow-root">
+                    <ul role="list" class="-my-5 divide-y divide-gray-200 dark:divide-gray-700">
+                        {{range .Organization.Memberships}}
+                        <li class="py-4">
+                            <div class="flex items-center space-x-4">
+                                <div class="flex-shrink-0">
+                                    {{if .User.AvatarURL}}
+                                        <img class="h-8 w-8 rounded-full" src="{{.User.AvatarURL}}" alt="">
+                                    {{else}}
+                                        <div class="h-8 w-8 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center">
+                                            <span class="text-xs font-bold text-indigo-600">{{slice .User.Username 0 1 | upper}}</span>
+                                        </div>
+                                    {{end}}
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                        {{.User.Name}} <span class="text-gray-500 dark:text-gray-400 font-normal">(@{{.User.Username}})</span>
+                                    </p>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                        {{.Role | capitalize}}
+                                    </p>
+                                </div>
+                                <div>
+                                    <button hx-post="/orgs/{{$.Organization.Name}}/members/{{.UserID}}/remove" 
+                                            hx-confirm="Are you sure you want to remove this member?"
+                                            class="inline-flex items-center shadow-sm px-2.5 py-0.5 border border-gray-300 dark:border-gray-600 text-xs font-medium rounded-full text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                                        Remove
+                                    </button>
+                                </div>
+                            </div>
+                        </li>
+                        {{end}}
+                    </ul>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>

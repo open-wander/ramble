@@ -1,0 +1,92 @@
+<div class="max-w-7xl mx-auto py-10 px-4 sm:px-6 lg:px-8">
+    <div class="mb-8 flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Admin Dashboard</h1>
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Site-wide overview and management.</p>
+        </div>
+        <div class="flex space-x-3">
+            <a href="/admin/users" class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Manage Users</a>
+            <a href="/admin/resources" class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Manage Resources</a>
+        </div>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-10">
+        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg p-5">
+            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Total Users</dt>
+            <dd class="mt-1 text-3xl font-semibold text-indigo-600 dark:text-indigo-400">{{.UserCount}}</dd>
+        </div>
+        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg p-5">
+            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Total Organizations</dt>
+            <dd class="mt-1 text-3xl font-semibold text-indigo-600 dark:text-indigo-400">{{.OrgCount}}</dd>
+        </div>
+        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg p-5">
+            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Total Resources</dt>
+            <dd class="mt-1 text-3xl font-semibold text-indigo-600 dark:text-indigo-400">{{.ResourceCount}}</dd>
+        </div>
+        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg p-5">
+            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Total Stars</dt>
+            <dd class="mt-1 text-3xl font-semibold text-indigo-600 dark:text-indigo-400">{{.StarCount}}</dd>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 gap-8 lg:grid-cols-2">
+        <!-- Recent Users -->
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                <h2 class="text-lg font-bold text-gray-900 dark:text-white">Recent Users</h2>
+                <a href="/admin/users" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">View all</a>
+            </div>
+            <ul role="list" class="divide-y divide-gray-200 dark:divide-gray-700">
+                {{range .LatestUsers}}
+                <li class="px-6 py-4">
+                    <div class="flex items-center space-x-4">
+                        <div class="flex-shrink-0">
+                            {{if .AvatarURL}}
+                                <img class="h-8 w-8 rounded-full" src="{{.AvatarURL}}" alt="">
+                            {{else}}
+                                <div class="h-8 w-8 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-xs font-bold text-indigo-600">{{slice .Username 0 1 | upper}}</div>
+                            {{end}}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                {{.Name}} <span class="text-gray-500 font-normal">@{{.Username}}</span>
+                            </p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">{{.Email}}</p>
+                        </div>
+                        <div class="text-xs text-gray-400">
+                            {{.CreatedAt.Format "Jan 02"}}
+                        </div>
+                    </div>
+                </li>
+                {{end}}
+            </ul>
+        </div>
+
+        <!-- Recent Resources -->
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                <h2 class="text-lg font-bold text-gray-900 dark:text-white">Recent Resources</h2>
+                <a href="/admin/resources" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">View all</a>
+            </div>
+            <ul role="list" class="divide-y divide-gray-200 dark:divide-gray-700">
+                {{range .LatestResources}}
+                <li class="px-6 py-4">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                {{.User.Username}} / <span class="font-bold">{{.Name}}</span>
+                            </p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{.Description}}</p>
+                        </div>
+                        <div class="ml-4 flex-shrink-0 flex items-center space-x-2">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">{{.Type}}</span>
+                            <span class="text-xs text-gray-400">{{.CreatedAt.Format "Jan 02"}}</span>
+                        </div>
+                    </div>
+                </li>
+                {{end}}
+            </ul>
+        </div>
+    </div>
+</div>
