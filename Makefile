@@ -1,6 +1,6 @@
 # Build the application
 build:
-	go build -o bin/rmbl cmd/server/main.go
+	go build -o bin/ramble cmd/server/main.go
 
 # Run the application
 run:
@@ -37,7 +37,7 @@ update:
 
 # Versioning
 VERSION := $(shell cat VERSION)
-IMAGE_NAME := haigqn.hhome:5000/rmbl
+IMAGE_NAME := ghcr.io/open-wander/ramble
 
 # Run security checks
 security:
@@ -63,7 +63,7 @@ css-watch:
 # Docker Build (ARM64)
 docker-build:
 	docker build --platform linux/arm64 -t $(IMAGE_NAME):$(VERSION) -t $(IMAGE_NAME):latest .
-	sed -i '' 's|image = "$(IMAGE_NAME):.*"|image = "$(IMAGE_NAME):$(VERSION)"|' rmbl.nomad.hcl
+	sed -i '' 's|image = "$(IMAGE_NAME):.*"|image = "$(IMAGE_NAME):$(VERSION)"|' ramble.nomad.hcl
 
 # Docker Push
 docker-push:
@@ -72,7 +72,7 @@ docker-push:
 
 # Combined target for convenience
 deploy: docker-build docker-push
-	export NOMAD_ADDR=http://nmd-svr1:4646 && nomad job run rmbl.nomad.hcl
+	export NOMAD_ADDR=http://nmd-svr1:4646 && nomad job run ramble.nomad.hcl
 
 # Set Nomad Variables from config.yml
 nomad-vars:

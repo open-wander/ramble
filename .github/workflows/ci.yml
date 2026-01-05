@@ -50,4 +50,4 @@ jobs:
         context: .
         platforms: linux/arm64
         push: ${{ github.event_name != 'pull_request' && vars.DOCKER_REGISTRY != '' }}
-        tags: ${{ vars.DOCKER_REGISTRY != '' && format('{0}/rmbl:latest,{0}/rmbl:{1}', vars.DOCKER_REGISTRY, github.sha) || 'rmbl:latest' }}
+        tags: ${{ vars.DOCKER_REGISTRY != '' && format('{0}/ramble:latest,{0}/ramble:{1}', vars.DOCKER_REGISTRY, github.sha) || 'ramble:latest' }}

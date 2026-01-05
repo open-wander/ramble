@@ -1,8 +1,8 @@
-job "rmbl" {
+job "ramble" {
   datacenters = ["tpi-dc1"]
   type        = "service"
 
-  group "rmbl" {
+  group "ramble" {
     count = 1
 
     network {
@@ -12,12 +12,12 @@ job "rmbl" {
     }
 
     service {
-      name     = "rmbl"
+      name     = "ramble"
       port     = "http"
       provider = "nomad"
       tags = [
         "traefik.enable=true",
-        "traefik.http.routers.rmbl.rule=Host(`rmbl.openwander.org`)",
+        "traefik.http.routers.ramble.rule=Host(`ramble.openwander.org`)",
       ]
 
       check {
@@ -32,7 +32,7 @@ job "rmbl" {
       driver = "docker"
 
       config {
-        image = "haigqn.hhome:5000/rmbl:v0.1.17"
+        image = "ghcr.io/open-wander/ramble:latest"
         ports = ["http"]
       }
 
@@ -43,7 +43,7 @@ job "rmbl" {
 
       template {
         data = <<EOH
-{{ with nomadVar "nomad/jobs/rmbl" }}
+{{ with nomadVar "nomad/jobs/ramble" }}
 ENV="production"
 DB_HOST="{{ .db_host }}"
 DB_USER="{{ .db_user }}"

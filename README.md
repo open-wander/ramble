@@ -1,6 +1,8 @@
-# RMBL - Nomad Job & Pack Registry
+# Ramble - Nomad Job & Pack Registry
 
 A modernized registry for HashiCorp Nomad job files and Nomad Packs, built with Go, Fiber, and HTMX.
+
+**Repository:** [github.com/open-wander/ramble](https://github.com/open-wander/ramble)
 
 ## Features
 
@@ -28,8 +30,8 @@ A modernized registry for HashiCorp Nomad job files and Nomad Packs, built with 
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-org/rmbl-server.git
-    cd rmbl-server
+    git clone https://github.com/open-wander/ramble.git
+    cd ramble
     ```
 
 2.  **Set up the database:**
@@ -51,8 +53,8 @@ For production setup, database configuration, and OAuth provider instructions, s
 ### Using Docker
 
 ```bash
-docker build -t rmbl .
-docker run -p 3000:3000 -e DATABASE_URL="your-db-url" rmbl
+docker build -t ramble .
+docker run -p 3000:3000 -e DATABASE_URL="your-db-url" ramble
 ```
 
 ## License
