@@ -1,0 +1,129 @@
+<div class="text-center py-10">
+    <h1 class="text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white sm:text-5xl md:text-6xl">
+        <span class="block xl:inline">Find your next</span>
+        <span class="block text-indigo-600 dark:text-indigo-400 xl:inline">{{if .Title}}{{.Title}}{{else}}Nomad Job{{end}}</span>
+    </h1>
+    <p class="mt-3 max-w-md mx-auto text-base text-gray-500 dark:text-gray-400 sm:text-lg md:mt-5 md:text-xl md:max-w-3xl">
+        The community registry for HashiCorp Nomad job specifications and packs.
+    </p>
+    
+    <div class="mt-10 max-w-xl mx-auto">
+        <div class="relative rounded-md shadow-sm">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+                </svg>
+            </div>
+            <input 
+                type="text" 
+                name="q" 
+                id="search" 
+                value="{{.Query}}"
+                class="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-10 sm:text-sm border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-md p-4 shadow-sm border" 
+                placeholder="Search for nginx, redis, monitoring..."
+                hx-get="/search"
+                hx-trigger="keyup changed delay:500ms, search"
+                hx-target="#search-results"
+                hx-include="#filter-form"
+                hx-indicator=".htmx-indicator"
+            >
+        </div>
+    </div>
+</div>
+
+<div class="flex flex-col lg:flex-row gap-8">
+    <!-- Sidebar -->
+    <aside class="w-full lg:w-64 flex-shrink-0">
+        <form id="filter-form" hx-get="/search" hx-target="#search-results" hx-trigger="change" hx-include="#search">
+            <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 space-y-6">
+                <div>
+                    <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">Resource Type</h3>
+                    <div class="space-y-2">
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="type" value="" {{if not .Type}}checked{{end}} class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 dark:border-gray-600 dark:bg-gray-700">
+                            <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">All Resources</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="type" value="job" {{if eq .Type "job"}}checked{{end}} class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 dark:border-gray-600 dark:bg-gray-700">
+                            <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Nomad Jobs</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="type" value="pack" {{if eq .Type "pack"}}checked{{end}} class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 dark:border-gray-600 dark:bg-gray-700">
+                            <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Nomad Packs</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">Sort by</h3>
+                    <select name="sort" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
+                        <option value="latest" {{if eq .Sort "latest"}}selected{{end}}>Latest</option>
+                        <option value="stars" {{if eq .Sort "stars"}}selected{{end}}>Most Starred</option>
+                        <option value="downloads" {{if eq .Sort "downloads"}}selected{{end}}>Most Used</option>
+                        <option value="alpha" {{if eq .Sort "alpha"}}selected{{end}}>Alphabetical</option>
+                    </select>
+                </div>
+
+                <!-- We can dynamically populate tags later, for now just a few common ones -->
+                <div>
+                    <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">Filter by Tag</h3>
+                    <select name="tag" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border capitalize">
+                        <option value="" {{if not .Tag}}selected{{end}} class="normal-case">All Tags</option>
+                        {{range .PopularTags}}
+                        <option value="{{.Name}}" {{if eq $.Tag .Name}}selected{{end}} class="capitalize">#{{.Name}}</option>
+                        {{end}}
+                    </select>
+                </div>
+                
+                <button type="button" 
+                        class="w-full text-center text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 font-medium"
+                        onclick="document.getElementById('filter-form').reset(); htmx.trigger('#filter-form', 'change')">
+                    Clear Filters
+                </button>
+            </div>
+        </form>
+
+        {{if .IsLoggedIn}}
+        <div class="mt-6 bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+            <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">Organizations</h3>
+            
+            {{if .CurrentUser.Memberships}}
+            <div class="space-y-2 mb-4">
+                {{range .CurrentUser.Memberships}}
+                <a href="/{{.Organization.Name}}" class="flex items-center text-sm text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400">
+                    <svg class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                    {{.Organization.Name}}
+                </a>
+                {{end}}
+            </div>
+            {{end}}
+
+            <a href="/orgs/new" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline flex items-center">
+                <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                Create Organization
+            </a>
+        </div>
+        {{end}}
+    </aside>
+
+    <!-- Results Area -->
+    <div class="flex-grow">
+        <div id="search-results" class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {{if .Resources}}
+                {{template "partials/resource_list" .}}
+            {{else}}
+                <div class="text-center text-gray-500 dark:text-gray-400 w-full col-span-full py-10">
+                    {{if .Query}}No results found for "{{.Query}}"{{else}}Start typing to search...{{end}}
+                </div>
+            {{end}}
+        </div>
+        
+        <!-- Loading Indicator for Infinite Scroll -->
+        <div class="htmx-indicator w-full flex justify-center py-8">
+            <svg class="animate-spin h-8 w-8 text-indigo-600 dark:text-indigo-400" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+        </div>
+    </div>
+</div>

@@ -1,143 +1,60 @@
-# Nomad Specification Registry
+# RMBL - Nomad Job & Pack Registry
 
-> This project is an attempt to create a Nomad Job Specification Registry!
-
-## Table of contents
-
-* [General info](#general-info)
-* [Screenshots](#screenshots)
-* [Technologies](#technologies)
-* [Setup](#setup)
-* [Features](#features)
-* [Status](#status)
-* [Inspiration](#inspiration)
-* [Contact](#contact)
-
-## General info
-
-I started this project as I wanted to have a central space where people who were looking to work with Nomad could easily find job specifications that are known to be deployed in a production ready way.
-
-## Screenshots
-
-![Example screenshot](./img/screenshot.png)
-
-## Technologies
-
-* Tech 1 - Golang
-
-## Setup
-
-* Download the release from the release site
-* Make a copy of the config.yml.example file and rename it to config.yml
-* Edit the file and:
-  * add the Server port
-  * add the JWT Secret passphrase
-  * Enable logging if you need it.
-  * Configure your Postgres DB details
-* run ./rmbl-server
+A modernized registry for HashiCorp Nomad job files and Nomad Packs, built with Go, Fiber, and HTMX.
 
 ## Features
 
-List of features ready and TODOs for future development
+- **Modern UI:** Responsive design using Tailwind CSS.
+- **Interactive Search:** Live search-as-you-type powered by HTMX.
+- **Fast Navigation:** SPA-like experience with server-side rendering.
+- **Job/Pack Registry:** Easily discover and share Nomad specifications.
+- **Authentication:** User accounts and session-based auth.
 
-* Provides an API endpoint for querying the registry
-* When adding a new repository it downloads the URL's and Readme
+## Tech Stack
 
-## API Endpoints
-`/auth/signup`
-POST = user signup
+- **Backend:** Go 1.23, Fiber v2
+- **Database:** PostgreSQL (GORM)
+- **Frontend:** HTMX, Hyperscript, Tailwind CSS
+- **Templating:** Go `html/template`
 
-### Payload should look like this
+## Getting Started
 
-```json
-{
-  "username": "user",
-  "email": "email@email.com",
-  "password": "password"
-}
+### Prerequisites
+
+- Go 1.23+
+- PostgreSQL
+
+### Local Development
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-org/rmbl-server.git
+    cd rmbl-server
+    ```
+
+2.  **Set up the database:**
+    Ensure you have a PostgreSQL database running and set the `DATABASE_URL` environment variable:
+    ```bash
+    export DATABASE_URL="host=localhost user=postgres password=postgres dbname=rmbl port=5432 sslmode=disable"
+    ```
+
+3.  **Run the application:**
+    ```bash
+    make run
+    ```
+    The server will start on `http://localhost:3000`.
+
+## Deployment
+
+For production setup, database configuration, and OAuth provider instructions, see the [Deployment Guide](DEPLOYMENT.md).
+
+### Using Docker
+
+```bash
+docker build -t rmbl .
+docker run -p 3000:3000 -e DATABASE_URL="your-db-url" rmbl
 ```
 
-`/auth/login`
-POST = user login
+## License
 
-### Payload should look like this
-
-```json
-{
-  "identity": "email@email.com",
-  "password": "password"
-}
-```
-
-`/`
-GET = Gets list of all repos
-
-`/:org`
-GET = Gets the details of all Org repositories
-
-`/:org/:reponame`
-GET = Gets the details of a Specific repo
-
-`/:org/`
-POST = Create a new repo entry with the following payload
-
-### Payload should look like this
-
-```JSON
-{
-  "name": "fabio_lb",
-  "user": "rmbl",
-  "version": "0.2.1",
-  "description": "Fabio LoadBalancer",
-  "url": "https://github.com/rmbl/fabio_lb"
-}
-```
-
-`/:org/:name`
-PUT = Update a Repo to the latest details.
-
-### Payload should look like this
-
-```JSON
-{
-  "name": "fabio_lb",
-  "user": "rmbl",
-  "version": "0.2.1",
-  "description": "Fabio LoadBalancer",
-  "url": "https://github.com/rmbl/fabio_lb"
-}
-```
-
-`/:org/:name`
-DELETE = Delete a repo that is no longer needed. (only marks it as deleted at the moment)
-
-
-`/?limit=25&offset=0&order=DESC&search=hello`
-Search Repos using the search term.
-You can stipulate the following:
-
-* Limit=25 (default)
-* Offset=0
-* Sort=ID (Sort Field)
-* Order=ASC/DESC
-
-`/:org/?limit=25&offset=0ID&order=DESC&search=hello`
-Search Repos using the search term.
-You can stipulate the following:
-
-* Limit=25 (default)
-* Offset=0
-* Sort=ID (Sort Field)
-* Order=ASC/DESC
-
-## Status
-
-Project is: _in progress_
-
-## Inspiration
-
-The HashiCorp Nomad Team
-
-## Contact
-
-Created by [@lhaig](https://haigmail.com/) - feel free to contact me!
+MIT

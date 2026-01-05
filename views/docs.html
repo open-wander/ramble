@@ -1,0 +1,25 @@
+<div class="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+    <div class="text-center mb-12">
+        <h2 class="text-base font-semibold text-indigo-600 dark:text-indigo-400 tracking-wide uppercase">Documentation</h2>
+        <p class="mt-1 text-3xl font-extrabold text-gray-900 dark:text-white sm:text-4xl">
+            Publishing to RMBL
+        </p>
+        <p class="mt-4 text-lg text-gray-500 dark:text-gray-400">
+            Learn how to structure your repositories to share your Nomad Jobs and Packs.
+        </p>
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 shadow sm:rounded-lg overflow-hidden">
+        <div class="px-4 py-5 sm:p-6">
+            <div id="docs-content" class="prose dark:prose-invert max-w-none">
+                {{if .DocsContent}}
+                    <div _="on load call renderMarkdown(my.textContent) then set my.innerHTML to it then call hljs.highlightAll()">
+                        {{.DocsContent}}
+                    </div>
+                {{else}}
+                    <p class="text-red-500">Documentation content could not be loaded.</p>
+                {{end}}
+            </div>
+        </div>
+    </div>
+</div>

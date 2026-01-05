@@ -1,0 +1,107 @@
+<div class="max-w-2xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+    <div class="md:flex md:items-center md:justify-between">
+        <div class="flex-1 min-w-0">
+            <h2 class="text-2xl font-bold leading-7 text-gray-900 dark:text-white sm:text-3xl sm:truncate">
+                Edit Resource: {{.Resource.Name}}
+            </h2>
+        </div>
+    </div>
+
+    <form class="space-y-8 divide-y divide-gray-200 dark:divide-gray-700 mt-8" hx-post="/resource/{{.Resource.ID}}/edit" hx-target="#form-error" hx-swap="innerHTML">
+        
+        <div id="form-error" class="text-red-600 dark:text-red-400 text-sm text-center"></div>
+
+        <div class="space-y-8 divide-y divide-gray-200 dark:divide-gray-700">
+            <div>
+                <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                    
+                    <div class="sm:col-span-6">
+                        <label for="repository_url" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Repository URL
+                        </label>
+                        <div class="mt-1">
+                            <input 
+                                type="url" 
+                                name="repository_url" 
+                                id="repository_url" 
+                                value="{{.Resource.RepositoryURL}}"
+                                required 
+                                class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-md p-2 border"
+                            >
+                        </div>
+                    </div>
+
+                    <div class="sm:col-span-4">
+                        <label for="name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Name
+                        </label>
+                        <div class="mt-1">
+                            <input type="text" name="name" id="name" value="{{.Resource.Name}}" required class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-md p-2 border">
+                        </div>
+                    </div>
+
+                    <div class="sm:col-span-3">
+                        <label for="type" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Type
+                        </label>
+                        <div class="mt-1">
+                            <select id="type" name="type" class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-md p-2 border">
+                                <option value="job" {{if eq .Resource.Type "job"}}selected{{end}}>Nomad Job</option>
+                                <option value="pack" {{if eq .Resource.Type "pack"}}selected{{end}}>Nomad Pack</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="sm:col-span-3">
+                        <label for="license" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            License
+                        </label>
+                        <div class="mt-1">
+                            <input type="text" name="license" id="license" value="{{.Resource.License}}" placeholder="MIT, Apache-2.0" class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-md p-2 border">
+                        </div>
+                    </div>
+
+                    <div class="sm:col-span-6">
+                        <label for="description" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Description
+                        </label>
+                        <div class="mt-1">
+                            <textarea id="description" name="description" rows="3" class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-md p-2">{{.Resource.Description}}</textarea>
+                        </div>
+                    </div>
+
+                    <div class="sm:col-span-4">
+                        <label for="file_path" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Job File Path (within repo)
+                        </label>
+                        <div class="mt-1">
+                            <input type="text" name="file_path" id="file_path" value="{{.Resource.FilePath}}" placeholder="e.g., job.nomad.hcl" class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-md p-2 border">
+                        </div>
+                    </div>
+
+                    <div class="sm:col-span-6">
+                        <label for="tags" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Tags
+                        </label>
+                        <div class="mt-1">
+                            <input type="text" name="tags" id="tags" value="{{.TagsString}}" placeholder="monitoring, database, redis" class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-md p-2 border">
+                        </div>
+                        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Comma separated tags.</p>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <div class="pt-5">
+            <div class="flex justify-end">
+                <a href="/{{.Resource.User.Username}}/{{.Resource.Name}}" class="bg-white dark:bg-gray-700 py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Cancel
+                </a>
+                <button type="submit" class="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    </form>
+</div>

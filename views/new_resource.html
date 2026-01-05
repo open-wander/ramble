@@ -1,0 +1,113 @@
+<div class="max-w-2xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+    <div class="md:flex md:items-center md:justify-between">
+        <div class="flex-1 min-w-0">
+            <h2 class="text-2xl font-bold leading-7 text-gray-900 dark:text-white sm:text-3xl sm:truncate">
+                Submit New Resource
+            </h2>
+        </div>
+    </div>
+
+    <form class="space-y-8 divide-y divide-gray-200 dark:divide-gray-700 mt-8" hx-post="/new" hx-target="#form-error" hx-swap="innerHTML">
+        
+        <div id="form-error" class="text-red-600 dark:text-red-400 text-sm text-center"></div>
+
+        <div class="space-y-8 divide-y divide-gray-200 dark:divide-gray-700">
+            <div>
+                <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                    
+                    <div class="sm:col-span-3">
+                        <label for="owner" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Owner (Namespace)
+                        </label>
+                        <div class="mt-1">
+                            <select id="owner" name="owner" class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-md p-2 border">
+                                <option value="user">Personal (me)</option>
+                                {{range .Organizations}}
+                                <option value="org:{{.ID}}">{{.Name}}</option>
+                                {{end}}
+                            </select>
+                        </div>
+                        <p class="mt-2 text-[10px] text-gray-500 dark:text-gray-400">Where this repository will be listed.</p>
+                    </div>
+
+                    <div class="sm:col-span-6">
+                        <div class="flex items-center justify-between">
+                            <label for="repository_url" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Repository URL
+                            </label>
+                            {{if .Provider}}
+                            <button 
+                                type="button"
+                                class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 flex items-center"
+                                hx-get="/new/my-repos"
+                                hx-target="#repo-list"
+                                hx-indicator="#import-indicator"
+                                _="on click remove .hidden from #repo-importer-container"
+                            >
+                                <svg class="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                Import from {{.Provider | capitalize}}
+                            </button>
+                            {{end}}
+                        </div>
+                        
+                        <!-- Repo Importer (Hidden by default) -->
+                        <div id="repo-importer-container" class="hidden mt-4 p-4 border-2 border-dashed border-indigo-200 dark:border-indigo-900 rounded-lg bg-indigo-50/30 dark:bg-indigo-900/10">
+                            <div class="flex items-center justify-between mb-2">
+                                <h4 class="text-sm font-bold text-indigo-900 dark:text-indigo-300">Select a repository</h4>
+                                <span id="import-indicator" class="htmx-indicator text-xs text-indigo-600 animate-pulse">Loading...</span>
+                                <button type="button" class="text-gray-400 hover:text-gray-600" _="on click add .hidden to #repo-importer-container">
+                                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                            </div>
+                            <div id="repo-list">
+                                <!-- Repos will be loaded here -->
+                            </div>
+                        </div>
+
+                        <div class="mt-1">
+                            <input 
+                                type="url" 
+                                name="repository_url" 
+                                id="repository_url" 
+                                required 
+                                class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-md p-2 border"
+                                hx-get="/new/fetch-info"
+                                hx-trigger="change, keyup delay:1s"
+                                hx-include="#type, #tags"
+                                hx-target="#dynamic-fields"
+                                hx-indicator="#fetch-indicator"
+                            >
+                        </div>
+                        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 flex items-center">
+                            Link to the GitHub/GitLab repository.
+                            <span id="fetch-indicator" class="htmx-indicator ml-2 inline-flex items-center text-indigo-600 dark:text-indigo-400">
+                                <svg class="animate-spin h-4 w-4 mr-1" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Fetching details...
+                            </span>
+                        </p>
+                    </div>
+
+                    <!-- Dynamic Fields populated by HTMX -->
+                    <div id="dynamic-fields" class="sm:col-span-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6 border-t border-gray-100 dark:border-gray-800 pt-6">
+                        {{template "partials/resource_form_fields" .}}
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <div class="pt-5">
+            <div class="flex justify-end">
+                <a href="/" class="bg-white dark:bg-gray-700 py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Cancel
+                </a>
+                <button type="submit" class="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Submit
+                </button>
+            </div>
+        </div>
+    </form>
+</div>

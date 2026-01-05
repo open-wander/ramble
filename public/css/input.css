@@ -1,0 +1,34 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@source "../../views/**/*.html";
+@source "../../internal/handlers/**/*.go";
+
+@theme {
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-primary-800: #1e40af;
+  --color-primary-900: #1e3a8a;
+  --color-primary-950: #172554;
+}
+
+/* Enable class-based dark mode for v4 */
+@variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  .dark .prose {
+    color: var(--color-gray-300) !important;
+  }
+  .dark .prose :where(h1, h2, h3, h4, h5, h6, strong, b, code, a) {
+    color: var(--color-white) !important;
+  }
+  .dark .prose a {
+    color: var(--color-indigo-400) !important;
+  }
+}

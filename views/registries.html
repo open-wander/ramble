@@ -1,0 +1,78 @@
+<div class="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+    <div class="text-center mb-12">
+        <h1 class="text-4xl font-extrabold text-gray-900 dark:text-white sm:text-5xl sm:tracking-tight lg:text-6xl">
+            User Registries
+        </h1>
+        <p class="mt-5 max-w-xl mx-auto text-xl text-gray-500 dark:text-gray-400">
+            Browse Nomad Packs organized by namespace. Each user and organization acts as a separate registry.
+        </p>
+    </div>
+
+    <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {{range .Registries}}
+        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg border border-gray-200 dark:border-gray-700 hover:border-indigo-500 transition-colors">
+            <div class="px-4 py-5 sm:p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 bg-indigo-500 rounded-md p-3">
+                        {{if eq .Type "organization"}}
+                        <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-10V4m0 10V4m-5 18v-4a1 1 0 011-1h2a1 1 0 011 1v4" />
+                        </svg>
+                        {{else}}
+                        <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        {{end}}
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate capitalize">
+                                {{.Type}}
+                            </dt>
+                            <dd class="flex items-baseline">
+                                <div class="text-2xl font-semibold text-gray-900 dark:text-white">
+                                    <a href="/{{.Name}}" class="hover:underline">{{.Name}}</a>
+                                </div>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-gray-50 dark:bg-gray-700 px-4 py-4 sm:px-6">
+                <div class="text-sm flex flex-col space-y-2">
+                    <div class="flex justify-between">
+                        <span class="text-gray-500 dark:text-gray-400">Registry Command:</span>
+                    </div>
+                    <code class="bg-gray-100 dark:bg-gray-900 p-2 rounded text-xs text-indigo-600 dark:text-indigo-400 break-all">
+                        nomad-pack registry add {{.Name}} http://{{$.Host}}/{{.Name}}
+                    </code>
+                </div>
+            </div>
+        </div>
+        {{else}}
+        <div class="col-span-full text-center py-12">
+            <p class="text-gray-500 dark:text-gray-400 italic">No registries found with published packs yet.</p>
+        </div>
+        {{end}}
+    </div>
+
+    <div class="mt-16 bg-indigo-700 rounded-lg shadow-xl overflow-hidden">
+        <div class="px-6 py-12 sm:px-12 lg:flex lg:items-center">
+            <div class="lg:w-0 lg:flex-1">
+                <h2 class="text-3xl font-extrabold tracking-tight text-white">
+                    Want the entire RMBL catalog?
+                </h2>
+                <p class="mt-4 max-w-3xl text-lg text-indigo-100">
+                    You can add the global RMBL registry to access every pack published on the platform at once.
+                </p>
+            </div>
+            <div class="mt-8 lg:mt-0 lg:ml-8">
+                <div class="bg-indigo-800 p-4 rounded-md">
+                    <code class="text-indigo-100 text-sm">
+                        nomad-pack registry add rmbl http://{{.Host}}
+                    </code>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
