@@ -31,7 +31,7 @@ RUN /go/bin/swag init -g main.go --output docs --dir ./cmd/server,./internal/han
 # Build CSS
 RUN ./tailwindcss -i ./public/css/input.css -o ./public/css/style.css --minify
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o rmbl cmd/server/main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o ramble cmd/server/main.go
 
 # Stage 2: Final Image
 FROM alpine:latest
@@ -40,11 +40,11 @@ RUN apk --no-cache add ca-certificates
 
 WORKDIR /root/
 
-COPY --from=builder /app/rmbl .
+COPY --from=builder /app/ramble .
 COPY --from=builder /app/views ./views
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/REQUIREMENTS.md .
 
 EXPOSE 3000
 
-CMD ["./rmbl"]
+CMD ["./ramble"]

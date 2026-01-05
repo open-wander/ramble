@@ -1,5 +1,5 @@
 # Resource Requirements
-To successfully list your Nomad Jobs and Packs in the RMBL Registry, ensure your repositories adhere to the following minimum file structure requirements.
+To successfully list your Nomad Jobs and Packs in the Ramble Registry, ensure your repositories adhere to the following minimum file structure requirements.
 
 ## Nomad Packs
 A Nomad Pack is a templated job specification. For the registry to correctly index and display your pack, the following files are required in the root of your pack directory (or the path specified when adding the resource):
@@ -60,15 +60,15 @@ The RMBL Registry uses Git Tags to manage versions for both Jobs and Packs.
 **Manual Updates**: You can also manually add versions via the UI if you prefer not to use webhooks.
 For Nomad Packs, it is recommended that your Git tag matches the version defined in your metadata.hcl file, though the registry primarily relies on the Git tag for indexing.
 
-## Using RMBL with Nomad Pack
-You can use RMBL as a registry for the nomad-pack CLI tool. This allows you to easily discover and run packs directly from the registry.
+## Using Ramble with Nomad Pack
+You can use Ramble as a registry for the nomad-pack CLI tool. This allows you to easily discover and run packs directly from the registry.
 
 ### Adding the Global Registry
 
-To add the entire RMBL catalog as a registry in your local environment:
+To add the entire Ramble catalog as a registry in your local environment:
 
 ```bash
-nomad-pack registry add rmbl http://rmbl.openwander.org
+nomad-pack registry add ramble https://ramble.openwander.org
 ```
 
 ## Adding a User Registry
@@ -76,8 +76,8 @@ nomad-pack registry add rmbl http://rmbl.openwander.org
 If you only want to subscribe to a specific user's or organization's packs:
 
 ```bash
-# Example for user 'lhaig'
-nomad-pack registry add lhaig http://rmbl.openwander.org/lhaig
+# Example for user 'myuser'
+nomad-pack registry add myuser https://ramble.openwander.org/myuser
 ```
 
 ## Running a Pack
@@ -85,7 +85,7 @@ nomad-pack registry add lhaig http://rmbl.openwander.org/lhaig
 Once the registry is added, you can run packs by name:
 
 ```bash
-nomad-pack run <pack-name> --registry=rmbl
+nomad-pack run <pack-name> --registry=ramble
 ```
 
 You can view all available registries on the Registries page.

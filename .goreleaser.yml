@@ -19,7 +19,7 @@ builds:
     goarm:
       - 6
       - 7
-    id: "rmbl-build"
+    id: "ramble-build"
 archives:
   - replacements:
       darwin: Darwin
@@ -35,14 +35,14 @@ dockers:
     goarch: amd64
     goarm: ''
     # Build IDs to gather the binaries from.
-    ids: ['rmbl-build', 'rmbl-server']
+    ids: ['ramble-build']
 
     # Templates of the Docker image names.
     image_templates:
-    - "lhaig/rmbl-server:{{ .Tag }}"
-    # - "lhaig/rmbl-server:v{{ .Major }}"
-    # - "lhaig/rmbl-server:v{{ .Major }}.{{ .Minor }}"
-    - "lhaig/rmbl-server:latest"
+    - "ghcr.io/open-wander/ramble:{{ .Tag }}"
+    # - "ghcr.io/open-wander/ramble:v{{ .Major }}"
+    # - "ghcr.io/open-wander/ramble:v{{ .Major }}.{{ .Minor }}"
+    - "ghcr.io/open-wander/ramble:latest"
 
     # Skips the docker push. Could be useful if you also do draft releases.
     # If set to auto, the release will not be pushed to the docker repository
@@ -56,7 +56,7 @@ dockers:
     - "--label=org.opencontainers.image.title={{.ProjectName}}"
     - "--label=org.opencontainers.image.revision={{.FullCommit}}"
     - "--label=org.opencontainers.image.version={{.Version}}"
-    - "--label=org.opencontainers.image.maintainer='Lance Haig <lnhaig@gmail.com>'"
+    - "--label=org.opencontainers.image.maintainer='Open Wander <https://github.com/open-wander>'"
 checksum:
   name_template: 'checksums.txt'
 snapshot:
