@@ -1,0 +1,52 @@
+<tr id="org-{{.Org.ID}}">
+    <td class="px-6 py-4 whitespace-nowrap">
+        <div class="flex items-center">
+            <div class="flex-shrink-0 h-10 w-10 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center text-sm font-bold text-purple-600">
+                {{slice .Org.Name 0 1 | upper}}
+            </div>
+            <div class="ml-4">
+                <div class="text-sm font-medium text-gray-900 dark:text-white">{{.Org.Name}}</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">ID: {{.Org.ID}}</div>
+            </div>
+        </div>
+    </td>
+    <td class="px-6 py-4">
+        <div class="text-sm text-gray-900 dark:text-white max-w-xs truncate">{{.Org.Description}}</div>
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+        {{if .Org.Memberships}}
+            {{len .Org.Memberships}}
+        {{else}}
+            0
+        {{end}}
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+        {{if .Org.Resources}}
+            {{len .Org.Resources}}
+        {{else}}
+            0
+        {{end}}
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+        {{.Org.CreatedAt.Format "Jan 02, 2006"}}
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
+        <button
+            hx-get="/admin/organizations/{{.Org.ID}}/edit"
+            hx-target="body"
+            hx-swap="beforeend"
+            class="cursor-pointer text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300">
+            Edit
+        </button>
+        <a href="/{{.Org.Name}}" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300">View</a>
+        <button
+            hx-delete="/admin/organizations/{{.Org.ID}}"
+            hx-swap="outerHTML"
+            hx-target="#org-{{.Org.ID}}"
+            hx-headers='{"X-CSRF-Token": "{{.CSRFToken}}"}'
+            hx-confirm="Are you sure you want to delete {{.Org.Name}}? This will also delete all associated resources. This action cannot be undone."
+            class="cursor-pointer text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300">
+            Delete
+        </button>
+    </td>
+</tr>

@@ -1,0 +1,21 @@
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://rmbl.openwander.org/sitemap.xml
+
+# Disallow admin and auth pages
+Disallow: /admin/
+Disallow: /login
+Disallow: /signup
+Disallow: /logout
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /verify-email
+Disallow: /auth/
+
+# Allow API endpoints for indexing
+Allow: /v1/
+
+# Crawl delay (be nice to smaller servers)
+Crawl-delay: 1

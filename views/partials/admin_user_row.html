@@ -1,0 +1,56 @@
+<tr id="user-{{.User.ID}}">
+    <td class="px-6 py-4 whitespace-nowrap">
+        <div class="flex items-center">
+            <div class="flex-shrink-0 h-10 w-10">
+                {{if .User.AvatarURL}}
+                    <img class="h-10 w-10 rounded-full" src="{{.User.AvatarURL}}" alt="{{.User.Username}} avatar">
+                {{else}}
+                    <div class="h-10 w-10 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-sm font-bold text-indigo-600">{{slice .User.Username 0 1 | upper}}</div>
+                {{end}}
+            </div>
+            <div class="ml-4">
+                <div class="text-sm font-medium text-gray-900 dark:text-white">{{.User.Name}}</div>
+                <div class="text-sm text-gray-500 dark:text-gray-400">@{{.User.Username}}</div>
+            </div>
+        </div>
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+        {{.User.Email}}
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap">
+        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{if .User.IsAdmin}}bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200{{else}}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300{{end}}">
+            {{if .User.IsAdmin}}Admin{{else}}User{{end}}
+        </span>
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+        {{.User.CreatedAt.Format "Jan 02, 2006"}}
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
+        <button
+            hx-get="/admin/users/{{.User.ID}}/edit"
+            hx-target="body"
+            hx-swap="beforeend"
+            class="cursor-pointer text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300">
+            Edit
+        </button>
+        <a href="/{{.User.Username}}" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-300">View</a>
+        <button
+            hx-post="/admin/users/{{.User.ID}}/toggle-admin"
+            hx-swap="outerHTML"
+            hx-target="#user-{{.User.ID}}"
+            hx-headers='{"X-CSRF-Token": "{{.CSRFToken}}"}'
+            hx-confirm="Are you sure you want to {{if .User.IsAdmin}}revoke{{else}}grant{{end}} admin privileges for {{.User.Name}}?"
+            class="cursor-pointer text-yellow-600 dark:text-yellow-400 hover:text-yellow-900 dark:hover:text-yellow-300">
+            {{if .User.IsAdmin}}Revoke Admin{{else}}Make Admin{{end}}
+        </button>
+        <button
+            hx-delete="/admin/users/{{.User.ID}}"
+            hx-swap="outerHTML"
+            hx-target="#user-{{.User.ID}}"
+            hx-headers='{"X-CSRF-Token": "{{.CSRFToken}}"}'
+            hx-confirm="Are you sure you want to delete {{.User.Name}}? This action cannot be undone."
+            class="cursor-pointer text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300">
+            Delete
+        </button>
+    </td>
+</tr>

@@ -1,0 +1,36 @@
+services:
+  # The Application
+  app:
+    build: .
+    ports:
+      - "3001:3000"
+    environment:
+      - DATABASE_URL=host=db user=postgres password=postgres dbname=rmbl port=5432 sslmode=disable
+      - BASE_URL=http://localhost:3001
+      - GITHUB_KEY=your_github_key
+      - GITHUB_SECRET=your_github_secret
+      - GITLAB_KEY=your_gitlab_key
+      - GITLAB_SECRET=your_gitlab_secret
+      - INITIAL_USER_USERNAME=admin
+      - INITIAL_USER_EMAIL=admin@example.com
+      - INITIAL_USER_PASSWORD=password123
+      - AUTO_SEED=true
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=rmbl
+    ports:
+      - "5432:5432" # Exposed to host for local development (go run ...)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

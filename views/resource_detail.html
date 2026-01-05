@@ -1,0 +1,197 @@
+<div class="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+    <nav class="flex mb-8" aria-label="Breadcrumb">
+        <ol role="list" class="flex items-center space-x-4">
+            <li>
+                <div>
+                    <a href="/" class="text-gray-400 hover:text-gray-500">
+                        <svg class="flex-shrink-0 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                            <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011-1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
+                        </svg>
+                        <span class="sr-only">Home</span>
+                    </a>
+                </div>
+            </li>
+            <li>
+                <div class="flex items-center">
+                    <svg class="flex-shrink-0 h-5 w-5 text-gray-300" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                        <path d="M5.555 17.776l8-16 .894.448-8 16-.894-.448z" />
+                    </svg>
+                    <a href="/{{.DisplayName}}" class="ml-4 text-sm font-medium text-gray-500 hover:text-gray-700">{{.DisplayName}}</a>
+                </div>
+            </li>
+            <li>
+                <div class="flex items-center">
+                    <svg class="flex-shrink-0 h-5 w-5 text-gray-300" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                        <path d="M5.555 17.776l8-16 .894.448-8 16-.894-.448z" />
+                    </svg>
+                    <span class="ml-4 text-sm font-medium text-gray-500">{{.Resource.Name}}</span>
+                </div>
+            </li>
+        </ol>
+    </nav>
+
+    <div class="bg-white dark:bg-gray-800 shadow overflow-hidden sm:rounded-lg">
+        <div class="px-4 py-5 sm:px-6 flex justify-between items-center">
+            <div>
+                <h3 class="text-2xl leading-6 font-bold text-gray-900 dark:text-white">
+                    <a href="/{{.DisplayName}}" class="text-gray-400 font-normal hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline transition-colors">{{.DisplayName}}</a>
+                    <span class="text-gray-300 dark:text-gray-600 font-light mx-1">/</span> {{.Resource.Name}}
+                </h3>
+                <p class="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
+                    Published by <a href="/{{.Resource.User.Username}}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{.Resource.User.Name}}</a> | 
+                    {{if eq .Resource.Type "job"}}
+                        <a href="/{{.DisplayName}}/{{.Resource.Name}}/raw" class="text-indigo-600 dark:text-indigo-400 hover:underline">Raw HCL</a>
+                    {{else}}
+                        <a href="{{.Resource.RepositoryURL}}" target="_blank" class="text-indigo-600 dark:text-indigo-400 hover:underline">View Source</a>
+                    {{end}}
+                </p>
+            </div>
+            <span class="inline-flex items-center px-3 py-0.5 rounded-full text-sm font-medium bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200">
+                {{.Resource.Type}}
+            </span>
+        </div>
+        <div class="px-4 py-3 bg-gray-50 dark:bg-gray-700 sm:px-6 border-t border-gray-200 dark:border-gray-600 flex justify-between items-center">
+            <div>
+                {{if .IsLoggedIn}}
+                    {{template "partials/star_button" .}}
+                {{else}}
+                    <div class="inline-flex items-center text-sm text-gray-500 dark:text-gray-400">
+                        <svg class="h-4 w-4 mr-1 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.921-.755 1.688-1.54 1.118l-3.976-2.888a1 1 0 00-1.175 0l-3.976 2.888c-.784.57-1.838-.197-1.539-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
+                        {{.StarCount}} stars
+                    </div>
+                {{end}}
+            </div>
+            
+            {{if .IsOwner}}
+            <div class="flex space-x-3">
+                <a 
+                    href="/{{.Resource.User.Username}}/{{.Resource.Name}}/edit"
+                    class="inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-500 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-600 hover:bg-gray-50 dark:hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                    Edit Details
+                </a>
+                <button 
+                    class="inline-flex justify-center py-2 px-4 border border-red-300 dark:border-red-900 shadow-sm text-sm font-medium rounded-md text-red-700 dark:text-red-200 bg-white dark:bg-red-900/20 hover:bg-red-50 dark:hover:bg-red-900/40 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                    hx-delete="/resource/{{.Resource.ID}}"
+                    hx-confirm="Are you sure you want to delete this resource?"
+                >
+                    Delete Resource
+                </button>
+                <button 
+                    class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    hx-get="/resource/{{.Resource.ID}}/new-version"
+                    hx-target="body"
+                    hx-swap="beforeend"
+                >
+                    Add New Version
+                </button>
+            </div>
+            {{end}}
+        </div>
+        <div class="border-t border-gray-200 dark:border-gray-700 px-4 py-5 sm:p-0">
+            <dl class="sm:divide-y sm:divide-gray-200 dark:divide-gray-700">
+                <div class="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Description</dt>
+                    <dd class="mt-1 text-sm text-gray-900 dark:text-gray-100 sm:mt-0 sm:col-span-2">
+                        {{.Resource.Description}}
+                    </dd>
+                </div>
+                <div class="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">License</dt>
+                    <dd class="mt-1 text-sm text-gray-900 dark:text-gray-100 sm:mt-0 sm:col-span-2">
+                        {{if .Resource.License}}{{.Resource.License}}{{else}}Unknown{{end}}
+                    </dd>
+                </div>
+                {{if .Resource.Tags}}
+                <div class="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Tags</dt>
+                    <dd class="mt-1 text-sm text-gray-900 dark:text-gray-100 sm:mt-0 sm:col-span-2">
+                        <div class="flex flex-wrap gap-2">
+                            {{range .Resource.Tags}}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 capitalize">
+                                #{{.Name}}
+                            </span>
+                            {{end}}
+                        </div>
+                    </dd>
+                </div>
+                {{end}}
+                {{if .Resource.RepositoryURL}}
+                <div class="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Repository URL</dt>
+                    <dd class="mt-1 text-sm text-gray-900 dark:text-gray-100 sm:mt-0 sm:col-span-2">
+                        <a href="{{.Resource.RepositoryURL}}" target="_blank" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300">
+                            {{.Resource.RepositoryURL}}
+                        </a>
+                    </dd>
+                </div>
+                {{end}}
+                {{if .IsOwner}}
+                <div class="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Webhook Settings</dt>
+                    <dd class="mt-1 text-sm text-gray-900 dark:text-gray-100 sm:mt-0 sm:col-span-2">
+                        <div class="flex items-center space-x-2">
+                            <code class="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-xs">http://{{.Host}}/resource/{{.Resource.ID}}/webhook?secret={{.Resource.WebhookSecret}}</code>
+                            <button 
+                                _="on click call navigator.clipboard.writeText('http://{{.Host}}/resource/{{.Resource.ID}}/webhook?secret={{.Resource.WebhookSecret}}') then set my.innerText to 'Copied!' then wait 2s then set my.innerText to 'Copy'"
+                                class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                            >Copy URL</button>
+                            <span class="text-gray-300 dark:text-gray-600">|</span>
+                            <button 
+                                hx-post="/resource/{{.Resource.ID}}/webhook/reset"
+                                hx-confirm="Are you sure you want to rotate the webhook secret? This will break your existing Git integrations until you update them."
+                                class="text-xs text-red-600 dark:text-red-400 hover:underline"
+                            >Rotate Secret</button>
+                        </div>
+                        {{if not .Resource.LastWebhookDelivery.IsZero}}
+                        <div class="mt-2 flex flex-col space-y-1">
+                            <div class="flex items-center text-[10px]">
+                                <span class="mr-2 text-gray-400">Last Delivery: {{.Resource.LastWebhookDelivery.Format "Jan 02, 15:04"}}</span>
+                                {{if eq .Resource.LastWebhookStatus "success"}}
+                                    <span class="text-green-500 flex items-center"><svg class="h-3 w-3 mr-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg> Success</span>
+                                {{else}}
+                                    <span class="text-red-500 flex items-center"><svg class="h-3 w-3 mr-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg> Failed</span>
+                                {{end}}
+                            </div>
+                            {{if .Resource.LastWebhookError}}
+                                <p class="text-[10px] text-red-400 italic">{{.Resource.LastWebhookError}}</p>
+                            {{end}}
+                        </div>
+                        {{end}}
+                        <p class="mt-2 text-[10px] text-gray-400">Add this URL to your GitHub/GitLab repository webhooks to automatically refresh documentation on push or **auto-create versions on tag creation**.</p>
+                    </dd>
+                </div>
+                {{end}}
+                <div class="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Versions</dt>
+                    <dd class="mt-1 text-sm text-gray-900 dark:text-gray-100 sm:mt-0 sm:col-span-2 flex items-center space-x-4">
+                        <select 
+                            name="version" 
+                            class="block w-full max-w-xs pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border"
+                            hx-get="/{{.Resource.User.Username}}/{{.Resource.Name}}/v"
+                            hx-target="#version-content-area"
+                            hx-trigger="change"
+                        >
+                            {{range .Resource.Versions}}
+                            <option value="{{.Version}}">{{.Version}}</option>
+                            {{end}}
+                        </select>
+                        <span class="text-xs text-gray-400 italic">Select a version to see its documentation and run command.</span>
+                    </dd>
+                </div>
+
+                <!-- Dynamic Version Content Area -->
+                <div id="version-content-area">
+                    {{if .Resource.Versions}}
+                        {{template "partials/version_content" (dict "Version" (index .Resource.Versions 0) "Resource" .Resource "Host" .Host "Variables" .LatestVersionVariables)}}
+                    {{else}}
+                        <div class="py-4 sm:py-5 sm:px-6">
+                            <p class="text-gray-400 italic">No versions available for this resource.</p>
+                        </div>
+                    {{end}}
+                </div>
+            </dl>
+        </div>
+    </div>
+</div>
+

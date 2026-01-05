@@ -1,0 +1,623 @@
+basePath: /
+definitions:
+  handlers.DevPack:
+    properties:
+      name:
+        type: string
+      path:
+        type: string
+    type: object
+  handlers.PackDetail:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      versions:
+        items:
+          $ref: '#/definitions/handlers.PackVersion'
+        type: array
+    type: object
+  handlers.PackSummary:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+    type: object
+  handlers.PackVersion:
+    properties:
+      url:
+        type: string
+      version:
+        type: string
+    type: object
+host: localhost:3000
+info:
+  contact:
+    name: API Support
+  description: This is the API documentation for the RMBL Nomad Job & Pack Registry.
+  license:
+    name: MPL-2.0
+  title: RMBL Nomad Registry API
+  version: "1.0"
+paths:
+  /{username}:
+    get:
+      description: Fetch all resources belonging to a specific user or organization
+        namespace.
+      parameters:
+      - description: User or Organization namespace
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: Search query
+        in: query
+        name: q
+        type: string
+      - description: Sort order (latest, stars, alpha, downloads)
+        in: query
+        name: sort
+        type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: HTML content
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            type: string
+      summary: Get user or organization profile
+      tags:
+      - resources
+  /{username}/{resourcename}:
+    get:
+      description: Fetch metadata for a specific Nomad resource within a user or organization
+        namespace.
+      parameters:
+      - description: User or Organization namespace
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: Resource name
+        in: path
+        name: resourcename
+        required: true
+        type: string
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: HTML content
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            type: string
+      summary: Get resource details
+      tags:
+      - resources
+  /{username}/{resourcename}/raw:
+    get:
+      description: Get the raw .nomad.hcl content for the latest version of a resource.
+      parameters:
+      - description: User namespace
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: Resource name
+        in: path
+        name: resourcename
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Raw HCL content
+          schema:
+            type: string
+      summary: Get raw HCL content
+      tags:
+      - resources
+  /{username}/{resourcename}/v:
+    get:
+      description: Fetch metadata and README for a specific version of a resource.
+        Usually called via HTMX.
+      parameters:
+      - description: User or Organization namespace
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: Resource name
+        in: path
+        name: resourcename
+        required: true
+        type: string
+      - description: Version string (e.g., v1.0.0)
+        in: query
+        name: version
+        required: true
+        type: string
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: HTML fragment
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            type: string
+      summary: Get specific resource version details
+      tags:
+      - resources
+  /{username}/{resourcename}/v/{version}/raw:
+    get:
+      description: Get the raw .nomad.hcl or template content for a specific version
+        of a resource. Used by Nomad CLI.
+      parameters:
+      - description: User or Organization namespace
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: Resource name
+        in: path
+        name: resourcename
+        required: true
+        type: string
+      - description: Version string
+        in: path
+        name: version
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Raw content
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            type: string
+      summary: Get raw HCL content for a specific version
+      tags:
+      - resources
+  /{username}/v1/packs:
+    get:
+      description: Fetch a list of all Nomad Packs within a specific user or organization
+        namespace.
+      parameters:
+      - description: Namespace (user or org)
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/handlers.PackSummary'
+              type: array
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: List packs in a namespace
+      tags:
+      - nomad-pack
+  /{username}/v1/packs/{packname}:
+    get:
+      description: Fetch detailed metadata and version history for a specific Nomad
+        Pack.
+      parameters:
+      - description: Namespace (user or org)
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: Pack name
+        in: path
+        name: packname
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.PackDetail'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get pack details
+      tags:
+      - nomad-pack
+  /about:
+    get:
+      description: Renders the about page.
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: HTML content
+          schema:
+            type: string
+      summary: Get about page
+      tags:
+      - pages
+  /api/dev/packs:
+    get:
+      description: Lists the example packs found in the local examples directory.
+        Useful for development and testing.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.DevPack'
+            type: array
+      summary: List example packs (Dev)
+      tags:
+      - dev
+  /docs:
+    get:
+      description: Renders the documentation page, optionally loading content from
+        REQUIREMENTS.md.
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: HTML content
+          schema:
+            type: string
+      summary: Get documentation page
+      tags:
+      - pages
+  /jobs:
+    get:
+      description: Fetch a searchable and paginated list of all Nomad Jobs.
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        type: string
+      - description: Filter by tag
+        in: query
+        name: tag
+        type: string
+      - description: Sort order
+        in: query
+        name: sort
+        type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: HTML content
+          schema:
+            type: string
+      summary: List nomad jobs
+      tags:
+      - resources
+  /new:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: Register a new Nomad job or pack in the registry.
+      parameters:
+      - description: Resource name
+        in: formData
+        name: name
+        required: true
+        type: string
+      - description: Resource type (job, pack)
+        in: formData
+        name: type
+        required: true
+        type: string
+      - description: Namespace owner (user or org:ID)
+        in: formData
+        name: owner
+        required: true
+        type: string
+      - description: Git repository URL
+        in: formData
+        name: repository_url
+        required: true
+        type: string
+      - description: Initial version
+        in: formData
+        name: version
+        required: true
+        type: string
+      responses:
+        "302":
+          description: Redirect to new resource
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+      summary: Create a new resource
+      tags:
+      - resources
+  /packs:
+    get:
+      description: Fetch a searchable and paginated list of all Nomad Packs.
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        type: string
+      - description: Filter by tag
+        in: query
+        name: tag
+        type: string
+      - description: Sort order
+        in: query
+        name: sort
+        type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: HTML content
+          schema:
+            type: string
+      summary: List nomad packs
+      tags:
+      - resources
+  /registries:
+    get:
+      description: Fetch a list of all users and organizations that have published
+        at least one Nomad Pack.
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: HTML content
+          schema:
+            type: string
+      summary: List all namespaces acting as registries
+      tags:
+      - registries
+  /resource/{id}:
+    delete:
+      description: Permantently remove a resource and all its versions from the registry.
+      parameters:
+      - description: Resource ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "403":
+          description: Unauthorized
+          schema:
+            type: string
+      summary: Delete a resource
+      tags:
+      - resources
+  /resource/{id}/edit:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: Update the metadata, repository URL, or tags for an existing resource.
+      parameters:
+      - description: Resource ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New resource name
+        in: formData
+        name: name
+        required: true
+        type: string
+      - description: New resource type
+        in: formData
+        name: type
+        required: true
+        type: string
+      - description: New description
+        in: formData
+        name: description
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "403":
+          description: Unauthorized
+          schema:
+            type: string
+      summary: Update resource details
+      tags:
+      - resources
+  /resource/{id}/star:
+    post:
+      description: Star or unstar a resource for the authenticated user. Returns updated
+        star button HTML.
+      parameters:
+      - description: Resource ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: HTML fragment
+          schema:
+            type: string
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+      summary: Toggle star status
+      tags:
+      - resources
+  /resource/{id}/webhook:
+    post:
+      consumes:
+      - application/json
+      description: Endpoint for receiving push and tag events from GitHub or GitLab.
+        Automatically refreshes documentation or creates new versions.
+      parameters:
+      - description: Resource ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Webhook secret
+        in: query
+        name: secret
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+      summary: Receive Git webhooks
+      tags:
+      - webhooks
+  /search:
+    get:
+      description: Search for jobs or packs with optional filtering by type and tag.
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        type: string
+      - description: Resource type (job or pack)
+        in: query
+        name: type
+        type: string
+      - description: Filter by tag
+        in: query
+        name: tag
+        type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: HTML content
+          schema:
+            type: string
+      summary: Search nomad resources
+      tags:
+      - resources
+  /v1/packs:
+    get:
+      description: Fetch a list of all Nomad Packs available in the registry across
+        all namespaces.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/handlers.PackSummary'
+              type: array
+            type: object
+      summary: List all packs
+      tags:
+      - nomad-pack
+  /v1/packs/search:
+    get:
+      description: Search for Nomad Packs across all namespaces by name or description.
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/handlers.PackSummary'
+              type: array
+            type: object
+      summary: Search packs
+      tags:
+      - nomad-pack
+  /v1/registries:
+    get:
+      description: Returns a JSON list of all namespaces that contain at least one
+        Nomad Pack.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                type: string
+              type: array
+            type: object
+      summary: List all registry namespaces (JSON)
+      tags:
+      - nomad-pack
+swagger: "2.0"
