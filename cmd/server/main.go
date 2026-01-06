@@ -112,14 +112,23 @@ func main() {
 	}))
 
 	// CSRF Middleware
+	// When behind a reverse proxy (Traefik), check X-Forwarded-Proto for secure status
+	isProduction := os.Getenv("ENV") == "production"
 	app.Use(csrf.New(csrf.Config{
-		KeyLookup:      "header:X-CSRF-Token",
+		KeyLookup:      "header:X-CSRF-Token,form:csrf_token",
 		ContextKey:     "csrf",
 		CookieName:     "csrf_token",
 		CookieSameSite: "Lax",
-		CookieSecure:   os.Getenv("ENV") == "production", // Only send over HTTPS in production
-		CookieHTTPOnly: true,                             // Prevent XSS access
-		Expiration:     1 * time.Hour,                    // Token expires after 1 hour
+		CookieSecure:   isProduction,
+		CookieHTTPOnly: true,
+		Expiration:     1 * time.Hour,
+		// Trust X-Forwarded-Proto header from reverse proxy
+		SingleUseToken: false,
+		ErrorHandler: func(c *fiber.Ctx, err error) error {
+			// Log CSRF errors for debugging
+			log.Printf("CSRF error: %v, Path: %s, Method: %s", err, c.Path(), c.Method())
+			return c.Status(fiber.StatusForbidden).SendString("Forbidden - CSRF token invalid")
+		},
 	}))
 
 	// Middleware to check session and pass user to views
