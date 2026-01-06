@@ -48,7 +48,7 @@ A modernized registry for HashiCorp Nomad job files and Nomad Packs, built with 
 
 ## Deployment
 
-For production setup, database configuration, and OAuth provider instructions, see the [Deployment Guide](DEPLOYMENT.md).
+For production setup and self-hosting instructions, see the [Self-Hosting Guide](SELF-HOSTING.md).
 
 ### Using Docker
 
