@@ -115,7 +115,7 @@ func main() {
 	// When behind a reverse proxy (Traefik), check X-Forwarded-Proto for secure status
 	isProduction := os.Getenv("ENV") == "production"
 	app.Use(csrf.New(csrf.Config{
-		KeyLookup:      "header:X-CSRF-Token,form:csrf_token",
+		KeyLookup:      "header:X-CSRF-Token",
 		ContextKey:     "csrf",
 		CookieName:     "csrf_token",
 		CookieSameSite: "Lax",
