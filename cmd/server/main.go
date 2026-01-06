@@ -83,9 +83,16 @@ func main() {
 	app.Use(logger.New())
 
 	// HTTPS enforcement middleware (only in production)
+	// Check X-Forwarded-Proto header when behind a reverse proxy (Traefik, nginx, etc.)
 	app.Use(func(c *fiber.Ctx) error {
-		if os.Getenv("ENV") == "production" && c.Protocol() != "https" {
-			return c.Redirect("https://"+c.Hostname()+c.OriginalURL(), fiber.StatusMovedPermanently)
+		if os.Getenv("ENV") == "production" {
+			proto := c.Get("X-Forwarded-Proto")
+			if proto == "" {
+				proto = c.Protocol()
+			}
+			if proto != "https" {
+				return c.Redirect("https://"+c.Hostname()+c.OriginalURL(), fiber.StatusMovedPermanently)
+			}
 		}
 		return c.Next()
 	})
