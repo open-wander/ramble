@@ -76,7 +76,10 @@ func main() {
 
 	// 3. Setup Fiber
 	app := fiber.New(fiber.Config{
-		Views: engine,
+		Views:                   engine,
+		EnableTrustedProxyCheck: true,
+		TrustedProxies:          []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"},
+		ProxyHeader:             fiber.HeaderXForwardedFor,
 	})
 
 	// 4. Middleware
