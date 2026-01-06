@@ -28,6 +28,11 @@ jobs:
   build:
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
     steps:
     - uses: actions/checkout@v4
 
@@ -57,6 +62,7 @@ jobs:
           type=sha,prefix=
 
     - name: Build and Push
+      id: push
       uses: docker/build-push-action@v6
       with:
         context: .
@@ -64,6 +70,14 @@ jobs:
         push: ${{ github.event_name != 'pull_request' }}
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
+
+    - name: Attest Build Provenance
+      if: github.event_name != 'pull_request'
+      uses: actions/attest-build-provenance@v2
+      with:
+        subject-name: ghcr.io/${{ github.repository }}
+        subject-digest: ${{ steps.push.outputs.digest }}
+        push-to-registry: true
 
   release:
     needs: build
