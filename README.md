@@ -59,4 +59,4 @@ docker run -p 3000:3000 -e DATABASE_URL="your-db-url" ramble
 
 ## License
 
-MIT
+[MPL-2.0](LICENSE)
