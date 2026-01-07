@@ -14,7 +14,8 @@ Disallow: /reset-password
 Disallow: /verify-email
 Disallow: /auth/
 
-# Allow API endpoints for indexing
+# API endpoints (content-negotiated via Accept header)
+# /v1/ routes for global pack registry
 Allow: /v1/
 
 # Crawl delay (be nice to smaller servers)

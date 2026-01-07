@@ -13,6 +13,17 @@ type Flash struct {
 	Message string
 }
 
+// wantsJSON checks if the client prefers JSON response based on Accept header
+func wantsJSON(c *fiber.Ctx) bool {
+	accept := c.Get("Accept")
+	// Check for explicit JSON preference
+	if strings.Contains(accept, "application/json") {
+		return true
+	}
+	// If no Accept header or accepts anything, default to HTML for browsers
+	return false
+}
+
 // escapeLikeString escapes special wildcard characters in LIKE/ILIKE queries
 // to prevent SQL injection via wildcard abuse
 func escapeLikeString(s string) string {

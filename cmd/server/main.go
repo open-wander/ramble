@@ -265,9 +265,9 @@ func main() {
 	app.Get("/v1/packs/search", handlers.SearchPacksAPI)
 	app.Get("/v1/registries", handlers.ListUserRegistriesAPI)
 
-	// Nomad Pack Registry API (Namespaced)
-	app.Get("/:username/v1/packs", handlers.ListPacksAPI)
-	app.Get("/:username/v1/packs/:packname", handlers.GetPackAPI)
+	// Note: Namespaced pack API is handled via content negotiation on:
+	//   GET /:username (Accept: application/json) -> pack list
+	//   GET /:username/:resourcename (Accept: application/json) -> pack details
 
 	// 7. Start Server
 	log.Fatal(app.Listen(":3000"))
