@@ -210,6 +210,22 @@ func GetResource(c *fiber.Ctx) error {
 		_ = json.Unmarshal([]byte(resource.Versions[0].Variables), &latestVariables)
 	}
 
+	// API response for nomad-pack registry
+	if wantsJSON(c) {
+		versions := make([]PackVersion, len(resource.Versions))
+		for i, v := range resource.Versions {
+			versions[i] = PackVersion{
+				Version: v.Version,
+				URL:     getDownloadURL(resource.RepositoryURL, v.Version),
+			}
+		}
+		return c.JSON(PackDetail{
+			Name:        resource.Name,
+			Description: resource.Description,
+			Versions:    versions,
+		})
+	}
+
 	// Generate SEO data
 	seoData := GetResourceSEO(c, resource, displayName)
 
@@ -462,7 +478,20 @@ func GetUserProfile(c *fiber.Ctx) error {
 
 	}
 
-
+	// API response for nomad-pack registry
+	if wantsJSON(c) {
+		// Filter to only packs for nomad-pack compatibility
+		packs := make([]PackSummary, 0)
+		for _, r := range results {
+			if r.Type == models.ResourceTypePack {
+				packs = append(packs, PackSummary{
+					Name:        r.Name,
+					Description: r.Description,
+				})
+			}
+		}
+		return c.JSON(fiber.Map{"packs": packs})
+	}
 
 	// If it's an HTMX request, render the partial
 

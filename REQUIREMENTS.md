@@ -166,25 +166,36 @@ See all available registries on the [Registries](/registries) page.
 
 ## API
 
-Ramble provides a REST API for programmatic access. The API follows the Nomad Pack registry specification.
+Ramble provides a REST API for programmatic access. The API uses content negotiation - send `Accept: application/json` header to receive JSON responses.
 
-### Endpoints
+### Namespaced Endpoints (Content-Negotiated)
+
+| Endpoint | Accept Header | Response |
+|----------|---------------|----------|
+| `GET /{user}` | `text/html` | User profile page |
+| `GET /{user}` | `application/json` | Pack list (JSON) |
+| `GET /{user}/{pack}` | `text/html` | Resource detail page |
+| `GET /{user}/{pack}` | `application/json` | Pack metadata (JSON) |
+
+### Global Endpoints
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /{user}` | List user's packs (registry format) |
-| `GET /orgs/{org}` | List organization's packs |
-| `GET /{user}/{pack}` | Get pack metadata |
-| `GET /{user}/{pack}@{version}` | Get specific version |
+| `GET /v1/packs` | List all packs across all namespaces |
+| `GET /v1/packs/search?q=query` | Search packs |
+| `GET /v1/registries` | List all registry namespaces |
 
 ### Example
 
 ```bash
-# List packs for a user
-curl https://ramble.openwander.org/myuser
+# List packs for a user (JSON)
+curl -H "Accept: application/json" https://ramble.openwander.org/myuser
 
-# Get pack details
-curl https://ramble.openwander.org/myuser/my-pack
+# Get pack details (JSON)
+curl -H "Accept: application/json" https://ramble.openwander.org/myuser/my-pack
+
+# Search all packs
+curl https://ramble.openwander.org/v1/packs/search?q=traefik
 ```
 
 Full API documentation is available at `/swagger/` on instances with Swagger enabled (development mode).
