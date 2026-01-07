@@ -163,6 +163,7 @@ func main() {
 	// 5. Static Files
 	app.Static("/public", "./public")
 	app.Static("/favicon.ico", "./public/favicon.ico")
+	app.Static("/robots.txt", "./public/robots.txt")
 
 	// SEO Routes
 	app.Get("/sitemap.xml", handlers.GenerateSitemap)
