@@ -52,6 +52,9 @@ func InitSession() {
 		CookiePath:     "/",
 	})
 
+	// Configure goth_fiber to use the same session store
+	goth_fiber.SessionStore = Store
+
 	// Initialize OAuth Providers
 	baseURL := os.Getenv("BASE_URL")
 	if baseURL == "" {
