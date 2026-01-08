@@ -138,10 +138,7 @@ func AuthCallback(c *fiber.Ctx) error {
 }
 
 func GetLogin(c *fiber.Ctx) error {
-	return c.Render("login", fiber.Map{
-		"Flash":     c.Locals("Flash"),
-		"CSRFToken": c.Locals("CSRFToken"),
-	}, "layouts/main")
+	return c.Render("login", BaseContext(c), "layouts/main")
 }
 
 func PostLogin(c *fiber.Ctx) error {
@@ -186,10 +183,7 @@ func PostLogin(c *fiber.Ctx) error {
 }
 
 func GetSignup(c *fiber.Ctx) error {
-	return c.Render("signup", fiber.Map{
-		"Flash":     c.Locals("Flash"),
-		"CSRFToken": c.Locals("CSRFToken"),
-	}, "layouts/main")
+	return c.Render("signup", BaseContext(c), "layouts/main")
 }
 
 func PostSignup(c *fiber.Ctx) error {
@@ -298,10 +292,7 @@ func Logout(c *fiber.Ctx) error {
 }
 
 func GetForgotPassword(c *fiber.Ctx) error {
-	return c.Render("forgot_password", fiber.Map{
-		"Flash":     c.Locals("Flash"),
-		"CSRFToken": c.Locals("CSRFToken"),
-	}, "layouts/main")
+	return c.Render("forgot_password", BaseContext(c), "layouts/main")
 }
 
 func PostForgotPassword(c *fiber.Ctx) error {
@@ -362,11 +353,9 @@ func GetResetPassword(c *fiber.Ctx) error {
 		return c.Redirect("/forgot-password")
 	}
 
-	return c.Render("reset_password", fiber.Map{
-		"Token":     token,
-		"CSRFToken": c.Locals("CSRFToken"),
-		"Flash":     c.Locals("Flash"),
-	}, "layouts/main")
+	return c.Render("reset_password", MergeContext(BaseContext(c), fiber.Map{
+		"Token": token,
+	}), "layouts/main")
 }
 
 func PostResetPassword(c *fiber.Ctx) error {

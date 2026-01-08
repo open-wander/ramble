@@ -109,17 +109,13 @@ func getDocsPage(c *fiber.Ctx, page string) error {
 		}
 	}
 
-	return c.Render("docs", fiber.Map{
-		"IsLoggedIn":  c.Locals("UserID") != nil,
+	return c.Render("docs", MergeContext(BaseContext(c), fiber.Map{
 		"Page":        "docs",
 		"Title":       title,
 		"DocsContent": docsContent,
 		"DocSections": getDocSections(),
 		"CurrentPage": page,
-		"Flash":       c.Locals("Flash"),
-		"CSRFToken":   c.Locals("CSRFToken"),
-		"CurrentUser": c.Locals("User"),
-	}, "layouts/main")
+	}), "layouts/main")
 }
 
 func getPageTitle(page string) string {
@@ -150,12 +146,8 @@ func getPageTitle(page string) string {
 // @Success 200 {string} string "HTML content"
 // @Router /about [get]
 func GetAbout(c *fiber.Ctx) error {
-	return c.Render("about", fiber.Map{
-		"IsLoggedIn":  c.Locals("UserID") != nil,
-		"Page":        "about",
-		"Title":       "About RMBL",
-		"Flash":       c.Locals("Flash"),
-		"CSRFToken":   c.Locals("CSRFToken"),
-		"CurrentUser": c.Locals("User"),
-	}, "layouts/main")
+	return c.Render("about", MergeContext(BaseContext(c), fiber.Map{
+		"Page":  "about",
+		"Title": "About RMBL",
+	}), "layouts/main")
 }

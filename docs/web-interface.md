@@ -128,41 +128,71 @@ From the organization settings:
 
 When creating a new resource, select the organization as the owner instead of your personal account.
 
-## Using Ramble with nomad-pack
+## Using the Ramble CLI
 
-Ramble is compatible with the `nomad-pack` CLI tool.
+The Ramble CLI lets you discover, render, and run packs directly from the registry.
 
-### Adding the Global Registry
+### Installation
 
-Add the entire Ramble catalog:
+See the [Getting Started](getting-started.md) guide for installation instructions.
+
+### Listing Packs
+
 ```bash
-nomad-pack registry add ramble https://ramble.openwander.org
-```
+# List all packs
+ramble pack list
 
-### Adding a User/Organization Registry
+# List packs from a specific user
+ramble pack list --namespace myuser
 
-Subscribe to a specific user or organization:
-```bash
-nomad-pack registry add myuser https://ramble.openwander.org/myuser
-nomad-pack registry add myorg https://ramble.openwander.org/orgs/myorg
+# Search for packs
+ramble pack list --search mysql
 ```
 
 ### Running a Pack
 
 ```bash
-# List available packs
-nomad-pack registry list --registry=ramble
+# Run a pack (renders and submits to Nomad)
+ramble pack run myuser/mysql --var db_name=mydb
 
-# Run a pack
-nomad-pack run <pack-name> --registry=ramble
+# Dry run (render only, don't submit)
+ramble pack run myuser/mysql --var db_name=mydb --dry-run
 
 # Run a specific version
-nomad-pack run <pack-name>@1.0.0 --registry=ramble
+ramble pack run myuser/mysql@v1.0.0 --var db_name=mydb
+```
+
+### Managing Registries
+
+```bash
+# List configured registries
+ramble registry list
+
+# Add a custom registry
+ramble registry add myregistry https://my-registry.example.com
+
+# Set default registry
+ramble registry default myregistry
 ```
 
 ### Viewing Registries
 
 See all available registries on the [Registries](/registries) page.
+
+## Using with nomad-pack (Alternative)
+
+Ramble is also compatible with the `nomad-pack` CLI tool:
+
+```bash
+# Add Ramble as a registry
+nomad-pack registry add ramble https://ramble.openwander.org
+
+# List packs
+nomad-pack registry list --registry=ramble
+
+# Run a pack
+nomad-pack run <pack-name> --registry=ramble
+```
 
 ## API
 

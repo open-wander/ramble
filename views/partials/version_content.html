@@ -4,7 +4,7 @@
         <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Quick Run ({{.Version.Version}})</dt>
         <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
             <div class="relative group">
-                <pre class="bg-indigo-900 text-indigo-100 p-3 rounded-md overflow-x-auto text-xs font-mono"><code>{{if eq .Resource.Type "job"}}nomad job run http://{{.Host}}/{{.Resource.User.Username}}/{{.Resource.Name}}/v/{{.Version.Version}}/raw{{else}}nomad-pack run {{.Resource.Name}} --version {{.Version.Version}} --registry-url http://{{.Host}}/{{.Resource.User.Username}}{{end}}</code></pre>
+                <pre class="bg-indigo-900 text-indigo-100 p-3 rounded-md overflow-x-auto text-xs font-mono"><code>{{if eq .Resource.Type "job"}}ramble job run {{.Resource.User.Username}}/{{.Resource.Name}}@{{.Version.Version}}{{else}}ramble pack run {{.Resource.User.Username}}/{{.Resource.Name}}@{{.Version.Version}}{{end}}</code></pre>
                 <button 
                     _="on click call navigator.clipboard.writeText(my.previousElementSibling.innerText) then set my.innerText to 'Copied!' then wait 2s then set my.innerText to 'Copy'"
                     class="absolute top-2 right-2 bg-indigo-800 hover:bg-indigo-700 text-white px-2 py-1 rounded text-xs transition-colors"

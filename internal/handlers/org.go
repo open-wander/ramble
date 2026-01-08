@@ -10,12 +10,7 @@ import (
 )
 
 func GetCreateOrg(c *fiber.Ctx) error {
-	isLoggedIn := c.Locals("UserID") != nil
-	return c.Render("new_org", fiber.Map{
-		"IsLoggedIn": isLoggedIn,
-		"Flash":      c.Locals("Flash"),
-		"CSRFToken":  c.Locals("CSRFToken"),
-	}, "layouts/main")
+	return c.Render("new_org", BaseContext(c), "layouts/main")
 }
 
 func PostCreateOrg(c *fiber.Ctx) error {
@@ -96,12 +91,9 @@ func GetOrgSettings(c *fiber.Ctx) error {
 	var org models.Organization
 	database.DB.Preload("Memberships.User").Where("name ILIKE ?", orgName).First(&org)
 
-	return c.Render("org_settings", fiber.Map{
+	return c.Render("org_settings", MergeContext(BaseContext(c), fiber.Map{
 		"Organization": org,
-		"IsLoggedIn":   true,
-		"CSRFToken":    c.Locals("CSRFToken"),
-		"Flash":        c.Locals("Flash"),
-	}, "layouts/main")
+	}), "layouts/main")
 }
 
 func PostUpdateOrg(c *fiber.Ctx) error {

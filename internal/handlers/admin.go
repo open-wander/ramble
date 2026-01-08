@@ -38,44 +38,35 @@ func GetAdminDashboard(c *fiber.Ctx) error {
 	var latestResources []models.NomadResource
 	database.DB.Preload("User").Order("created_at desc").Limit(5).Find(&latestResources)
 
-	return c.Render("admin/dashboard", fiber.Map{
+	return c.Render("admin/dashboard", MergeContext(BaseContext(c), fiber.Map{
 		"UserCount":       userCount,
 		"OrgCount":        orgCount,
 		"ResourceCount":   resourceCount,
 		"StarCount":       starCount,
 		"LatestUsers":     latestUsers,
 		"LatestResources": latestResources,
-		"IsLoggedIn":      true,
-		"CurrentUser":     c.Locals("User"),
 		"Page":            "admin",
-		"CSRFToken":       c.Locals("CSRFToken"),
-	}, "layouts/main")
+	}), "layouts/main")
 }
 
 func GetAdminUsers(c *fiber.Ctx) error {
 	var users []models.User
 	database.DB.Order("id asc").Find(&users)
 
-	return c.Render("admin/users", fiber.Map{
-		"Users":       users,
-		"IsLoggedIn":  true,
-		"CurrentUser": c.Locals("User"),
-		"Page":        "admin_users",
-		"CSRFToken":   c.Locals("CSRFToken"),
-	}, "layouts/main")
+	return c.Render("admin/users", MergeContext(BaseContext(c), fiber.Map{
+		"Users": users,
+		"Page":  "admin_users",
+	}), "layouts/main")
 }
 
 func GetAdminResources(c *fiber.Ctx) error {
 	var resources []models.NomadResource
 	database.DB.Preload("User").Order("id asc").Find(&resources)
 
-	return c.Render("admin/resources", fiber.Map{
-		"Resources":   resources,
-		"IsLoggedIn":  true,
-		"CurrentUser": c.Locals("User"),
-		"Page":        "admin_resources",
-		"CSRFToken":   c.Locals("CSRFToken"),
-	}, "layouts/main")
+	return c.Render("admin/resources", MergeContext(BaseContext(c), fiber.Map{
+		"Resources": resources,
+		"Page":      "admin_resources",
+	}), "layouts/main")
 }
 
 // PostToggleAdmin toggles a user's admin status
@@ -183,13 +174,10 @@ func GetAdminOrganizations(c *fiber.Ctx) error {
 	var orgs []models.Organization
 	database.DB.Preload("Memberships.User").Preload("Resources").Order("id asc").Find(&orgs)
 
-	return c.Render("admin/organizations", fiber.Map{
+	return c.Render("admin/organizations", MergeContext(BaseContext(c), fiber.Map{
 		"Organizations": orgs,
-		"IsLoggedIn":    true,
-		"CurrentUser":   c.Locals("User"),
 		"Page":          "admin_orgs",
-		"CSRFToken":     c.Locals("CSRFToken"),
-	}, "layouts/main")
+	}), "layouts/main")
 }
 
 // GetEditOrganization returns the edit modal for an organization
