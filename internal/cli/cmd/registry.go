@@ -7,6 +7,7 @@ import (
 	"text/tabwriter"
 
 	"rmbl/internal/cli/config"
+	"rmbl/internal/pack"
 
 	"github.com/spf13/cobra"
 )
@@ -74,8 +75,20 @@ Examples:
 	RunE: runRegistryDefault,
 }
 
+var registryBrowseCmd = &cobra.Command{
+	Use:   "browse",
+	Short: "Browse available namespaces on the registry",
+	Long: `List or search namespaces (users/organizations) that have published packs.
+
+Examples:
+  ramble registry browse                  List all namespaces
+  ramble registry browse --search wander  Search for namespaces`,
+	RunE: runRegistryBrowse,
+}
+
 var (
-	registryNamespace string
+	registryNamespace    string
+	registryBrowseSearch string
 )
 
 func init() {
@@ -84,8 +97,10 @@ func init() {
 	registryCmd.AddCommand(registryListCmd)
 	registryCmd.AddCommand(registryRemoveCmd)
 	registryCmd.AddCommand(registryDefaultCmd)
+	registryCmd.AddCommand(registryBrowseCmd)
 
 	registryAddCmd.Flags().StringVarP(&registryNamespace, "namespace", "n", "", "Limit registry to a specific namespace")
+	registryBrowseCmd.Flags().StringVarP(&registryBrowseSearch, "search", "s", "", "Search namespaces by name")
 }
 
 func runRegistryAdd(cmd *cobra.Command, args []string) error {
@@ -207,5 +222,42 @@ func runRegistryDefault(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Default registry set to '%s'\n", name)
+	return nil
+}
+
+func runRegistryBrowse(cmd *cobra.Command, args []string) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	registryURL := cfg.GetDefaultURL()
+	client := pack.NewClient(registryURL)
+
+	var namespaces []string
+	if registryBrowseSearch != "" {
+		namespaces, err = client.SearchRegistries(registryBrowseSearch)
+	} else {
+		namespaces, err = client.ListRegistries()
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to browse registries: %w", err)
+	}
+
+	if len(namespaces) == 0 {
+		if registryBrowseSearch != "" {
+			fmt.Printf("No namespaces found matching '%s'\n", registryBrowseSearch)
+		} else {
+			fmt.Println("No namespaces found")
+		}
+		return nil
+	}
+
+	fmt.Println("NAMESPACE")
+	for _, ns := range namespaces {
+		fmt.Println(ns)
+	}
+
 	return nil
 }
