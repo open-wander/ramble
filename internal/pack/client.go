@@ -13,6 +13,7 @@ import (
 // PackSummary represents a pack in list responses
 type PackSummary struct {
 	Name        string `json:"name"`
+	Namespace   string `json:"namespace"`
 	Description string `json:"description"`
 }
 
@@ -42,6 +43,7 @@ type PackListResponse struct {
 // JobSummary represents a job in list responses
 type JobSummary struct {
 	Name        string `json:"name"`
+	Namespace   string `json:"namespace"`
 	Description string `json:"description"`
 }
 

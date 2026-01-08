@@ -11,6 +11,7 @@ import (
 
 type PackSummary struct {
 	Name        string `json:"name"`
+	Namespace   string `json:"namespace"`
 	Description string `json:"description"`
 }
 
@@ -84,7 +85,7 @@ func ListPacksAPI(c *fiber.Ctx) error {
 // @Router /v1/packs [get]
 func ListAllPacksAPI(c *fiber.Ctx) error {
 	var resources []models.NomadResource
-	if err := database.DB.Where("type = ?", models.ResourceTypePack).Find(&resources).Error; err != nil {
+	if err := database.DB.Preload("User").Preload("Organization").Where("type = ?", models.ResourceTypePack).Find(&resources).Error; err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Database error"})
 	}
 
@@ -92,11 +93,23 @@ func ListAllPacksAPI(c *fiber.Ctx) error {
 	for i, r := range resources {
 		summaries[i] = PackSummary{
 			Name:        r.Name,
+			Namespace:   getResourceNamespace(r),
 			Description: r.Description,
 		}
 	}
 
 	return c.JSON(fiber.Map{"packs": summaries})
+}
+
+// getResourceNamespace returns the namespace (username or org name) for a resource
+func getResourceNamespace(r models.NomadResource) string {
+	if r.OrganizationID != nil && r.Organization.Name != "" {
+		return r.Organization.Name
+	}
+	if r.User.Username != "" {
+		return r.User.Username
+	}
+	return ""
 }
 
 // GetPackAPI godoc
@@ -258,7 +271,8 @@ func SearchPacksAPI(c *fiber.Ctx) error {
 
 	var resources []models.NomadResource
 	searchParam := "%" + escapeLikeString(query) + "%"
-	err := database.DB.Where("type = ? AND (name ILIKE ? ESCAPE '\\' OR description ILIKE ? ESCAPE '\\')", models.ResourceTypePack, searchParam, searchParam).
+	err := database.DB.Preload("User").Preload("Organization").
+		Where("type = ? AND (name ILIKE ? ESCAPE '\\' OR description ILIKE ? ESCAPE '\\')", models.ResourceTypePack, searchParam, searchParam).
 		Limit(20).Find(&resources).Error
 
 	if err != nil {
@@ -269,6 +283,7 @@ func SearchPacksAPI(c *fiber.Ctx) error {
 	for i, r := range resources {
 		summaries[i] = PackSummary{
 			Name:        r.Name,
+			Namespace:   getResourceNamespace(r),
 			Description: r.Description,
 		}
 	}
@@ -279,6 +294,7 @@ func SearchPacksAPI(c *fiber.Ctx) error {
 // JobSummary represents a job in list responses
 type JobSummary struct {
 	Name        string `json:"name"`
+	Namespace   string `json:"namespace"`
 	Description string `json:"description"`
 }
 
@@ -298,7 +314,7 @@ type JobDetail struct {
 // @Router /v1/jobs [get]
 func ListAllJobsAPI(c *fiber.Ctx) error {
 	var resources []models.NomadResource
-	if err := database.DB.Where("type = ?", models.ResourceTypeJob).Find(&resources).Error; err != nil {
+	if err := database.DB.Preload("User").Preload("Organization").Where("type = ?", models.ResourceTypeJob).Find(&resources).Error; err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Database error"})
 	}
 
@@ -306,6 +322,7 @@ func ListAllJobsAPI(c *fiber.Ctx) error {
 	for i, r := range resources {
 		summaries[i] = JobSummary{
 			Name:        r.Name,
+			Namespace:   getResourceNamespace(r),
 			Description: r.Description,
 		}
 	}
@@ -329,7 +346,8 @@ func SearchJobsAPI(c *fiber.Ctx) error {
 
 	var resources []models.NomadResource
 	searchParam := "%" + escapeLikeString(query) + "%"
-	err := database.DB.Where("type = ? AND (name ILIKE ? ESCAPE '\\' OR description ILIKE ? ESCAPE '\\')", models.ResourceTypeJob, searchParam, searchParam).
+	err := database.DB.Preload("User").Preload("Organization").
+		Where("type = ? AND (name ILIKE ? ESCAPE '\\' OR description ILIKE ? ESCAPE '\\')", models.ResourceTypeJob, searchParam, searchParam).
 		Limit(20).Find(&resources).Error
 
 	if err != nil {
@@ -340,6 +358,7 @@ func SearchJobsAPI(c *fiber.Ctx) error {
 	for i, r := range resources {
 		summaries[i] = JobSummary{
 			Name:        r.Name,
+			Namespace:   getResourceNamespace(r),
 			Description: r.Description,
 		}
 	}

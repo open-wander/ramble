@@ -75,10 +75,14 @@ func runJobList(cmd *cobra.Command, args []string) error {
 	fmt.Fprintln(w, "NAME\tDESCRIPTION")
 	for _, j := range jobs {
 		desc := j.Description
-		if len(desc) > 60 {
-			desc = desc[:57] + "..."
+		if len(desc) > 50 {
+			desc = desc[:47] + "..."
 		}
-		fmt.Fprintf(w, "%s\t%s\n", j.Name, desc)
+		fullName := j.Name
+		if j.Namespace != "" {
+			fullName = j.Namespace + "/" + j.Name
+		}
+		fmt.Fprintf(w, "%s\t%s\n", fullName, desc)
 	}
 	return w.Flush()
 }
