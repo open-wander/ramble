@@ -107,3 +107,84 @@ func TestSignupAndLogin(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, 200, respLogin.StatusCode)
 }
+
+func TestSearch_WithTypeFilter(t *testing.T) {
+	app := setupTestApp()
+	app.Get("/search", Search)
+
+	req := httptest.NewRequest("GET", "/search?q=traefik&type=pack", nil)
+	resp, err := app.Test(req)
+
+	assert.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+}
+
+func TestSearch_WithTagFilter(t *testing.T) {
+	app := setupTestApp()
+	app.Get("/search", Search)
+
+	req := httptest.NewRequest("GET", "/search?tag=database", nil)
+	resp, err := app.Test(req)
+
+	assert.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+}
+
+func TestSearch_WithSortOrder(t *testing.T) {
+	app := setupTestApp()
+	app.Get("/search", Search)
+
+	// Test different sort orders
+	sortOrders := []string{"latest", "popular", "name"}
+	for _, sort := range sortOrders {
+		req := httptest.NewRequest("GET", "/search?q=test&sort="+sort, nil)
+		resp, err := app.Test(req)
+
+		assert.Nil(t, err, "Sort order: %s", sort)
+		assert.Equal(t, 200, resp.StatusCode, "Sort order: %s", sort)
+	}
+}
+
+func TestSearch_WithPagination(t *testing.T) {
+	app := setupTestApp()
+	app.Get("/search", Search)
+
+	req := httptest.NewRequest("GET", "/search?q=test&page=2", nil)
+	resp, err := app.Test(req)
+
+	assert.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+}
+
+func TestSearch_EmptyQuery(t *testing.T) {
+	app := setupTestApp()
+	app.Get("/search", Search)
+
+	req := httptest.NewRequest("GET", "/search", nil)
+	resp, err := app.Test(req)
+
+	assert.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+}
+
+func TestSearch_CombinedFilters(t *testing.T) {
+	app := setupTestApp()
+	app.Get("/search", Search)
+
+	req := httptest.NewRequest("GET", "/search?q=redis&type=pack&tag=cache&sort=popular&page=1", nil)
+	resp, err := app.Test(req)
+
+	assert.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+}
+
+func TestHome_WithPagination(t *testing.T) {
+	app := setupTestApp()
+	app.Get("/", Home)
+
+	req := httptest.NewRequest("GET", "/?page=2", nil)
+	resp, err := app.Test(req)
+
+	assert.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+}
