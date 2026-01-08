@@ -1,25 +1,87 @@
-<div class="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-    <div class="text-center mb-12">
+<div class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+    <div class="text-center mb-8">
         <h2 class="text-base font-semibold text-indigo-600 dark:text-indigo-400 tracking-wide uppercase">Documentation</h2>
         <p class="mt-1 text-3xl font-extrabold text-gray-900 dark:text-white sm:text-4xl">
-            Publishing to RMBL
-        </p>
-        <p class="mt-4 text-lg text-gray-500 dark:text-gray-400">
-            Learn how to structure your repositories to share your Nomad Jobs and Packs.
+            Ramble Documentation
         </p>
     </div>
 
-    <div class="bg-white dark:bg-gray-800 shadow sm:rounded-lg overflow-hidden">
-        <div class="px-4 py-5 sm:p-6">
-            <div id="docs-content" class="prose dark:prose-invert max-w-none">
-                {{if .DocsContent}}
-                    <div _="on load call renderMarkdown(my.textContent) then set my.innerHTML to it then call hljs.highlightAll()">
-                        {{.DocsContent}}
-                    </div>
-                {{else}}
-                    <p class="text-red-500">Documentation content could not be loaded.</p>
+    <div class="lg:grid lg:grid-cols-12 lg:gap-8">
+        <!-- Sidebar Navigation -->
+        <aside class="hidden lg:block lg:col-span-3">
+            <nav class="sticky top-4 space-y-1">
+                {{range .DocSections}}
+                <div class="mb-4">
+                    <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+                        {{.Title}}
+                    </h3>
+                    <ul class="space-y-1">
+                        {{$currentPage := $.CurrentPage}}
+                        {{range .Pages}}
+                        <li>
+                            <a href="/docs{{if .Path}}/{{.Path}}{{end}}"
+                               class="block px-3 py-2 text-sm rounded-md transition-colors
+                                      {{if eq .Path $currentPage}}
+                                      bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 font-medium
+                                      {{else}}
+                                      text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700
+                                      {{end}}">
+                                {{.Title}}
+                            </a>
+                        </li>
+                        {{end}}
+                    </ul>
+                </div>
                 {{end}}
-            </div>
+            </nav>
+        </aside>
+
+        <!-- Mobile Navigation -->
+        <div class="lg:hidden mb-6">
+            <label for="docs-nav" class="sr-only">Select documentation page</label>
+            <select id="docs-nav" onchange="window.location.href = this.value"
+                    class="block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-indigo-500 focus:border-indigo-500">
+                {{range .DocSections}}
+                <optgroup label="{{.Title}}">
+                    {{$currentPage := $.CurrentPage}}
+                    {{range .Pages}}
+                    <option value="/docs{{if .Path}}/{{.Path}}{{end}}" {{if eq .Path $currentPage}}selected{{end}}>
+                        {{.Title}}
+                    </option>
+                    {{end}}
+                </optgroup>
+                {{end}}
+            </select>
         </div>
+
+        <!-- Main Content -->
+        <main class="lg:col-span-9">
+            <div class="bg-white dark:bg-gray-800 shadow sm:rounded-lg overflow-hidden">
+                <div class="px-4 py-5 sm:p-6">
+                    <div id="docs-content" class="prose dark:prose-invert max-w-none">
+                        {{if .DocsContent}}
+                            <div _="on load call renderMarkdown(my.textContent) then set my.innerHTML to it then call hljs.highlightAll()">
+                                {{.DocsContent}}
+                            </div>
+                        {{else}}
+                            <p class="text-red-500">Documentation content could not be loaded.</p>
+                        {{end}}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Footer -->
+            <div class="mt-6 flex justify-between text-sm">
+                <div>
+                    <!-- Previous page link could go here -->
+                </div>
+                <div>
+                    <a href="https://github.com/open-wander/ramble" target="_blank" rel="noopener noreferrer"
+                       class="text-indigo-600 dark:text-indigo-400 hover:underline">
+                        Edit on GitHub
+                    </a>
+                </div>
+            </div>
+        </main>
     </div>
 </div>

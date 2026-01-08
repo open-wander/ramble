@@ -248,7 +248,23 @@
     <!-- Footer -->
     <footer class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 mt-auto">
         <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-            <p class="text-center text-sm text-gray-500 dark:text-gray-400">&copy; 2025 RMBL Server. All rights reserved.</p>
+            <div class="flex flex-col sm:flex-row justify-center items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                <span>&copy; 2025 Ramble</span>
+                <span class="hidden sm:inline">|</span>
+                {{if .LatestVersion}}
+                <a href="https://github.com/open-wander/ramble/releases/tag/{{.LatestVersion}}"
+                   target="_blank" rel="noopener noreferrer"
+                   class="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                    CLI {{.LatestVersion}}
+                </a>
+                <span class="hidden sm:inline">|</span>
+                {{end}}
+                <a href="https://github.com/open-wander/ramble"
+                   target="_blank" rel="noopener noreferrer"
+                   class="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                    GitHub
+                </a>
+            </div>
         </div>
     </footer>
 

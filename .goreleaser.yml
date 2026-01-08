@@ -1,69 +1,69 @@
-# Go Releaser config file
+# GoReleaser v2 config file
+version: 2
+
 env:
   - GO111MODULE=on
+
 before:
   hooks:
     - go mod download
+
 builds:
-  - env:
+  - main: ./cmd/ramble
+    binary: ramble
+    env:
       - CGO_ENABLED=0
     goos:
       - linux
       - windows
       - darwin
     goarch:
-      - 386
       - amd64
-      - arm
       - arm64
-    goarm:
-      - 6
-      - 7
-    id: "ramble-build"
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X rmbl/internal/cli/cmd.Version={{.Version}}
+      - -X rmbl/internal/cli/cmd.Commit={{.ShortCommit}}
+      - -X rmbl/internal/cli/cmd.BuildDate={{.Date}}
+
 archives:
-  - replacements:
-      darwin: Darwin
-      linux: Linux
-      windows: Windows
-      386: i386
-      amd64: x86_64
+  - formats:
+      - tar.gz
+    # No version in filename so /latest/download/ URLs work
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
     format_overrides:
-    - goos: windows
-      format: zip
-dockers:
-  - goos: linux
-    goarch: amd64
-    goarm: ''
-    # Build IDs to gather the binaries from.
-    ids: ['ramble-build']
+      - goos: windows
+        formats:
+          - zip
 
-    # Templates of the Docker image names.
-    image_templates:
-    - "ghcr.io/open-wander/ramble:{{ .Tag }}"
-    # - "ghcr.io/open-wander/ramble:v{{ .Major }}"
-    # - "ghcr.io/open-wander/ramble:v{{ .Major }}.{{ .Minor }}"
-    - "ghcr.io/open-wander/ramble:latest"
-
-    # Skips the docker push. Could be useful if you also do draft releases.
-    # If set to auto, the release will not be pushed to the docker repository
-    # in case there is an indicator for prerelease in the tag e.g. v1.0.0-rc1
-    # Defaults to false.
-    skip_push: true
-    dockerfile: Dockerfile
-    build_flag_templates:
-    - "--pull"
-    - "--label=org.opencontainers.image.created={{.Date}}"
-    - "--label=org.opencontainers.image.title={{.ProjectName}}"
-    - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-    - "--label=org.opencontainers.image.version={{.Version}}"
-    - "--label=org.opencontainers.image.maintainer='Open Wander <https://github.com/open-wander>'"
 checksum:
   name_template: 'checksums.txt'
+
 snapshot:
-  name_template: "{{ .Tag }}-next"
+  version_template: "{{ .Tag }}-next"
+
 changelog:
   sort: asc
   filters:
     exclude:
       - '^docs:'
       - '^test:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+
+release:
+  github:
+    owner: open-wander
+    name: ramble
+  draft: false
+  prerelease: auto
+  name_template: "{{.Tag}}"

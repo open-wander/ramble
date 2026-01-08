@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"os"
 
+	"rmbl/internal/cli/update"
+
 	"github.com/spf13/cobra"
 )
 
 var (
-	verbose bool
+	verbose     bool
+	updateCheck <-chan *update.ReleaseInfo
 )
 
 var rootCmd = &cobra.Command{
@@ -26,6 +29,25 @@ Examples:
   ramble pack list           List available packs
   ramble pack run mysql      Run a pack with default variables
   ramble job run app.nomad   Run a job file`,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Start update check in background (skip for version command, it does its own check)
+		if cmd.Name() != "version" && cmd.Name() != "help" {
+			updateCheck = update.CheckForUpdateAsync(Version)
+		}
+	},
+	PersistentPostRun: func(cmd *cobra.Command, args []string) {
+		// Check if update is available (non-blocking)
+		if updateCheck != nil {
+			select {
+			case info := <-updateCheck:
+				if info != nil {
+					fmt.Fprint(os.Stderr, info.FormatUpdateMessage())
+				}
+			default:
+				// Check not complete yet, skip
+			}
+		}
+	},
 }
 
 // Execute runs the root command
