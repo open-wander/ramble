@@ -1,8 +1,12 @@
 # Ramble - Nomad Job & Pack Registry
 
-A modernized registry for HashiCorp Nomad job files and Nomad Packs, with a built-in CLI for discovering, rendering, and running packs.
+[![CI](https://github.com/open-wander/ramble/actions/workflows/ci.yml/badge.svg)](https://github.com/open-wander/ramble/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/open-wander/ramble)](https://github.com/open-wander/ramble/releases/latest)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/open-wander/ramble)](https://go.dev/)
+[![License](https://img.shields.io/github/license/open-wander/ramble)](LICENSE)
+[![Docker](https://img.shields.io/badge/docker-ghcr.io-blue)](https://github.com/open-wander/ramble/pkgs/container/ramble)
 
-**Repository:** [github.com/open-wander/ramble](https://github.com/open-wander/ramble)
+A modernized registry for HashiCorp Nomad job files and Nomad Packs, with a built-in CLI for discovering, rendering, and running packs.
 
 ## Features
 
