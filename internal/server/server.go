@@ -244,21 +244,19 @@ func Run(cfg Config) error {
 		app.Get("/api/dev/packs", handlers.GetDevelopmentPacks)
 	}
 
-	// Namespaced Routes
+	// API Routes (must be before catch-all /:username routes)
+	app.Get("/v1/packs", handlers.ListAllPacksAPI)
+	app.Get("/v1/packs/search", handlers.SearchPacksAPI)
+	app.Get("/v1/registries", handlers.ListUserRegistriesAPI)
+	app.Get("/v1/jobs", handlers.ListAllJobsAPI)
+	app.Get("/v1/jobs/search", handlers.SearchJobsAPI)
+
+	// Namespaced Routes (catch-all, must be last)
 	app.Get("/:username", handlers.GetUserProfile)
 	app.Get("/:username/:resourcename", handlers.GetResource)
 	app.Get("/:username/:resourcename/v", handlers.GetResourceVersion)
 	app.Get("/:username/:resourcename/raw", handlers.GetRawResource)
 	app.Get("/:username/:resourcename/v/:version/raw", handlers.GetRawResourceVersion)
-
-	// Nomad Pack Registry API (Global)
-	app.Get("/v1/packs", handlers.ListAllPacksAPI)
-	app.Get("/v1/packs/search", handlers.SearchPacksAPI)
-	app.Get("/v1/registries", handlers.ListUserRegistriesAPI)
-
-	// Nomad Job Registry API (Global)
-	app.Get("/v1/jobs", handlers.ListAllJobsAPI)
-	app.Get("/v1/jobs/search", handlers.SearchJobsAPI)
 
 	// 7. Start Server
 	port := cfg.Port
