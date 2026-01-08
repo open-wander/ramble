@@ -249,6 +249,133 @@ func SearchPacksAPI(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"packs": summaries})
 }
 
+// JobSummary represents a job in list responses
+type JobSummary struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// JobDetail represents detailed job information
+type JobDetail struct {
+	Name        string        `json:"name"`
+	Description string        `json:"description"`
+	Versions    []PackVersion `json:"versions"` // Reuse PackVersion structure
+}
+
+// ListAllJobsAPI godoc
+// @Summary List all jobs
+// @Description Fetch a list of all Nomad Jobs available in the registry across all namespaces.
+// @Tags nomad-job
+// @Produce json
+// @Success 200 {object} map[string][]JobSummary
+// @Router /v1/jobs [get]
+func ListAllJobsAPI(c *fiber.Ctx) error {
+	var resources []models.NomadResource
+	if err := database.DB.Where("type = ?", models.ResourceTypeJob).Find(&resources).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database error"})
+	}
+
+	summaries := make([]JobSummary, len(resources))
+	for i, r := range resources {
+		summaries[i] = JobSummary{
+			Name:        r.Name,
+			Description: r.Description,
+		}
+	}
+
+	return c.JSON(fiber.Map{"jobs": summaries})
+}
+
+// SearchJobsAPI godoc
+// @Summary Search jobs
+// @Description Search for Nomad Jobs across all namespaces by name or description.
+// @Tags nomad-job
+// @Produce json
+// @Param q query string true "Search query"
+// @Success 200 {object} map[string][]JobSummary
+// @Router /v1/jobs/search [get]
+func SearchJobsAPI(c *fiber.Ctx) error {
+	query := c.Query("q")
+	if query == "" {
+		return c.JSON(fiber.Map{"jobs": []JobSummary{}})
+	}
+
+	var resources []models.NomadResource
+	searchParam := "%" + escapeLikeString(query) + "%"
+	err := database.DB.Where("type = ? AND (name ILIKE ? ESCAPE '\\' OR description ILIKE ? ESCAPE '\\')", models.ResourceTypeJob, searchParam, searchParam).
+		Limit(20).Find(&resources).Error
+
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database error"})
+	}
+
+	summaries := make([]JobSummary, len(resources))
+	for i, r := range resources {
+		summaries[i] = JobSummary{
+			Name:        r.Name,
+			Description: r.Description,
+		}
+	}
+
+	return c.JSON(fiber.Map{"jobs": summaries})
+}
+
+// GetJobAPI godoc
+// @Summary Get job details
+// @Description Fetch detailed metadata and version history for a specific Nomad Job.
+// @Tags nomad-job
+// @Produce json
+// @Param username path string true "Namespace (user or org)"
+// @Param jobname path string true "Job name"
+// @Success 200 {object} JobDetail
+// @Failure 404 {object} map[string]string
+// @Router /{username}/v1/jobs/{jobname} [get]
+func GetJobAPI(c *fiber.Ctx) error {
+	namespace := c.Params("username")
+	jobname := c.Params("jobname")
+
+	var userID uint
+	var orgID *uint
+
+	var user models.User
+	if err := database.DB.Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
+		userID = user.ID
+	} else {
+		var org models.Organization
+		if err := database.DB.Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
+			orgID = &org.ID
+		} else {
+			return c.Status(404).JSON(fiber.Map{"error": "Namespace not found"})
+		}
+	}
+
+	var resource models.NomadResource
+	dbQuery := database.DB.Preload("Versions").Where("type = ? AND name ILIKE ?", models.ResourceTypeJob, jobname)
+	if orgID != nil {
+		dbQuery = dbQuery.Where("organization_id = ?", *orgID)
+	} else {
+		dbQuery = dbQuery.Where("user_id = ? AND organization_id IS NULL", userID)
+	}
+
+	if err := dbQuery.First(&resource).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Job not found"})
+	}
+
+	versions := make([]PackVersion, len(resource.Versions))
+	for i, v := range resource.Versions {
+		versions[i] = PackVersion{
+			Version: v.Version,
+			URL:     getDownloadURL(resource.RepositoryURL, v.Version),
+		}
+	}
+
+	return c.JSON(JobDetail{
+		Name:        resource.Name,
+		Description: resource.Description,
+		Versions:    versions,
+	})
+}
+
 // getDownloadURL constructs a tarball download URL for GitHub or GitLab.
 func getDownloadURL(repoURL string, version string) string {
 	repoURL = strings.TrimSuffix(repoURL, ".git")

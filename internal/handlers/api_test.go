@@ -648,3 +648,160 @@ func TestGetPopularTags_WithData(t *testing.T) {
 	}
 	assert.True(t, found)
 }
+
+// ==================== Job API Tests ====================
+
+func TestGlobalAPI_ListAllJobs(t *testing.T) {
+	defer cleanupTestData(t)
+
+	user1 := createTestUser(t, "jobuser1")
+	user2 := createTestUser(t, "jobuser2")
+	createTestJob(t, user1.ID, "global-job-1")
+	createTestJob(t, user2.ID, "global-job-2")
+	createTestPack(t, user1.ID, "global-pack-1") // Should not appear
+
+	app := setupTestApp()
+	app.Get("/v1/jobs", ListAllJobsAPI)
+
+	req := httptest.NewRequest("GET", "/v1/jobs", nil)
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string][]JobSummary
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	assert.NoError(t, err)
+
+	jobs := result["jobs"]
+	assert.GreaterOrEqual(t, len(jobs), 2, "Should have at least 2 jobs")
+
+	// Verify our test jobs are included
+	names := make(map[string]bool)
+	for _, j := range jobs {
+		names[j.Name] = true
+	}
+	assert.True(t, names["global-job-1"])
+	assert.True(t, names["global-job-2"])
+}
+
+func TestGlobalAPI_SearchJobs(t *testing.T) {
+	defer cleanupTestData(t)
+
+	user := createTestUser(t, "jobsearchuser")
+
+	// Create job with unique name for search
+	job := models.NomadResource{
+		Name:          "postgres-db-job",
+		Description:   "PostgreSQL database job",
+		Type:          models.ResourceTypeJob,
+		UserID:        user.ID,
+		RepositoryURL: "https://github.com/test/postgres",
+	}
+	database.DB.Create(&job)
+
+	createTestJob(t, user.ID, "redis-cache-job")
+
+	app := setupTestApp()
+	app.Get("/v1/jobs/search", SearchJobsAPI)
+
+	// Search for postgres
+	req := httptest.NewRequest("GET", "/v1/jobs/search?q=postgres", nil)
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string][]JobSummary
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	assert.NoError(t, err)
+
+	jobs := result["jobs"]
+	assert.Len(t, jobs, 1)
+	assert.Equal(t, "postgres-db-job", jobs[0].Name)
+}
+
+func TestGlobalAPI_SearchJobs_Empty(t *testing.T) {
+	app := setupTestApp()
+	app.Get("/v1/jobs/search", SearchJobsAPI)
+
+	// Empty search should return empty array
+	req := httptest.NewRequest("GET", "/v1/jobs/search?q=", nil)
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string][]JobSummary
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	assert.NoError(t, err)
+
+	assert.Empty(t, result["jobs"])
+}
+
+func TestGetJobAPI(t *testing.T) {
+	defer cleanupTestData(t)
+
+	user := createTestUser(t, "jobdetailuser")
+
+	// Create job with version
+	job := models.NomadResource{
+		Name:          "detail-job",
+		Description:   "A test job for detail testing",
+		Type:          models.ResourceTypeJob,
+		UserID:        user.ID,
+		RepositoryURL: "https://github.com/test/detail-job",
+	}
+	database.DB.Create(&job)
+
+	version := models.ResourceVersion{
+		ResourceID: job.ID,
+		Version:    "v2.0.0",
+		Readme:     "# Detail Job",
+	}
+	database.DB.Create(&version)
+
+	app := setupTestApp()
+	app.Get("/:username/v1/jobs/:jobname", GetJobAPI)
+
+	req := httptest.NewRequest("GET", "/jobdetailuser/v1/jobs/detail-job", nil)
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result JobDetail
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	assert.NoError(t, err)
+
+	assert.Equal(t, "detail-job", result.Name)
+	assert.Contains(t, result.Description, "test job")
+	assert.Len(t, result.Versions, 1)
+	assert.Equal(t, "v2.0.0", result.Versions[0].Version)
+}
+
+func TestGetJobAPI_NotFound(t *testing.T) {
+	defer cleanupTestData(t)
+
+	createTestUser(t, "jobnotfounduser")
+
+	app := setupTestApp()
+	app.Get("/:username/v1/jobs/:jobname", GetJobAPI)
+
+	req := httptest.NewRequest("GET", "/jobnotfounduser/v1/jobs/nonexistent", nil)
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 404, resp.StatusCode)
+}
+
+func TestGetJobAPI_NamespaceNotFound(t *testing.T) {
+	app := setupTestApp()
+	app.Get("/:username/v1/jobs/:jobname", GetJobAPI)
+
+	req := httptest.NewRequest("GET", "/nonexistent/v1/jobs/somejob", nil)
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 404, resp.StatusCode)
+}
