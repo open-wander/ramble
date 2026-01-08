@@ -20,7 +20,6 @@ import (
 // @Success 200 {string} string "HTML content"
 // @Router /packs [get]
 func GetPacks(c *fiber.Ctx) error {
-	isLoggedIn := c.Locals("UserID") != nil
 	var results []models.NomadResource
 	
 	query := c.Query("q")
@@ -64,9 +63,8 @@ func GetPacks(c *fiber.Ctx) error {
 		nextPage = page + 1
 	}
 
-	return c.Render("index", fiber.Map{
+	return c.Render("index", MergeContext(BaseContext(c), fiber.Map{
 		"Resources":   results,
-		"IsLoggedIn":  isLoggedIn,
 		"Title":       "Nomad Packs",
 		"Page":        "packs",
 		"Type":        "pack",
@@ -74,11 +72,8 @@ func GetPacks(c *fiber.Ctx) error {
 		"Tag":         tag,
 		"Sort":        sort,
 		"NextPage":    nextPage,
-		"Flash":       c.Locals("Flash"),
-		"CSRFToken":   c.Locals("CSRFToken"),
 		"PopularTags": GetPopularTags(),
-		"CurrentUser": c.Locals("User"),
-	}, "layouts/main")
+	}), "layouts/main")
 }
 
 // GetJobs godoc
@@ -93,7 +88,6 @@ func GetPacks(c *fiber.Ctx) error {
 // @Success 200 {string} string "HTML content"
 // @Router /jobs [get]
 func GetJobs(c *fiber.Ctx) error {
-	isLoggedIn := c.Locals("UserID") != nil
 	var results []models.NomadResource
 	
 	query := c.Query("q")
@@ -137,9 +131,8 @@ func GetJobs(c *fiber.Ctx) error {
 		nextPage = page + 1
 	}
 
-	return c.Render("index", fiber.Map{
+	return c.Render("index", MergeContext(BaseContext(c), fiber.Map{
 		"Resources":   results,
-		"IsLoggedIn":  isLoggedIn,
 		"Title":       "Nomad Jobs",
 		"Page":        "jobs",
 		"Type":        "job",
@@ -147,10 +140,7 @@ func GetJobs(c *fiber.Ctx) error {
 		"Tag":         tag,
 		"Sort":        sort,
 		"NextPage":    nextPage,
-		"Flash":       c.Locals("Flash"),
-		"CSRFToken":   c.Locals("CSRFToken"),
 		"PopularTags": GetPopularTags(),
-		"CurrentUser": c.Locals("User"),
-		}, "layouts/main")
-	}
+	}), "layouts/main")
+}
 	

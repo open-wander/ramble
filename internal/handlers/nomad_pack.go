@@ -180,16 +180,12 @@ func GetRegistries(c *fiber.Ctx) error {
 		return c.Status(500).SendString("Database error")
 	}
 
-	return c.Render("registries", fiber.Map{
-		"IsLoggedIn":  c.Locals("UserID") != nil,
-		"Page":        "registries",
-		"Title":       "User Registries",
-		"Registries":  registries,
-		"Host":        c.Hostname(),
-		"Flash":       c.Locals("Flash"),
-		"CSRFToken":   c.Locals("CSRFToken"),
-		"CurrentUser": c.Locals("User"),
-	}, "layouts/main")
+	return c.Render("registries", MergeContext(BaseContext(c), fiber.Map{
+		"Page":       "registries",
+		"Title":      "User Registries",
+		"Registries": registries,
+		"Host":       c.Hostname(),
+	}), "layouts/main")
 }
 
 // ListUserRegistriesAPI godoc

@@ -71,13 +71,10 @@ func GetNewResource(c *fiber.Ctx) error {
 	for _, m := range user.Memberships {
 		orgs = append(orgs, m.Organization)
 	}
-	return c.Render("new_resource", fiber.Map{
-		"IsLoggedIn":    isLoggedIn,
-		"Flash":         c.Locals("Flash"),
-		"CSRFToken":     c.Locals("CSRFToken"),
+	return c.Render("new_resource", MergeContext(BaseContext(c), fiber.Map{
 		"Provider":      user.Provider,
 		"Organizations": orgs,
-	}, "layouts/main")
+	}), "layouts/main")
 }
 
 type GitRepoInfo struct {
@@ -302,7 +299,11 @@ func GetEditResource(c *fiber.Ctx) error {
 	for _, m := range currentUser.Memberships { orgs = append(orgs, m.Organization) }
 	var tagNames []string
 	for _, t := range resource.Tags { tagNames = append(tagNames, t.Name) }
-	return c.Render("edit_resource", fiber.Map{"Resource": resource, "TagsString": strings.Join(tagNames, ", "), "IsLoggedIn": true, "CSRFToken": c.Locals("CSRFToken"), "Organizations": orgs}, "layouts/main")
+	return c.Render("edit_resource", MergeContext(BaseContext(c), fiber.Map{
+		"Resource":      resource,
+		"TagsString":    strings.Join(tagNames, ", "),
+		"Organizations": orgs,
+	}), "layouts/main")
 }
 
 // PostEditResource godoc

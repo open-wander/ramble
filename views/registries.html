@@ -8,9 +8,64 @@
         </p>
     </div>
 
-    <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+    <!-- Global RMBL catalog - prominent at top -->
+    <div class="mb-12 bg-indigo-700 rounded-lg shadow-xl overflow-hidden">
+        <div class="px-6 py-12 sm:px-12 lg:flex lg:items-center">
+            <div class="lg:w-0 lg:flex-1">
+                <h2 class="text-3xl font-extrabold tracking-tight text-white">
+                    Want the entire RMBL catalog?
+                </h2>
+                <p class="mt-4 max-w-3xl text-lg text-indigo-100">
+                    Add the global RMBL registry to access every pack published on the platform at once.
+                </p>
+            </div>
+            <div class="mt-8 lg:mt-0 lg:ml-8">
+                <div class="bg-indigo-800 p-4 rounded-md">
+                    <code class="text-indigo-100 text-sm">
+                        ramble registry add rmbl https://{{.Host}}
+                    </code>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search box for registries -->
+    <div class="mb-8">
+        <div class="max-w-md mx-auto">
+            <label for="registry-search" class="sr-only">Search registries</label>
+            <div class="relative">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </div>
+                <input type="text"
+                       id="registry-search"
+                       class="block w-full pl-10 pr-3 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                       placeholder="Search registries..."
+                       _="on input
+                          set query to my value.toLowerCase()
+                          for card in <.registry-card/>
+                            set name to card.dataset.name.toLowerCase()
+                            if name.includes(query)
+                              remove .hidden from card
+                            else
+                              add .hidden to card
+                            end
+                          end
+                          set visibleCards to (<.registry-card:not(.hidden)/>).length
+                          if visibleCards == 0
+                            remove .hidden from #no-results
+                          else
+                            add .hidden to #no-results
+                          end">
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3" id="registry-grid">
         {{range .Registries}}
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg border border-gray-200 dark:border-gray-700 hover:border-indigo-500 transition-colors">
+        <div class="registry-card bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg border border-gray-200 dark:border-gray-700 hover:border-indigo-500 transition-colors" data-name="{{.Name}}">
             <div class="px-4 py-5 sm:p-6">
                 <div class="flex items-center">
                     <div class="flex-shrink-0 bg-indigo-500 rounded-md p-3">
@@ -44,7 +99,7 @@
                         <span class="text-gray-500 dark:text-gray-400">Registry Command:</span>
                     </div>
                     <code class="bg-gray-100 dark:bg-gray-900 p-2 rounded text-xs text-indigo-600 dark:text-indigo-400 break-all">
-                        nomad-pack registry add {{.Name}} http://{{$.Host}}/{{.Name}}
+                        ramble registry add {{.Name}} https://{{$.Host}}/{{.Name}}
                     </code>
                 </div>
             </div>
@@ -56,23 +111,8 @@
         {{end}}
     </div>
 
-    <div class="mt-16 bg-indigo-700 rounded-lg shadow-xl overflow-hidden">
-        <div class="px-6 py-12 sm:px-12 lg:flex lg:items-center">
-            <div class="lg:w-0 lg:flex-1">
-                <h2 class="text-3xl font-extrabold tracking-tight text-white">
-                    Want the entire RMBL catalog?
-                </h2>
-                <p class="mt-4 max-w-3xl text-lg text-indigo-100">
-                    You can add the global RMBL registry to access every pack published on the platform at once.
-                </p>
-            </div>
-            <div class="mt-8 lg:mt-0 lg:ml-8">
-                <div class="bg-indigo-800 p-4 rounded-md">
-                    <code class="text-indigo-100 text-sm">
-                        nomad-pack registry add rmbl http://{{.Host}}
-                    </code>
-                </div>
-            </div>
-        </div>
+    <!-- No results message (hidden by default) -->
+    <div id="no-results" class="hidden col-span-full text-center py-12">
+        <p class="text-gray-500 dark:text-gray-400 italic">No registries match your search.</p>
     </div>
 </div>

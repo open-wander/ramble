@@ -12,12 +12,6 @@ import (
 )
 
 func Home(c *fiber.Ctx) error {
-	isLoggedIn := c.Locals("UserID") != nil
-	flash := c.Locals("Flash")
-	csrfToken := c.Locals("CSRFToken")
-	popularTags := GetPopularTags()
-	currentUser := c.Locals("User")
-
 	var results []models.NomadResource
 	database.DB.Model(&models.NomadResource{}).Preload("User").Preload("Tags").Order("updated_at desc").Limit(12).Find(&results)
 
@@ -30,20 +24,16 @@ func Home(c *fiber.Ctx) error {
 	seoData := GetHomeSEO(c)
 
 	// Render index within the main layout
-	return c.Render("index", fiber.Map{
-		"IsLoggedIn":  isLoggedIn,
+	return c.Render("index", MergeContext(BaseContext(c), fiber.Map{
 		"Page":        "home",
-		"Flash":       flash,
-		"CSRFToken":   csrfToken,
-		"PopularTags": popularTags,
-		"CurrentUser": currentUser,
+		"PopularTags": GetPopularTags(),
 		"Resources":   results,
 		"NextPage":    nextPage,
 		// SEO fields
 		"SEOTitle":       seoData.Title,
 		"SEODescription": seoData.Description,
 		"CanonicalURL":   seoData.CanonicalURL,
-	}, "layouts/main")
+	}), "layouts/main")
 }
 
 // Search godoc
@@ -66,8 +56,6 @@ func Search(c *fiber.Ctx) error {
 	page, _ := strconv.Atoi(pageStr)
 	pageSize := 12
 
-	isLoggedIn := c.Locals("UserID") != nil
-	
 	var results []models.NomadResource
 	
 	dbQuery := database.DB.Model(&models.NomadResource{}).Preload("User").Preload("Tags")
@@ -117,19 +105,15 @@ func Search(c *fiber.Ctx) error {
 		})
 	}
 
-	return c.Render("index", fiber.Map{
+	return c.Render("index", MergeContext(BaseContext(c), fiber.Map{
 		"Resources":   results,
 		"Query":       query,
 		"Type":        resourceType,
 		"Tag":         tag,
 		"Sort":        sort,
-		"IsLoggedIn":  isLoggedIn,
-		"Flash":       c.Locals("Flash"),
-		"CSRFToken":   c.Locals("CSRFToken"),
 		"NextPage":    nextPage,
 		"PopularTags": GetPopularTags(),
-		"CurrentUser": c.Locals("User"),
-	}, "layouts/main")
+	}), "layouts/main")
 }
 
 // GetResource godoc
@@ -229,24 +213,20 @@ func GetResource(c *fiber.Ctx) error {
 	// Generate SEO data
 	seoData := GetResourceSEO(c, resource, displayName)
 
-	return c.Render("resource_detail", fiber.Map{
-		"Resource":    resource,
-		"IsLoggedIn":  isLoggedIn,
-		"IsOwner":     isOwner,
-		"IsStarred":   isStarred,
-		"StarCount":   len(resource.StarredBy),
-		"DisplayName": displayName,
-		"Flash":       c.Locals("Flash"),
-		"CSRFToken":   c.Locals("CSRFToken"),
-		"Host":        c.Hostname(),
-		"CurrentUser": c.Locals("User"),
+	return c.Render("resource_detail", MergeContext(BaseContext(c), fiber.Map{
+		"Resource":               resource,
+		"IsOwner":                isOwner,
+		"IsStarred":              isStarred,
+		"StarCount":              len(resource.StarredBy),
+		"DisplayName":            displayName,
+		"Host":                   c.Hostname(),
 		"LatestVersionVariables": latestVariables,
 		// SEO fields
 		"SEOTitle":       seoData.Title,
 		"SEODescription": seoData.Description,
 		"CanonicalURL":   seoData.CanonicalURL,
 		"StructuredData": seoData.StructuredData,
-	}, "layouts/main")
+	}), "layouts/main")
 }
 
 // GetResourceVersion godoc
@@ -541,37 +521,18 @@ func GetUserProfile(c *fiber.Ctx) error {
 
 
 
-	return c.Render("profile", fiber.Map{
-
+	return c.Render("profile", MergeContext(BaseContext(c), fiber.Map{
 		"ProfileUser": profileUser,
-
 		"ProfileOrg":  profileOrg,
-
 		"Resources":   results,
-
-		"IsLoggedIn":  isLoggedIn,
-
 		"IsOwner":     isOwner,
-
 		"Title":       title,
-
 		"Query":       query,
-
 		"Sort":        sort,
-
 		"Page":        "profile",
-
-		"Flash":       c.Locals("Flash"),
-
-		"CSRFToken":   c.Locals("CSRFToken"),
-
 		"NextPage":    nextPage,
-
 		"PopularTags": GetPopularTags(),
-
-		"CurrentUser": c.Locals("User"),
-
-	}, "layouts/main")
+	}), "layouts/main")
 
 }
 
