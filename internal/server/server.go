@@ -10,6 +10,7 @@ import (
 	"rmbl/internal/database"
 	"rmbl/internal/handlers"
 	"rmbl/internal/models"
+	"rmbl/internal/services/version"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/csrf"
@@ -18,7 +19,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/swagger"
 	"github.com/gofiber/template/html/v2"
-	_ "rmbl/docs"
+	_ "rmbl/api-docs"
 )
 
 // Config holds server configuration options
@@ -145,6 +146,7 @@ func Run(cfg Config) error {
 		}
 
 		c.Locals("CSRFToken", c.Locals("csrf"))
+		c.Locals("LatestVersion", version.GetLatestVersion())
 		return c.Next()
 	})
 
@@ -168,6 +170,8 @@ func Run(cfg Config) error {
 	app.Get("/jobs", handlers.GetJobs)
 	app.Get("/registries", handlers.GetRegistries)
 	app.Get("/docs", handlers.GetDocs)
+	app.Get("/docs/:page", handlers.GetDocsPage)
+	app.Get("/docs/:page/:subpage", handlers.GetDocsPage)
 	app.Get("/about", handlers.GetAbout)
 
 	// Auth Routes with rate limiter

@@ -25,13 +25,13 @@ RUN apt-get update && apt-get install -y curl && \
 
 COPY . .
 
-# Generate docs
-RUN /go/bin/swag init -g main.go --output docs --dir ./cmd/server,./internal/handlers,./internal/models --parseDependency --parseInternal
+# Generate Swagger API docs
+RUN /go/bin/swag init -g main.go --output api-docs --dir ./cmd/ramble,./internal/handlers,./internal/models --parseDependency --parseInternal
 
 # Build CSS
 RUN ./tailwindcss -i ./public/css/input.css -o ./public/css/style.css --minify
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o ramble cmd/server/main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o ramble ./cmd/ramble
 
 # Stage 2: Final Image
 FROM alpine:latest
@@ -43,8 +43,8 @@ WORKDIR /root/
 COPY --from=builder /app/ramble .
 COPY --from=builder /app/views ./views
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/REQUIREMENTS.md .
+COPY --from=builder /app/docs ./docs
 
 EXPOSE 3000
 
-CMD ["./ramble"]
+CMD ["./ramble", "server"]

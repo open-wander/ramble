@@ -1,10 +1,10 @@
 # Build the application
 build:
-	go build -o bin/ramble cmd/server/main.go
+	go build -o bin/ramble ./cmd/ramble
 
-# Run the application
+# Run the server
 run:
-	go run cmd/server/main.go
+	go run ./cmd/ramble server
 
 # Run with hot reload (requires air)
 dev:
@@ -12,7 +12,7 @@ dev:
 
 # Run migrations (handled automatically by app, but good to have)
 migrate:
-	go run cmd/server/main.go -migrate
+	go run ./cmd/ramble server --seed
 
 # Test
 test:
@@ -20,7 +20,7 @@ test:
 
 # Generate Swagger documentation
 swagger:
-	go run github.com/swaggo/swag/cmd/swag@latest init -g main.go --output docs --dir ./cmd/server,./internal/handlers,./internal/models --parseDependency --parseInternal
+	go run github.com/swaggo/swag/cmd/swag@latest init -g main.go --output api-docs --dir ./cmd/ramble,./internal/handlers,./internal/models --parseDependency --parseInternal
 
 # Bootstrap development environment
 bootstrap:
