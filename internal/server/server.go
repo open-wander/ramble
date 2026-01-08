@@ -248,6 +248,7 @@ func Run(cfg Config) error {
 	app.Get("/v1/packs", handlers.ListAllPacksAPI)
 	app.Get("/v1/packs/search", handlers.SearchPacksAPI)
 	app.Get("/v1/registries", handlers.ListUserRegistriesAPI)
+	app.Get("/v1/registries/search", handlers.SearchRegistriesAPI)
 	app.Get("/v1/jobs", handlers.ListAllJobsAPI)
 	app.Get("/v1/jobs/search", handlers.SearchJobsAPI)
 

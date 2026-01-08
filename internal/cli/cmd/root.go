@@ -21,14 +21,17 @@ var rootCmd = &cobra.Command{
 
 This CLI allows you to:
   - Run the Ramble web server
-  - List, download, and run packs from the registry
-  - Run and validate Nomad job files
+  - List, search, and run packs from the registry
+  - List, search, and run Nomad job files
+  - Browse and search registry namespaces
 
 Examples:
-  ramble server              Start the web server
-  ramble pack list           List available packs
-  ramble pack run mysql      Run a pack with default variables
-  ramble job run app.nomad   Run a job file`,
+  ramble server                       Start the web server
+  ramble pack list                    List available packs
+  ramble pack list --search mysql     Search for packs
+  ramble job list --search postgres   Search for jobs
+  ramble registry browse --search go  Search namespaces
+  ramble pack run user/mysql          Run a pack`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Start update check in background (skip for version command, it does its own check)
 		if cmd.Name() != "version" && cmd.Name() != "help" {

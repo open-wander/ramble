@@ -99,6 +99,26 @@ func (c *Client) ListRegistries() ([]string, error) {
 	return result.Registries, nil
 }
 
+// SearchRegistries searches for namespaces by name
+func (c *Client) SearchRegistries(query string) ([]string, error) {
+	resp, err := c.get("/v1/registries/search?q=" + url.QueryEscape(query))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var result RegistryListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return result.Registries, nil
+}
+
 // ListAllPacks returns all packs across all namespaces
 func (c *Client) ListAllPacks() ([]PackSummary, error) {
 	resp, err := c.get("/v1/packs")

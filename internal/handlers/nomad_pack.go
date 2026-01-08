@@ -211,6 +211,37 @@ func ListUserRegistriesAPI(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"registries": names})
 }
 
+// SearchRegistriesAPI godoc
+// @Summary Search registry namespaces
+// @Description Search for namespaces (users/orgs) that have published Nomad Packs.
+// @Tags nomad-pack
+// @Produce json
+// @Param q query string true "Search query"
+// @Success 200 {object} map[string][]string
+// @Router /v1/registries/search [get]
+func SearchRegistriesAPI(c *fiber.Ctx) error {
+	query := c.Query("q")
+	if query == "" {
+		return c.JSON(fiber.Map{"registries": []string{}})
+	}
+
+	searchParam := "%" + escapeLikeString(query) + "%"
+	var names []string
+	err := database.DB.Table("nomad_resources").
+		Select("DISTINCT COALESCE(organizations.name, users.username) as namespace").
+		Joins("LEFT JOIN users ON users.id = nomad_resources.user_id").
+		Joins("LEFT JOIN organizations ON organizations.id = nomad_resources.organization_id").
+		Where("nomad_resources.type = ?", models.ResourceTypePack).
+		Where("COALESCE(organizations.name, users.username) ILIKE ? ESCAPE '\\'", searchParam).
+		Pluck("namespace", &names).Error
+
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database error"})
+	}
+
+	return c.JSON(fiber.Map{"registries": names})
+}
+
 // SearchPacksAPI godoc
 // @Summary Search packs
 // @Description Search for Nomad Packs across all namespaces by name or description.
