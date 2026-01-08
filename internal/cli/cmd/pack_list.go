@@ -80,10 +80,14 @@ func runPackList(cmd *cobra.Command, args []string) error {
 	fmt.Fprintln(w, "NAME\tDESCRIPTION")
 	for _, p := range packs {
 		desc := p.Description
-		if len(desc) > 60 {
-			desc = desc[:57] + "..."
+		if len(desc) > 50 {
+			desc = desc[:47] + "..."
 		}
-		fmt.Fprintf(w, "%s\t%s\n", p.Name, desc)
+		fullName := p.Name
+		if p.Namespace != "" {
+			fullName = p.Namespace + "/" + p.Name
+		}
+		fmt.Fprintf(w, "%s\t%s\n", fullName, desc)
 	}
 	return w.Flush()
 }
