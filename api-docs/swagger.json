@@ -1,18 +1,8 @@
 {
     "swagger": "2.0",
     "info": {
-        "description": "This is the API documentation for the RMBL Nomad Job \u0026 Pack Registry.",
-        "title": "RMBL Nomad Registry API",
-        "contact": {
-            "name": "API Support"
-        },
-        "license": {
-            "name": "MPL-2.0"
-        },
-        "version": "1.0"
+        "contact": {}
     },
-    "host": "localhost:3000",
-    "basePath": "/",
     "paths": {
         "/about": {
             "get": {
@@ -50,7 +40,7 @@
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/handlers.DevPack"
+                                "$ref": "#/definitions/internal_handlers.DevPack"
                             }
                         }
                     }
@@ -59,7 +49,7 @@
         },
         "/docs": {
             "get": {
-                "description": "Renders the documentation page, optionally loading content from REQUIREMENTS.md.",
+                "description": "Renders the documentation page with sidebar navigation.",
                 "produces": [
                     "text/html"
                 ],
@@ -67,6 +57,35 @@
                     "pages"
                 ],
                 "summary": "Get documentation page",
+                "responses": {
+                    "200": {
+                        "description": "HTML content",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/docs/{page}": {
+            "get": {
+                "description": "Renders a specific documentation page.",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "pages"
+                ],
+                "summary": "Get specific documentation page",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Doc page path",
+                        "name": "page",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "HTML content",
@@ -462,6 +481,67 @@
                 }
             }
         },
+        "/v1/jobs": {
+            "get": {
+                "description": "Fetch a list of all Nomad Jobs available in the registry across all namespaces.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "nomad-job"
+                ],
+                "summary": "List all jobs",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/internal_handlers.JobSummary"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/jobs/search": {
+            "get": {
+                "description": "Search for Nomad Jobs across all namespaces by name or description.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "nomad-job"
+                ],
+                "summary": "Search jobs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search query",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/internal_handlers.JobSummary"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/packs": {
             "get": {
                 "description": "Fetch a list of all Nomad Packs available in the registry across all namespaces.",
@@ -480,7 +560,7 @@
                             "additionalProperties": {
                                 "type": "array",
                                 "items": {
-                                    "$ref": "#/definitions/handlers.PackSummary"
+                                    "$ref": "#/definitions/internal_handlers.PackSummary"
                                 }
                             }
                         }
@@ -515,7 +595,7 @@
                             "additionalProperties": {
                                 "type": "array",
                                 "items": {
-                                    "$ref": "#/definitions/handlers.PackSummary"
+                                    "$ref": "#/definitions/internal_handlers.PackSummary"
                                 }
                             }
                         }
@@ -533,6 +613,41 @@
                     "nomad-pack"
                 ],
                 "summary": "List all registry namespaces (JSON)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/registries/search": {
+            "get": {
+                "description": "Search for namespaces (users/orgs) that have published Nomad Packs.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "nomad-pack"
+                ],
+                "summary": "Search registry namespaces",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search query",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -602,6 +717,51 @@
                 }
             }
         },
+        "/{username}/v1/jobs/{jobname}": {
+            "get": {
+                "description": "Fetch detailed metadata and version history for a specific Nomad Job.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "nomad-job"
+                ],
+                "summary": "Get job details",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Namespace (user or org)",
+                        "name": "username",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Job name",
+                        "name": "jobname",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers.JobDetail"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/{username}/v1/packs": {
             "get": {
                 "description": "Fetch a list of all Nomad Packs within a specific user or organization namespace.",
@@ -629,7 +789,7 @@
                             "additionalProperties": {
                                 "type": "array",
                                 "items": {
-                                    "$ref": "#/definitions/handlers.PackSummary"
+                                    "$ref": "#/definitions/internal_handlers.PackSummary"
                                 }
                             }
                         }
@@ -676,7 +836,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.PackDetail"
+                            "$ref": "#/definitions/internal_handlers.PackDetail"
                         }
                     },
                     "404": {
@@ -869,7 +1029,7 @@
         }
     },
     "definitions": {
-        "handlers.DevPack": {
+        "internal_handlers.DevPack": {
             "type": "object",
             "properties": {
                 "name": {
@@ -880,7 +1040,39 @@
                 }
             }
         },
-        "handlers.PackDetail": {
+        "internal_handlers.JobDetail": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "versions": {
+                    "description": "Reuse PackVersion structure",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handlers.PackVersion"
+                    }
+                }
+            }
+        },
+        "internal_handlers.JobSummary": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handlers.PackDetail": {
             "type": "object",
             "properties": {
                 "description": {
@@ -892,12 +1084,12 @@
                 "versions": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/handlers.PackVersion"
+                        "$ref": "#/definitions/internal_handlers.PackVersion"
                     }
                 }
             }
         },
-        "handlers.PackSummary": {
+        "internal_handlers.PackSummary": {
             "type": "object",
             "properties": {
                 "description": {
@@ -905,10 +1097,13 @@
                 },
                 "name": {
                     "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
                 }
             }
         },
-        "handlers.PackVersion": {
+        "internal_handlers.PackVersion": {
             "type": "object",
             "properties": {
                 "url": {

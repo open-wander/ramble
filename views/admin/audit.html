@@ -99,16 +99,16 @@
     <div class="mt-4 flex justify-between items-center">
         <div>
             {{if .HasPrevPage}}
-            <a href="/admin/audit?page={{add .Page -1}}{{if .ActionFilter}}&action={{.ActionFilter}}{{end}}"
+            <a href="/admin/audit?page={{add .CurrentPage -1}}{{if .ActionFilter}}&action={{.ActionFilter}}{{end}}"
                class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700">
                 Previous
             </a>
             {{end}}
         </div>
-        <span class="text-sm text-gray-500 dark:text-gray-400">Page {{.Page}}</span>
+        <span class="text-sm text-gray-500 dark:text-gray-400">Page {{.CurrentPage}}</span>
         <div>
             {{if .HasNextPage}}
-            <a href="/admin/audit?page={{add .Page 1}}{{if .ActionFilter}}&action={{.ActionFilter}}{{end}}"
+            <a href="/admin/audit?page={{add .CurrentPage 1}}{{if .ActionFilter}}&action={{.ActionFilter}}{{end}}"
                class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700">
                 Next
             </a>

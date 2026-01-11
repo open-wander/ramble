@@ -1,13 +1,33 @@
-basePath: /
 definitions:
-  handlers.DevPack:
+  internal_handlers.DevPack:
     properties:
       name:
         type: string
       path:
         type: string
     type: object
-  handlers.PackDetail:
+  internal_handlers.JobDetail:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      versions:
+        description: Reuse PackVersion structure
+        items:
+          $ref: '#/definitions/internal_handlers.PackVersion'
+        type: array
+    type: object
+  internal_handlers.JobSummary:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      namespace:
+        type: string
+    type: object
+  internal_handlers.PackDetail:
     properties:
       description:
         type: string
@@ -15,32 +35,27 @@ definitions:
         type: string
       versions:
         items:
-          $ref: '#/definitions/handlers.PackVersion'
+          $ref: '#/definitions/internal_handlers.PackVersion'
         type: array
     type: object
-  handlers.PackSummary:
+  internal_handlers.PackSummary:
     properties:
       description:
         type: string
       name:
         type: string
+      namespace:
+        type: string
     type: object
-  handlers.PackVersion:
+  internal_handlers.PackVersion:
     properties:
       url:
         type: string
       version:
         type: string
     type: object
-host: localhost:3000
 info:
-  contact:
-    name: API Support
-  description: This is the API documentation for the RMBL Nomad Job & Pack Registry.
-  license:
-    name: MPL-2.0
-  title: RMBL Nomad Registry API
-  version: "1.0"
+  contact: {}
 paths:
   /{username}:
     get:
@@ -199,6 +214,37 @@ paths:
       summary: Get raw HCL content for a specific version
       tags:
       - resources
+  /{username}/v1/jobs/{jobname}:
+    get:
+      description: Fetch detailed metadata and version history for a specific Nomad
+        Job.
+      parameters:
+      - description: Namespace (user or org)
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: Job name
+        in: path
+        name: jobname
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handlers.JobDetail'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get job details
+      tags:
+      - nomad-job
   /{username}/v1/packs:
     get:
       description: Fetch a list of all Nomad Packs within a specific user or organization
@@ -217,7 +263,7 @@ paths:
           schema:
             additionalProperties:
               items:
-                $ref: '#/definitions/handlers.PackSummary'
+                $ref: '#/definitions/internal_handlers.PackSummary'
               type: array
             type: object
         "404":
@@ -250,7 +296,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/handlers.PackDetail'
+            $ref: '#/definitions/internal_handlers.PackDetail'
         "404":
           description: Not Found
           schema:
@@ -284,15 +330,14 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/handlers.DevPack'
+              $ref: '#/definitions/internal_handlers.DevPack'
             type: array
       summary: List example packs (Dev)
       tags:
       - dev
   /docs:
     get:
-      description: Renders the documentation page, optionally loading content from
-        REQUIREMENTS.md.
+      description: Renders the documentation page with sidebar navigation.
       produces:
       - text/html
       responses:
@@ -301,6 +346,25 @@ paths:
           schema:
             type: string
       summary: Get documentation page
+      tags:
+      - pages
+  /docs/{page}:
+    get:
+      description: Renders a specific documentation page.
+      parameters:
+      - description: Doc page path
+        in: path
+        name: page
+        required: true
+        type: string
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: HTML content
+          schema:
+            type: string
+      summary: Get specific documentation page
       tags:
       - pages
   /jobs:
@@ -561,6 +625,47 @@ paths:
       summary: Search nomad resources
       tags:
       - resources
+  /v1/jobs:
+    get:
+      description: Fetch a list of all Nomad Jobs available in the registry across
+        all namespaces.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/internal_handlers.JobSummary'
+              type: array
+            type: object
+      summary: List all jobs
+      tags:
+      - nomad-job
+  /v1/jobs/search:
+    get:
+      description: Search for Nomad Jobs across all namespaces by name or description.
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/internal_handlers.JobSummary'
+              type: array
+            type: object
+      summary: Search jobs
+      tags:
+      - nomad-job
   /v1/packs:
     get:
       description: Fetch a list of all Nomad Packs available in the registry across
@@ -573,7 +678,7 @@ paths:
           schema:
             additionalProperties:
               items:
-                $ref: '#/definitions/handlers.PackSummary'
+                $ref: '#/definitions/internal_handlers.PackSummary'
               type: array
             type: object
       summary: List all packs
@@ -596,7 +701,7 @@ paths:
           schema:
             additionalProperties:
               items:
-                $ref: '#/definitions/handlers.PackSummary'
+                $ref: '#/definitions/internal_handlers.PackSummary'
               type: array
             type: object
       summary: Search packs
@@ -618,6 +723,29 @@ paths:
               type: array
             type: object
       summary: List all registry namespaces (JSON)
+      tags:
+      - nomad-pack
+  /v1/registries/search:
+    get:
+      description: Search for namespaces (users/orgs) that have published Nomad Packs.
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                type: string
+              type: array
+            type: object
+      summary: Search registry namespaces
       tags:
       - nomad-pack
 swagger: "2.0"

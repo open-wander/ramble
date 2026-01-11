@@ -380,10 +380,10 @@ func GetAdminAudit(c *fiber.Ctx) error {
 
 	return c.Render("admin/audit", MergeContext(BaseContext(c), fiber.Map{
 		"Logs":         logs,
-		"Page":         page,
+		"CurrentPage":  page,
 		"ActionFilter": actionFilter,
 		"HasNextPage":  hasNextPage,
 		"HasPrevPage":  hasPrevPage,
-		"PageName":     "admin_audit",
+		"Page":         "admin_audit",
 	}), "layouts/main")
 }
