@@ -10,13 +10,14 @@ import (
 	"rmbl/internal/database"
 	"rmbl/internal/handlers"
 	"rmbl/internal/models"
+	"rmbl/internal/services/logger"
 	"rmbl/internal/services/version"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/csrf"
 	"github.com/gofiber/fiber/v2/middleware/helmet"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
-	"github.com/gofiber/fiber/v2/middleware/logger"
+	fiberlogger "github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/swagger"
 	"github.com/gofiber/template/html/v2"
 	_ "rmbl/api-docs"
@@ -30,6 +31,9 @@ type Config struct {
 
 // Run starts the Ramble web server
 func Run(cfg Config) error {
+	// Initialize structured logger
+	logger.Init()
+
 	// 1. Connect to Database
 	database.Connect()
 	handlers.InitSession()
@@ -79,7 +83,7 @@ func Run(cfg Config) error {
 	})
 
 	// 4. Middleware
-	app.Use(logger.New())
+	app.Use(fiberlogger.New())
 
 	// HTTPS enforcement middleware (only in production)
 	app.Use(func(c *fiber.Ctx) error {
@@ -174,6 +178,23 @@ func Run(cfg Config) error {
 	app.Get("/docs/:page/:subpage", handlers.GetDocsPage)
 	app.Get("/about", handlers.GetAbout)
 
+	// Request Routes (community pack/job requests)
+	voteLimiter := limiter.New(limiter.Config{
+		Max:        30,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).SendString("Too many vote requests. Please try again later.")
+		},
+	})
+	app.Get("/requests", handlers.GetRequests)
+	app.Get("/requests/new", handlers.RequireAuth, handlers.GetNewRequest)
+	app.Post("/requests/new", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostNewRequest)
+	app.Get("/requests/:id", handlers.GetRequest)
+	app.Post("/requests/:id/vote", handlers.RequireAuth, voteLimiter, handlers.ToggleRequestVote)
+
 	// Auth Routes with rate limiter
 	authLimiter := limiter.New(limiter.Config{
 		Max:        5,
@@ -223,6 +244,11 @@ func Run(cfg Config) error {
 	admin.Get("/organizations/:id/edit", handlers.GetEditOrganization)
 	admin.Post("/organizations/:id/edit", handlers.PostEditOrganization)
 	admin.Delete("/organizations/:id", handlers.DeleteOrganization)
+	admin.Get("/settings", handlers.GetAdminSettings)
+	admin.Post("/settings", handlers.PostAdminSettings)
+	admin.Get("/requests", handlers.GetAdminRequests)
+	admin.Post("/requests/:id/status", handlers.PostUpdateRequestStatus)
+	admin.Get("/audit", handlers.GetAdminAudit)
 
 	// Resource Routes
 	app.Get("/new", handlers.RequireAuth, handlers.GetNewResource)

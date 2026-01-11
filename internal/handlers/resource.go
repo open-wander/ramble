@@ -267,6 +267,7 @@ func PostNewResource(c *fiber.Ctx) error {
 	}(resource.ID, input.Version, input.RepositoryURL, string(resource.Type), resource.Name, resource.FilePath)
 	redirectPath := "/"; var user models.User; database.DB.First(&user, userID)
 	if orgID != nil { var org models.Organization; database.DB.First(&org, *orgID); redirectPath = "/" + org.Name + "/" + resource.Name } else { redirectPath = "/" + user.Username + "/" + resource.Name }
+	AuditLog(c, "resource.create", "resource", resource.ID, resource.Name, nil)
 	SetFlash(c, "success", "Resource '"+resource.Name+"' created!"); c.Set("HX-Redirect", redirectPath); return c.SendStatus(fiber.StatusOK)
 }
 
@@ -357,6 +358,7 @@ func PostEditResource(c *fiber.Ctx) error {
 	if err := database.DB.Save(&resource).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString("Failed to save resource")
 	}
+	AuditLog(c, "resource.edit", "resource", resource.ID, resource.Name, nil)
 	SetFlash(c, "success", "Resource updated successfully!")
 	newNamespace := ""
 	if resource.OrganizationID != nil {
@@ -428,6 +430,8 @@ func DeleteResource(c *fiber.Ctx) error {
 	if !isAuthorized {
 		return c.Status(403).SendString("Unauthorized")
 	}
+
+	AuditLog(c, "resource.delete", "resource", resource.ID, resource.Name, nil)
 
 	database.DB.Delete(&resource)
 	SetFlash(c, "success", "Resource deleted successfully.")
@@ -603,6 +607,8 @@ func PostResetWebhookSecret(c *fiber.Ctx) error {
 	// Generate New Secret
 	resource.WebhookSecret = generateWebhookSecret()
 	database.DB.Save(&resource)
+
+	AuditLog(c, "resource.reset_webhook", "resource", resource.ID, resource.Name, nil)
 
 	SetFlash(c, "success", "Webhook secret has been rotated. Please update your repository settings.")
 	c.Set("HX-Refresh", "true")

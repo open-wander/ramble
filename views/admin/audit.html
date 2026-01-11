@@ -1,0 +1,118 @@
+<div class="max-w-7xl mx-auto py-10 px-4 sm:px-6 lg:px-8">
+    <div class="mb-8">
+        <a href="/admin" class="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 flex items-center mb-4">
+            <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Back to Dashboard
+        </a>
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Audit Log</h1>
+        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">View security-relevant actions and events.</p>
+    </div>
+
+    <div class="mb-6">
+        <div class="flex flex-wrap gap-2">
+            <a href="/admin/audit"
+               class="px-3 py-1 rounded-full text-sm {{if eq .ActionFilter ""}}bg-indigo-600 text-white{{else}}bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600{{end}}">
+                All
+            </a>
+            <a href="/admin/audit?action=auth"
+               class="px-3 py-1 rounded-full text-sm {{if eq .ActionFilter "auth"}}bg-indigo-600 text-white{{else}}bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600{{end}}">
+                Authentication
+            </a>
+            <a href="/admin/audit?action=admin"
+               class="px-3 py-1 rounded-full text-sm {{if eq .ActionFilter "admin"}}bg-indigo-600 text-white{{else}}bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600{{end}}">
+                Admin
+            </a>
+            <a href="/admin/audit?action=resource"
+               class="px-3 py-1 rounded-full text-sm {{if eq .ActionFilter "resource"}}bg-indigo-600 text-white{{else}}bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600{{end}}">
+                Resources
+            </a>
+            <a href="/admin/audit?action=org"
+               class="px-3 py-1 rounded-full text-sm {{if eq .ActionFilter "org"}}bg-indigo-600 text-white{{else}}bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600{{end}}">
+                Organizations
+            </a>
+            <a href="/admin/audit?action=request"
+               class="px-3 py-1 rounded-full text-sm {{if eq .ActionFilter "request"}}bg-indigo-600 text-white{{else}}bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600{{end}}">
+                Requests
+            </a>
+        </div>
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead class="bg-gray-50 dark:bg-gray-900">
+                <tr>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Time</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Action</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actor</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Target</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">IP Address</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Details</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                {{range .Logs}}
+                <tr>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                        {{.CreatedAt.Format "Jan 2, 15:04:05"}}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400">
+                            {{.Action}}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                        {{if .ActorName}}{{.ActorName}}{{else}}<span class="text-gray-400">-</span>{{end}}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                        {{if .TargetName}}
+                            <span class="text-gray-400">{{.TargetType}}:</span> {{.TargetName}}
+                        {{else if .TargetType}}
+                            {{.TargetType}} #{{.TargetID}}
+                        {{else}}
+                            <span class="text-gray-400">-</span>
+                        {{end}}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 font-mono">
+                        {{.IPAddress}}
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate">
+                        {{if .Details}}
+                            <code class="text-xs bg-gray-100 dark:bg-gray-900 px-1 py-0.5 rounded">{{.Details}}</code>
+                        {{else}}
+                            <span class="text-gray-400">-</span>
+                        {{end}}
+                    </td>
+                </tr>
+                {{else}}
+                <tr>
+                    <td colspan="6" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">
+                        No audit logs found.
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="mt-4 flex justify-between items-center">
+        <div>
+            {{if .HasPrevPage}}
+            <a href="/admin/audit?page={{add .Page -1}}{{if .ActionFilter}}&action={{.ActionFilter}}{{end}}"
+               class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700">
+                Previous
+            </a>
+            {{end}}
+        </div>
+        <span class="text-sm text-gray-500 dark:text-gray-400">Page {{.Page}}</span>
+        <div>
+            {{if .HasNextPage}}
+            <a href="/admin/audit?page={{add .Page 1}}{{if .ActionFilter}}&action={{.ActionFilter}}{{end}}"
+               class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700">
+                Next
+            </a>
+            {{end}}
+        </div>
+    </div>
+</div>

@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"strconv"
+
 	"rmbl/internal/database"
 	"rmbl/internal/models"
 
@@ -88,6 +90,10 @@ func PostToggleAdmin(c *fiber.Ctx) error {
 	user.IsAdmin = !user.IsAdmin
 	database.DB.Save(&user)
 
+	AuditLog(c, "admin.toggle_admin", "user", user.ID, user.Username, map[string]interface{}{
+		"new_status": user.IsAdmin,
+	})
+
 	// Return updated user row HTML
 	return c.Render("partials/admin_user_row", fiber.Map{
 		"User":      user,
@@ -109,6 +115,8 @@ func DeleteUser(c *fiber.Ctx) error {
 	if currentUser.ID == user.ID {
 		return c.Status(400).SendString("Cannot delete your own account")
 	}
+
+	AuditLog(c, "admin.delete_user", "user", user.ID, user.Username, nil)
 
 	// Delete user (this will cascade delete resources, memberships, etc. if configured in the model)
 	database.DB.Delete(&user)
@@ -161,6 +169,8 @@ func PostEditUser(c *fiber.Ctx) error {
 	if err := database.DB.Save(&user).Error; err != nil {
 		return c.Status(500).SendString("Failed to update user")
 	}
+
+	AuditLog(c, "admin.edit_user", "user", user.ID, user.Username, nil)
 
 	// Return updated user row
 	return c.Render("partials/admin_user_row", fiber.Map{
@@ -221,6 +231,8 @@ func PostEditOrganization(c *fiber.Ctx) error {
 		return c.Status(500).SendString("Failed to update organization")
 	}
 
+	AuditLog(c, "admin.edit_org", "organization", org.ID, org.Name, nil)
+
 	// Return updated org row
 	return c.Render("partials/admin_org_row", fiber.Map{
 		"Org":       org,
@@ -237,9 +249,141 @@ func DeleteOrganization(c *fiber.Ctx) error {
 		return c.Status(404).SendString("Organization not found")
 	}
 
+	AuditLog(c, "admin.delete_org", "organization", org.ID, org.Name, nil)
+
 	// Delete organization (cascade deletes resources and memberships)
 	database.DB.Delete(&org)
 
 	// Return empty response (HTMX will swap with empty content, removing the row)
 	return c.SendString("")
+}
+
+// GetAdminSettings shows the site settings page
+func GetAdminSettings(c *fiber.Ctx) error {
+	var settings []models.SiteSetting
+	database.DB.Find(&settings)
+
+	settingsMap := make(map[string]string)
+	for _, s := range settings {
+		settingsMap[s.Key] = s.Value
+	}
+
+	return c.Render("admin/settings", MergeContext(BaseContext(c), fiber.Map{
+		"Settings": settingsMap,
+		"Page":     "admin_settings",
+	}), "layouts/main")
+}
+
+// PostAdminSettings saves site settings
+func PostAdminSettings(c *fiber.Ctx) error {
+	type SettingsInput struct {
+		GitHubRequestsRepo string `form:"github_requests_repo"`
+		GitHubReleasesURL  string `form:"github_releases_url"`
+	}
+	var input SettingsInput
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(400).SendString("Invalid input")
+	}
+
+	// Note: GITHUB_REQUESTS_TOKEN is configured via environment variable, not here
+	settings := map[string]string{
+		"github_requests_repo": input.GitHubRequestsRepo,
+		"github_releases_url":  input.GitHubReleasesURL,
+	}
+
+	for key, value := range settings {
+		database.DB.Where(models.SiteSetting{Key: key}).
+			Assign(models.SiteSetting{Value: value}).
+			FirstOrCreate(&models.SiteSetting{})
+	}
+
+	AuditLog(c, "admin.update_settings", "settings", 0, "", nil)
+
+	SetFlash(c, "success", "Settings updated successfully!")
+	c.Set("HX-Redirect", "/admin/settings")
+	return c.SendStatus(200)
+}
+
+// GetAdminRequests lists all pack/job requests for admin management
+func GetAdminRequests(c *fiber.Ctx) error {
+	var requests []models.PackRequest
+	database.DB.Preload("User").Order("created_at desc").Find(&requests)
+
+	return c.Render("admin/requests", MergeContext(BaseContext(c), fiber.Map{
+		"Requests": requests,
+		"Page":     "admin_requests",
+	}), "layouts/main")
+}
+
+// PostUpdateRequestStatus updates a request's status
+func PostUpdateRequestStatus(c *fiber.Ctx) error {
+	id := c.Params("id")
+	status := c.FormValue("status")
+
+	// Validate status value
+	validStatuses := map[string]bool{
+		string(models.RequestStatusOpen):       true,
+		string(models.RequestStatusInProgress): true,
+		string(models.RequestStatusCompleted):  true,
+		string(models.RequestStatusClosed):     true,
+	}
+	if !validStatuses[status] {
+		return c.Status(400).SendString("Invalid status value")
+	}
+
+	var request models.PackRequest
+	if err := database.DB.Preload("User").First(&request, id).Error; err != nil {
+		return c.Status(404).SendString("Request not found")
+	}
+
+	request.Status = models.RequestStatus(status)
+	database.DB.Save(&request)
+
+	AuditLog(c, "admin.update_request_status", "request", request.ID, request.Title, map[string]interface{}{
+		"new_status": status,
+	})
+
+	return c.Render("partials/admin_request_row", fiber.Map{
+		"Request":   request,
+		"CSRFToken": c.Locals("CSRFToken"),
+	})
+}
+
+// GetAdminAudit shows the audit log viewer
+func GetAdminAudit(c *fiber.Ctx) error {
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	if page < 1 {
+		page = 1
+	}
+	actionFilter := c.Query("action", "")
+	pageSize := 50
+
+	var logs []models.AuditLog
+	query := database.DB.Order("created_at desc").Limit(pageSize).Offset((page - 1) * pageSize)
+
+	if actionFilter != "" {
+		query = query.Where("action LIKE ?", actionFilter+"%")
+	}
+
+	query.Find(&logs)
+
+	// Check if there are more pages
+	var totalCount int64
+	countQuery := database.DB.Model(&models.AuditLog{})
+	if actionFilter != "" {
+		countQuery = countQuery.Where("action LIKE ?", actionFilter+"%")
+	}
+	countQuery.Count(&totalCount)
+
+	hasNextPage := int64(page*pageSize) < totalCount
+	hasPrevPage := page > 1
+
+	return c.Render("admin/audit", MergeContext(BaseContext(c), fiber.Map{
+		"Logs":         logs,
+		"Page":         page,
+		"ActionFilter": actionFilter,
+		"HasNextPage":  hasNextPage,
+		"HasPrevPage":  hasPrevPage,
+		"PageName":     "admin_audit",
+	}), "layouts/main")
 }

@@ -8,7 +8,9 @@ require (
 	github.com/gofiber/template/html/v2 v2.1.3
 	github.com/hashicorp/hcl/v2 v2.24.0
 	github.com/markbates/goth v1.82.0
+	github.com/rs/zerolog v1.34.0
 	github.com/shareed2k/goth_fiber v0.3.3
+	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/swag v1.16.6
 	github.com/testcontainers/testcontainers-go v0.40.0
@@ -94,7 +96,6 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/shirou/gopsutil/v4 v4.25.6 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
-	github.com/spf13/cobra v1.8.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/swaggo/files/v2 v2.0.2 // indirect
 	github.com/tinylib/msgp v1.6.1 // indirect

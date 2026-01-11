@@ -29,6 +29,10 @@ type User struct {
 	EmailVerified            bool      `gorm:"default:false"`
 	VerificationToken        string
 	VerificationTokenExpires time.Time
+
+	// Brute Force Protection
+	FailedLoginAttempts int       `gorm:"default:0"`
+	LockedUntil         time.Time // Account locked until this time after too many failed attempts
 }
 
 type Organization struct {
@@ -95,4 +99,51 @@ type Tag struct {
 	gorm.Model
 	Name      string          `gorm:"uniqueIndex;not null"`
 	Resources []NomadResource `gorm:"many2many:resource_tags;"`
+}
+
+// RequestStatus represents the status of a pack/job request
+type RequestStatus string
+
+const (
+	RequestStatusOpen       RequestStatus = "open"
+	RequestStatusInProgress RequestStatus = "in_progress"
+	RequestStatusCompleted  RequestStatus = "completed"
+	RequestStatusClosed     RequestStatus = "closed"
+)
+
+// PackRequest represents a community request for a new pack or job
+type PackRequest struct {
+	gorm.Model
+	Title          string        `gorm:"not null"`
+	Description    string        `gorm:"type:text"`
+	Type           ResourceType  `gorm:"default:'pack'"` // pack or job
+	Status         RequestStatus `gorm:"default:'open'"`
+	UserID         uint          `gorm:"not null;index"`
+	GitHubIssueURL string        // URL to the created GitHub issue
+	GitHubIssueNum int           // GitHub issue number
+	VoteCount      int           `gorm:"default:0"`
+	// Relations
+	User   User   `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	Voters []User `gorm:"many2many:request_votes;"`
+}
+
+// SiteSetting stores configurable site-wide settings
+type SiteSetting struct {
+	gorm.Model
+	Key   string `gorm:"uniqueIndex;not null"`
+	Value string `gorm:"type:text"`
+}
+
+// AuditLog records security-relevant actions for compliance and debugging
+type AuditLog struct {
+	gorm.Model
+	Action     string `gorm:"not null;index"` // e.g., "user.login", "admin.delete_user"
+	ActorID    uint   `gorm:"index"`          // User who performed action (0 for system/anonymous)
+	ActorName  string // Username at time of action
+	TargetType string `gorm:"index"` // e.g., "user", "resource", "organization"
+	TargetID   uint   // ID of affected entity
+	TargetName string // Name/identifier at time of action
+	Details    string `gorm:"type:text"` // JSON with additional context
+	IPAddress  string
+	UserAgent  string
 }

@@ -134,12 +134,22 @@ func AuthCallback(c *fiber.Ctx) error {
 		}
 	}
 
+	AuditLog(c, "auth.oauth_login", "user", user.ID, user.Username, map[string]interface{}{
+		"provider": gothUser.Provider,
+	})
+
 	return c.Redirect("/")
 }
 
 func GetLogin(c *fiber.Ctx) error {
 	return c.Render("login", BaseContext(c), "layouts/main")
 }
+
+// MaxFailedLoginAttempts before account lockout
+const MaxFailedLoginAttempts = 5
+
+// AccountLockDuration is how long an account is locked after too many failed attempts
+const AccountLockDuration = 15 * time.Minute
 
 func PostLogin(c *fiber.Ctx) error {
 	type LoginInput struct {
@@ -154,12 +164,46 @@ func PostLogin(c *fiber.Ctx) error {
 	var user models.User
 	result := database.DB.Where("email = ?", input.Email).First(&user)
 	if result.Error != nil {
+		AuditLog(c, "auth.login_failed", "user", 0, input.Email, nil)
 		return c.Status(fiber.StatusUnauthorized).SendString("Invalid email or password")
+	}
+
+	// Check if account is locked
+	if user.LockedUntil.After(time.Now()) {
+		remainingTime := time.Until(user.LockedUntil).Round(time.Minute)
+		AuditLog(c, "auth.login_blocked", "user", user.ID, user.Username, map[string]interface{}{
+			"reason": "account_locked",
+		})
+		return c.Status(fiber.StatusTooManyRequests).SendString(
+			fmt.Sprintf("Account temporarily locked due to too many failed attempts. Try again in %d minutes.", int(remainingTime.Minutes())+1))
 	}
 
 	err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(input.Password))
 	if err != nil {
+		// Increment failed attempts
+		user.FailedLoginAttempts++
+
+		// Lock account if threshold reached
+		if user.FailedLoginAttempts >= MaxFailedLoginAttempts {
+			user.LockedUntil = time.Now().Add(AccountLockDuration)
+			AuditLog(c, "auth.account_locked", "user", user.ID, user.Username, map[string]interface{}{
+				"failed_attempts": user.FailedLoginAttempts,
+				"locked_until":    user.LockedUntil,
+			})
+		}
+
+		database.DB.Save(&user)
+		AuditLog(c, "auth.login_failed", "user", user.ID, user.Username, map[string]interface{}{
+			"failed_attempts": user.FailedLoginAttempts,
+		})
 		return c.Status(fiber.StatusUnauthorized).SendString("Invalid email or password")
+	}
+
+	// Reset failed attempts on successful login
+	if user.FailedLoginAttempts > 0 {
+		user.FailedLoginAttempts = 0
+		user.LockedUntil = time.Time{}
+		database.DB.Save(&user)
 	}
 
 	// Set Session
@@ -176,6 +220,8 @@ func PostLogin(c *fiber.Ctx) error {
 	if err := sess.Save(); err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString("Failed to save session")
 	}
+
+	AuditLog(c, "auth.login", "user", user.ID, user.Username, nil)
 
 	// Redirect to home
 	c.Set("HX-Redirect", "/")
@@ -246,6 +292,8 @@ func PostSignup(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).SendString("Could not create user")
 	}
 
+	AuditLog(c, "auth.signup", "user", user.ID, user.Username, nil)
+
 	// Send verification email
 	baseURL := os.Getenv("BASE_URL")
 	if baseURL == "" {
@@ -278,6 +326,16 @@ func PostSignup(c *fiber.Ctx) error {
 }
 
 func Logout(c *fiber.Ctx) error {
+	// Get user info before destroying session for audit log
+	var userID uint
+	var username string
+	if c.Locals("UserID") != nil {
+		userID = c.Locals("UserID").(uint)
+		if user, ok := c.Locals("User").(models.User); ok {
+			username = user.Username
+		}
+	}
+
 	sess, err := Store.Get(c)
 	if err != nil {
 		return err
@@ -285,9 +343,11 @@ func Logout(c *fiber.Ctx) error {
 	if err := sess.Destroy(); err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString("Failed to destroy session")
 	}
-	
+
+	AuditLogNoContext("auth.logout", userID, username, "user", userID, username, nil)
+
 	SetFlash(c, "success", "You have been logged out.")
-	
+
 	return c.Redirect("/")
 }
 
@@ -386,6 +446,8 @@ func PostResetPassword(c *fiber.Ctx) error {
 	user.ResetToken = "" // Clear token
 	database.DB.Save(&user)
 
+	AuditLog(c, "auth.password_reset", "user", user.ID, user.Username, nil)
+
 	SetFlash(c, "success", "Your password has been reset. Please log in.")
 	c.Set("HX-Redirect", "/login")
 	return c.SendStatus(fiber.StatusOK)
@@ -413,6 +475,8 @@ func GetVerifyEmail(c *fiber.Ctx) error {
 	user.EmailVerified = true
 	user.VerificationToken = "" // Clear token
 	database.DB.Save(&user)
+
+	AuditLog(c, "auth.email_verified", "user", user.ID, user.Username, nil)
 
 	SetFlash(c, "success", "Your email has been verified successfully!")
 	return c.Redirect("/")

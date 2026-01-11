@@ -1,0 +1,47 @@
+<tr id="request-row-{{.Request.ID}}">
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+        {{.Request.ID}}
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap">
+        <a href="/requests/{{.Request.ID}}" class="text-sm font-medium text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400">
+            {{.Request.Title}}
+        </a>
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap">
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{if eq .Request.Type "pack"}}bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400{{else}}bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400{{end}}">
+            {{.Request.Type}}
+        </span>
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+        {{.Request.User.Username}}
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+        {{.Request.VoteCount}}
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap">
+        <select
+            hx-post="/admin/requests/{{.Request.ID}}/status"
+            hx-target="#request-row-{{.Request.ID}}"
+            hx-swap="outerHTML"
+            hx-vals='{"status": event.target.value}'
+            name="status"
+            class="text-sm rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white focus:border-indigo-500 focus:ring-indigo-500 py-1 px-2">
+            <option value="open" {{if eq .Request.Status "open"}}selected{{end}}>Open</option>
+            <option value="in_progress" {{if eq .Request.Status "in_progress"}}selected{{end}}>In Progress</option>
+            <option value="completed" {{if eq .Request.Status "completed"}}selected{{end}}>Completed</option>
+            <option value="closed" {{if eq .Request.Status "closed"}}selected{{end}}>Closed</option>
+        </select>
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm">
+        {{if .Request.GitHubIssueURL}}
+        <a href="{{.Request.GitHubIssueURL}}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:underline">
+            #{{.Request.GitHubIssueNum}}
+        </a>
+        {{else}}
+        <span class="text-gray-400">-</span>
+        {{end}}
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+        {{.Request.CreatedAt.Format "Jan 2, 2006"}}
+    </td>
+</tr>
