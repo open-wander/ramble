@@ -61,6 +61,8 @@ func PostCreateOrg(c *fiber.Ctx) error {
     }
     database.DB.Create(&membership)
 
+    AuditLog(c, "org.create", "organization", org.ID, org.Name, nil)
+
     SetFlash(c, "success", "Organization '"+org.Name+"' created successfully!")
     c.Set("HX-Redirect", "/"+org.Name)
     return c.SendStatus(200)
@@ -132,6 +134,13 @@ func PostAddMember(c *fiber.Ctx) error {
 	}
 	database.DB.Create(&membership)
 
+	var org models.Organization
+	database.DB.First(&org, orgID)
+	AuditLog(c, "org.add_member", "organization", org.ID, org.Name, map[string]interface{}{
+		"member": username,
+		"role":   role,
+	})
+
 	SetFlash(c, "success", "Member added successfully.")
 	c.Set("HX-Refresh", "true")
 	return c.SendStatus(200)
@@ -152,6 +161,12 @@ func PostRemoveMember(c *fiber.Ctx) error {
 			return c.Status(400).SendString("You cannot remove yourself as you are the only owner")
 		}
 	}
+
+	var org models.Organization
+	database.DB.First(&org, orgID)
+	AuditLog(c, "org.remove_member", "organization", org.ID, org.Name, map[string]interface{}{
+		"member_id": memberID,
+	})
 
 	database.DB.Where("user_id = ? AND organization_id = ?", uint(memberID), orgID).Delete(&models.Membership{})
 

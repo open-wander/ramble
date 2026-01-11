@@ -53,6 +53,9 @@ func Connect() {
 		&models.NomadResource{},
 		&models.ResourceVersion{},
 		&models.Tag{},
+		&models.PackRequest{},
+		&models.SiteSetting{},
+		&models.AuditLog{},
 	)
 	if err != nil {
 		log.Fatal("Migration failed: ", err)
