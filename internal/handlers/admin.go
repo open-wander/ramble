@@ -349,6 +349,22 @@ func PostUpdateRequestStatus(c *fiber.Ctx) error {
 	})
 }
 
+// DeleteRequest deletes a pack/job request (admin only)
+func DeleteRequest(c *fiber.Ctx) error {
+	id := c.Params("id")
+
+	var request models.PackRequest
+	if err := database.DB.First(&request, id).Error; err != nil {
+		return c.Status(404).SendString("Request not found")
+	}
+
+	AuditLog(c, "admin.delete_request", "request", request.ID, request.Title, nil)
+
+	database.DB.Delete(&request)
+
+	return c.SendString("")
+}
+
 // GetAdminAudit shows the audit log viewer
 func GetAdminAudit(c *fiber.Ctx) error {
 	page, _ := strconv.Atoi(c.Query("page", "1"))

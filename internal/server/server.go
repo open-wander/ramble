@@ -193,6 +193,9 @@ func Run(cfg Config) error {
 	app.Get("/requests/new", handlers.RequireAuth, handlers.GetNewRequest)
 	app.Post("/requests/new", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostNewRequest)
 	app.Get("/requests/:id", handlers.GetRequest)
+	app.Get("/requests/:id/edit", handlers.RequireAuth, handlers.GetEditRequest)
+	app.Post("/requests/:id/edit", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostEditRequest)
+	app.Delete("/requests/:id", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.DeleteUserRequest)
 	app.Post("/requests/:id/vote", handlers.RequireAuth, voteLimiter, handlers.ToggleRequestVote)
 
 	// Auth Routes with rate limiter
@@ -248,6 +251,7 @@ func Run(cfg Config) error {
 	admin.Post("/settings", handlers.PostAdminSettings)
 	admin.Get("/requests", handlers.GetAdminRequests)
 	admin.Post("/requests/:id/status", handlers.PostUpdateRequestStatus)
+	admin.Delete("/requests/:id", handlers.DeleteRequest)
 	admin.Get("/audit", handlers.GetAdminAudit)
 
 	// Resource Routes
