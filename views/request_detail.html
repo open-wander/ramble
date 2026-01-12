@@ -39,9 +39,20 @@
                         </span>
                     </div>
 
-                    <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
-                        {{.Request.Title}}
-                    </h1>
+                    <div class="flex items-center justify-between">
+                        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
+                            {{.Request.Title}}
+                        </h1>
+                        {{if and .User (eq .User.ID .Request.UserID) (eq .Request.Status "open")}}
+                        <a href="/requests/{{.Request.ID}}/edit"
+                           class="inline-flex items-center px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                            <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                            </svg>
+                            Edit
+                        </a>
+                        {{end}}
+                    </div>
 
                     <div class="mt-4 flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
                         <span class="flex items-center">

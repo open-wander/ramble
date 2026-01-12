@@ -308,3 +308,132 @@ func ToggleRequestVote(c *fiber.Ctx) error {
 		"VoteCount": count,
 	})
 }
+
+// GetEditRequest shows the edit form for a request (owner only, open status only)
+func GetEditRequest(c *fiber.Ctx) error {
+	id := c.Params("id")
+	sess, _ := Store.Get(c)
+	userID := sess.Get("user_id").(uint)
+
+	var request models.PackRequest
+	if err := database.DB.First(&request, id).Error; err != nil {
+		return c.Status(404).SendString("Request not found")
+	}
+
+	// Check ownership
+	if request.UserID != userID {
+		return c.Status(403).SendString("You can only edit your own requests")
+	}
+
+	// Check status
+	if request.Status != models.RequestStatusOpen {
+		return c.Status(400).SendString("You can only edit requests that are still open")
+	}
+
+	return c.Render("edit_request", MergeContext(BaseContext(c), fiber.Map{
+		"Page":    "requests",
+		"Request": request,
+	}), "layouts/main")
+}
+
+// PostEditRequest updates a request (owner only, open status only)
+func PostEditRequest(c *fiber.Ctx) error {
+	id := c.Params("id")
+	sess, _ := Store.Get(c)
+	userID := sess.Get("user_id").(uint)
+
+	var request models.PackRequest
+	if err := database.DB.First(&request, id).Error; err != nil {
+		return c.Status(404).SendString("Request not found")
+	}
+
+	// Check ownership
+	if request.UserID != userID {
+		return c.Status(403).SendString("You can only edit your own requests")
+	}
+
+	// Check status
+	if request.Status != models.RequestStatusOpen {
+		return c.Status(400).SendString("You can only edit requests that are still open")
+	}
+
+	type EditInput struct {
+		Title       string `form:"title"`
+		Description string `form:"description"`
+		Type        string `form:"type"`
+	}
+	var input EditInput
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(fiber.StatusBadRequest).SendString("Invalid input")
+	}
+
+	// Validate title
+	title := strings.TrimSpace(input.Title)
+	if title == "" {
+		return c.Status(fiber.StatusBadRequest).SendString("Title is required")
+	}
+	if len(title) < 3 {
+		return c.Status(fiber.StatusBadRequest).SendString("Title must be at least 3 characters")
+	}
+	if len(title) > 200 {
+		return c.Status(fiber.StatusBadRequest).SendString("Title cannot exceed 200 characters")
+	}
+
+	// Validate description
+	description := strings.TrimSpace(input.Description)
+	if len(description) > 10000 {
+		return c.Status(fiber.StatusBadRequest).SendString("Description cannot exceed 10,000 characters")
+	}
+
+	// Validate type
+	reqType := models.ResourceTypePack
+	if input.Type == "job" {
+		reqType = models.ResourceTypeJob
+	} else if input.Type != "" && input.Type != "pack" {
+		return c.Status(fiber.StatusBadRequest).SendString("Invalid type")
+	}
+
+	request.Title = title
+	request.Description = description
+	request.Type = reqType
+
+	if err := database.DB.Save(&request).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString("Could not update request")
+	}
+
+	AuditLog(c, "request.edit", "request", request.ID, request.Title, nil)
+
+	SetFlash(c, "success", "Request updated successfully!")
+	c.Set("HX-Redirect", "/requests/"+strconv.Itoa(int(request.ID)))
+	return c.SendStatus(fiber.StatusOK)
+}
+
+// DeleteUserRequest deletes a request (owner only, open status only)
+func DeleteUserRequest(c *fiber.Ctx) error {
+	id := c.Params("id")
+	sess, _ := Store.Get(c)
+	userID := sess.Get("user_id").(uint)
+
+	var request models.PackRequest
+	if err := database.DB.First(&request, id).Error; err != nil {
+		return c.Status(404).SendString("Request not found")
+	}
+
+	// Check ownership
+	if request.UserID != userID {
+		return c.Status(403).SendString("You can only delete your own requests")
+	}
+
+	// Check status
+	if request.Status != models.RequestStatusOpen {
+		return c.Status(400).SendString("You can only delete requests that are still open")
+	}
+
+	AuditLog(c, "request.delete", "request", request.ID, request.Title, nil)
+
+	database.DB.Delete(&request)
+
+	SetFlash(c, "success", "Request deleted successfully.")
+	c.Set("HX-Redirect", "/requests")
+	return c.SendStatus(fiber.StatusOK)
+}
