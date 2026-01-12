@@ -252,6 +252,7 @@ func Run(cfg Config) error {
 	admin.Get("/requests", handlers.GetAdminRequests)
 	admin.Post("/requests/:id/status", handlers.PostUpdateRequestStatus)
 	admin.Delete("/requests/:id", handlers.DeleteRequest)
+	admin.Post("/requests/sync", handlers.PostSyncGitHubRequests)
 	admin.Get("/audit", handlers.GetAdminAudit)
 
 	// Resource Routes
@@ -281,6 +282,9 @@ func Run(cfg Config) error {
 	app.Get("/v1/registries/search", handlers.SearchRegistriesAPI)
 	app.Get("/v1/jobs", handlers.ListAllJobsAPI)
 	app.Get("/v1/jobs/search", handlers.SearchJobsAPI)
+
+	// Webhook Routes
+	app.Post("/webhooks/github/issues", handlers.HandleGitHubIssueWebhook)
 
 	// Namespaced Routes (catch-all, must be last)
 	app.Get("/:username", handlers.GetUserProfile)
