@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"strconv"
 
 	"rmbl/internal/database"
@@ -338,6 +339,13 @@ func PostUpdateRequestStatus(c *fiber.Ctx) error {
 
 	request.Status = models.RequestStatus(status)
 	database.DB.Save(&request)
+
+	// Sync status to GitHub in background
+	go func(req models.PackRequest) {
+		if err := SyncRequestToGitHub(req); err != nil {
+			log.Printf("Failed to sync request %d to GitHub: %v", req.ID, err)
+		}
+	}(request)
 
 	AuditLog(c, "admin.update_request_status", "request", request.ID, request.Title, map[string]interface{}{
 		"new_status": status,

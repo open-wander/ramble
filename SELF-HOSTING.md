@@ -80,6 +80,37 @@ On first run, set these to create an admin user:
 | `GITLAB_KEY` | GitLab OAuth App ID |
 | `GITLAB_SECRET` | GitLab OAuth App Secret |
 
+#### Community Requests / GitHub Integration (Optional)
+
+For the pack/job request feature with GitHub issue sync:
+
+| Variable | Description |
+|----------|-------------|
+| `GITHUB_REQUESTS_TOKEN` | GitHub Personal Access Token with `repo` scope for creating/updating issues |
+| `GITHUB_WEBHOOK_SECRET` | Random secret string for validating GitHub webhook signatures |
+
+**Setup Steps:**
+
+1. **Create a GitHub PAT:**
+   - Go to GitHub Settings > Developer settings > Personal access tokens > Tokens (classic)
+   - Generate new token with `repo` scope (or `public_repo` for public repos only)
+   - Set as `GITHUB_REQUESTS_TOKEN`
+
+2. **Configure the requests repository:**
+   - In Ramble admin panel (/admin/settings), set `github_requests_repo` to `owner/repo`
+   - This is where issues will be created for pack/job requests
+
+3. **Set up the webhook (for automatic sync):**
+   - Generate a random secret: `openssl rand -hex 32`
+   - Set as `GITHUB_WEBHOOK_SECRET` in your environment
+   - In GitHub repo: Settings > Webhooks > Add webhook
+     - Payload URL: `https://your-domain.com/webhooks/github/issues`
+     - Content type: `application/json`
+     - Secret: same value as `GITHUB_WEBHOOK_SECRET`
+     - Events: Select "Issues" only
+
+**Note:** `GITHUB_REQUESTS_TOKEN` is a GitHub API token for authentication. `GITHUB_WEBHOOK_SECRET` is a shared secret you create yourself (any random string) - it's not a GitHub token.
+
 #### Email (Optional)
 
 For password reset functionality:
