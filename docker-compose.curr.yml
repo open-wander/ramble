@@ -1,0 +1,208 @@
+services:
+  # Traefik reverse proxy with automatic SSL
+  traefik:
+    image: traefik:v3.6
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - "--log.level=INFO"
+      - "--api=true"
+      - "--api.insecure=true"
+      - "--api.dashboard=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/data/traefik/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      # Access logs for GoAccess
+      - "--accesslog=true"
+      - "--accesslog.filepath=/data/traefik/access.log"
+      - "--accesslog.format=common"
+      # Include User-Agent and Referer headers in logs
+      - "--accesslog.fields.headers.defaultmode=drop"
+      - "--accesslog.fields.headers.names.User-Agent=keep"
+      - "--accesslog.fields.headers.names.Referer=keep"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /mnt/data/traefik:/data/traefik
+      - /mnt/data/htpasswd/htpasswd:/etc/traefik/.htpasswd:ro
+    networks:
+      - web
+
+  # PostgreSQL database
+  db:
+    image: postgres:17-alpine
+    container_name: ramble-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - /mnt/data/postgres:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Ramble application
+  ramble:
+    image: ghcr.io/open-wander/ramble:0.3.7
+    container_name: ramble
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "host=db user=${DB_USER} password=${DB_PASSWORD} dbname=${DB_NAME} port=5432 sslmode=disable"
+      BASE_URL: "https://ramble.openwander.org"
+      ENV: "production"
+      SESSION_SECRET: ${SESSION_SECRET}
+      AUTO_SEED: ${AUTO_SEED:-false}
+      INITIAL_USER_USERNAME: ${INITIAL_USER_USERNAME:-}
+      INITIAL_USER_EMAIL: ${INITIAL_USER_EMAIL:-}
+      INITIAL_USER_PASSWORD: ${INITIAL_USER_PASSWORD:-}
+      # OAuth (optional)
+      GITHUB_KEY: ${GITHUB_KEY:-}
+      GITHUB_SECRET: ${GITHUB_SECRET:-}
+      GITHUB_REQUESTS_TOKEN: ${GITHUB_REQUESTS_TOKEN:-}
+      GITLAB_KEY: ${GITLAB_KEY:-}
+      GITLAB_SECRET: ${GITLAB_SECRET:-}
+      # Email (optional)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      FROM_ADDRESS: ${FROM_ADDRESS:-}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=wander_web"
+      - "traefik.http.routers.ramble.rule=Host(`ramble.openwander.org`)"
+      - "traefik.http.routers.ramble.entrypoints=websecure"
+      - "traefik.http.routers.ramble.tls.certresolver=letsencrypt"
+      - "traefik.http.services.ramble.loadbalancer.server.port=3000"
+      - "traefik.http.services.ramble.loadbalancer.server.scheme=http"
+      # Old domain redirect
+      - "traefik.http.routers.rmbl-redirect.rule=Host(`rmbl.openwander.org`)"
+      - "traefik.http.routers.rmbl-redirect.entrypoints=websecure"
+      - "traefik.http.routers.rmbl-redirect.tls.certresolver=letsencrypt"
+      - "traefik.http.middlewares.rmbl-to-ramble.redirectregex.regex=^https://rmbl\\.openwander\\.org/(.*)"
+      - "traefik.http.middlewares.rmbl-to-ramble.redirectregex.replacement=https://ramble.openwander.org/$${1}"
+      - "traefik.http.middlewares.rmbl-to-ramble.redirectregex.permanent=true"
+      - "traefik.http.routers.rmbl-redirect.middlewares=rmbl-to-ramble"
+    networks:
+      - web
+      - internal
+
+  # Wander website (static site served by nginx)
+  website:
+    image: nginx:alpine
+    container_name: wander-website
+    restart: unless-stopped
+    volumes:
+      - ./website:/usr/share/nginx/html:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=wander_web"
+      - "traefik.http.routers.website.rule=Host(`openwander.org`) || Host(`www.openwander.org`)"
+      - "traefik.http.routers.website.entrypoints=websecure"
+      - "traefik.http.routers.website.tls.certresolver=letsencrypt"
+      - "traefik.http.services.website.loadbalancer.server.port=80"
+      # Redirect www to non-www
+      - "traefik.http.middlewares.www-redirect.redirectregex.regex=^https://www\\.openwander\\.org/(.*)"
+      - "traefik.http.middlewares.www-redirect.redirectregex.replacement=https://openwander.org/$${1}"
+      - "traefik.http.middlewares.www-redirect.redirectregex.permanent=true"
+      - "traefik.http.routers.website.middlewares=www-redirect"
+    networks:
+      - web
+
+  # Database backup service (runs daily at 3 AM UTC)
+  backup:
+    build: ./backup
+    container_name: ramble-backup
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      PGHOST: db
+      PGUSER: ${DB_USER}
+      PGPASSWORD: ${DB_PASSWORD}
+      PGDATABASE: ${DB_NAME}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+    volumes:
+      - /mnt/data/backups:/backups
+    networks:
+      - internal
+
+  # GoAccess - real-time web log analyzer
+  goaccess:
+    image: allinurl/goaccess:latest
+    container_name: goaccess
+    restart: unless-stopped
+    command:
+      - "--log-file=/logs/access.log"
+      - "--log-format=%h - %^ [%d:%t %^] \"%r\" %s %b \"%R\" \"%u\" %^ \"%^\" \"%^\" %Lms"
+      - "--date-format=%d/%b/%Y"
+      - "--time-format=%H:%M:%S"
+      - "--real-time-html"
+      - "--output=/report/index.html"
+      - "--ws-url=wss://stats.openwander.org:443/ws"
+      - "--port=7890"
+      - "--geoip-database=/geoip/dbip-country-lite.mmdb"
+    volumes:
+      - /mnt/data/traefik:/logs:ro
+      - /mnt/data/goaccess:/report
+      - /mnt/data/geoip:/geoip:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=wander_web"
+      # WebSocket endpoint for real-time updates
+      - "traefik.http.routers.goaccess-ws.rule=Host(`stats.openwander.org`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.goaccess-ws.entrypoints=websecure"
+      - "traefik.http.routers.goaccess-ws.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.goaccess-ws.middlewares=goaccess-auth"
+      - "traefik.http.services.goaccess-ws.loadbalancer.server.port=7890"
+    networks:
+      - web
+
+  # Nginx to serve GoAccess HTML report
+  goaccess-web:
+    image: nginx:alpine
+    container_name: goaccess-web
+    restart: unless-stopped
+    volumes:
+      - /mnt/data/goaccess:/usr/share/nginx/html:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=wander_web"
+      # HTML report
+      - "traefik.http.routers.goaccess.rule=Host(`stats.openwander.org`)"
+      - "traefik.http.routers.goaccess.entrypoints=websecure"
+      - "traefik.http.routers.goaccess.tls.certresolver=letsencrypt"
+      - "traefik.http.services.goaccess.loadbalancer.server.port=80"
+      # Basic auth
+      - "traefik.http.middlewares.goaccess-auth.basicauth.usersfile=/etc/traefik/.htpasswd"
+      - "traefik.http.routers.goaccess.middlewares=goaccess-auth"
+    networks:
+      - web
+
+networks:
+  web:
+    driver: bridge
+  internal:
+    driver: bridge
+    internal: true

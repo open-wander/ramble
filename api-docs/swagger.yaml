@@ -1,12 +1,13 @@
+basePath: /
 definitions:
-  internal_handlers.DevPack:
+  handlers.DevPack:
     properties:
       name:
         type: string
       path:
         type: string
     type: object
-  internal_handlers.JobDetail:
+  handlers.JobDetail:
     properties:
       description:
         type: string
@@ -15,10 +16,10 @@ definitions:
       versions:
         description: Reuse PackVersion structure
         items:
-          $ref: '#/definitions/internal_handlers.PackVersion'
+          $ref: '#/definitions/handlers.PackVersion'
         type: array
     type: object
-  internal_handlers.JobSummary:
+  handlers.JobSummary:
     properties:
       description:
         type: string
@@ -27,7 +28,7 @@ definitions:
       namespace:
         type: string
     type: object
-  internal_handlers.PackDetail:
+  handlers.PackDetail:
     properties:
       description:
         type: string
@@ -35,10 +36,10 @@ definitions:
         type: string
       versions:
         items:
-          $ref: '#/definitions/internal_handlers.PackVersion'
+          $ref: '#/definitions/handlers.PackVersion'
         type: array
     type: object
-  internal_handlers.PackSummary:
+  handlers.PackSummary:
     properties:
       description:
         type: string
@@ -47,15 +48,22 @@ definitions:
       namespace:
         type: string
     type: object
-  internal_handlers.PackVersion:
+  handlers.PackVersion:
     properties:
       url:
         type: string
       version:
         type: string
     type: object
+host: localhost:3000
 info:
-  contact: {}
+  contact:
+    name: API Support
+  description: This is the API documentation for the RMBL Nomad Job & Pack Registry.
+  license:
+    name: MPL-2.0
+  title: RMBL Nomad Registry API
+  version: "1.0"
 paths:
   /{username}:
     get:
@@ -235,7 +243,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_handlers.JobDetail'
+            $ref: '#/definitions/handlers.JobDetail'
         "404":
           description: Not Found
           schema:
@@ -263,7 +271,7 @@ paths:
           schema:
             additionalProperties:
               items:
-                $ref: '#/definitions/internal_handlers.PackSummary'
+                $ref: '#/definitions/handlers.PackSummary'
               type: array
             type: object
         "404":
@@ -296,7 +304,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_handlers.PackDetail'
+            $ref: '#/definitions/handlers.PackDetail'
         "404":
           description: Not Found
           schema:
@@ -330,7 +338,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/internal_handlers.DevPack'
+              $ref: '#/definitions/handlers.DevPack'
             type: array
       summary: List example packs (Dev)
       tags:
@@ -637,7 +645,7 @@ paths:
           schema:
             additionalProperties:
               items:
-                $ref: '#/definitions/internal_handlers.JobSummary'
+                $ref: '#/definitions/handlers.JobSummary'
               type: array
             type: object
       summary: List all jobs
@@ -660,7 +668,7 @@ paths:
           schema:
             additionalProperties:
               items:
-                $ref: '#/definitions/internal_handlers.JobSummary'
+                $ref: '#/definitions/handlers.JobSummary'
               type: array
             type: object
       summary: Search jobs
@@ -678,7 +686,7 @@ paths:
           schema:
             additionalProperties:
               items:
-                $ref: '#/definitions/internal_handlers.PackSummary'
+                $ref: '#/definitions/handlers.PackSummary'
               type: array
             type: object
       summary: List all packs
@@ -701,7 +709,7 @@ paths:
           schema:
             additionalProperties:
               items:
-                $ref: '#/definitions/internal_handlers.PackSummary'
+                $ref: '#/definitions/handlers.PackSummary'
               type: array
             type: object
       summary: Search packs
