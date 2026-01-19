@@ -1,8 +1,18 @@
 {
     "swagger": "2.0",
     "info": {
-        "contact": {}
+        "description": "This is the API documentation for the RMBL Nomad Job \u0026 Pack Registry.",
+        "title": "RMBL Nomad Registry API",
+        "contact": {
+            "name": "API Support"
+        },
+        "license": {
+            "name": "MPL-2.0"
+        },
+        "version": "1.0"
     },
+    "host": "localhost:3000",
+    "basePath": "/",
     "paths": {
         "/about": {
             "get": {
@@ -40,7 +50,7 @@
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/internal_handlers.DevPack"
+                                "$ref": "#/definitions/handlers.DevPack"
                             }
                         }
                     }
@@ -499,7 +509,7 @@
                             "additionalProperties": {
                                 "type": "array",
                                 "items": {
-                                    "$ref": "#/definitions/internal_handlers.JobSummary"
+                                    "$ref": "#/definitions/handlers.JobSummary"
                                 }
                             }
                         }
@@ -534,7 +544,7 @@
                             "additionalProperties": {
                                 "type": "array",
                                 "items": {
-                                    "$ref": "#/definitions/internal_handlers.JobSummary"
+                                    "$ref": "#/definitions/handlers.JobSummary"
                                 }
                             }
                         }
@@ -560,7 +570,7 @@
                             "additionalProperties": {
                                 "type": "array",
                                 "items": {
-                                    "$ref": "#/definitions/internal_handlers.PackSummary"
+                                    "$ref": "#/definitions/handlers.PackSummary"
                                 }
                             }
                         }
@@ -595,7 +605,7 @@
                             "additionalProperties": {
                                 "type": "array",
                                 "items": {
-                                    "$ref": "#/definitions/internal_handlers.PackSummary"
+                                    "$ref": "#/definitions/handlers.PackSummary"
                                 }
                             }
                         }
@@ -747,7 +757,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.JobDetail"
+                            "$ref": "#/definitions/handlers.JobDetail"
                         }
                     },
                     "404": {
@@ -789,7 +799,7 @@
                             "additionalProperties": {
                                 "type": "array",
                                 "items": {
-                                    "$ref": "#/definitions/internal_handlers.PackSummary"
+                                    "$ref": "#/definitions/handlers.PackSummary"
                                 }
                             }
                         }
@@ -836,7 +846,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.PackDetail"
+                            "$ref": "#/definitions/handlers.PackDetail"
                         }
                     },
                     "404": {
@@ -1029,7 +1039,7 @@
         }
     },
     "definitions": {
-        "internal_handlers.DevPack": {
+        "handlers.DevPack": {
             "type": "object",
             "properties": {
                 "name": {
@@ -1040,7 +1050,7 @@
                 }
             }
         },
-        "internal_handlers.JobDetail": {
+        "handlers.JobDetail": {
             "type": "object",
             "properties": {
                 "description": {
@@ -1053,12 +1063,12 @@
                     "description": "Reuse PackVersion structure",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_handlers.PackVersion"
+                        "$ref": "#/definitions/handlers.PackVersion"
                     }
                 }
             }
         },
-        "internal_handlers.JobSummary": {
+        "handlers.JobSummary": {
             "type": "object",
             "properties": {
                 "description": {
@@ -1072,7 +1082,7 @@
                 }
             }
         },
-        "internal_handlers.PackDetail": {
+        "handlers.PackDetail": {
             "type": "object",
             "properties": {
                 "description": {
@@ -1084,12 +1094,12 @@
                 "versions": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_handlers.PackVersion"
+                        "$ref": "#/definitions/handlers.PackVersion"
                     }
                 }
             }
         },
-        "internal_handlers.PackSummary": {
+        "handlers.PackSummary": {
             "type": "object",
             "properties": {
                 "description": {
@@ -1103,7 +1113,7 @@
                 }
             }
         },
-        "internal_handlers.PackVersion": {
+        "handlers.PackVersion": {
             "type": "object",
             "properties": {
                 "url": {

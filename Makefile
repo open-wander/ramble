@@ -78,4 +78,34 @@ deploy: docker-build docker-push
 nomad-vars:
 	go run cmd/nomad-vars/main.go
 
-.PHONY: build run dev migrate test swagger bootstrap update security docker-build docker-push nomad-vars tailwind-install css-build css-watch deploy
+# Release helpers - trigger GitHub Actions release workflow
+release-patch:
+	@echo "Triggering patch release via GitHub Actions..."
+	gh workflow run release.yml -f bump_type=patch -f deploy_compose=true -f deploy_nomad=false
+	@echo "Release workflow triggered. Check progress at: https://github.com/open-wander/ramble/actions"
+
+release-minor:
+	@echo "Triggering minor release via GitHub Actions..."
+	gh workflow run release.yml -f bump_type=minor -f deploy_compose=true -f deploy_nomad=false
+	@echo "Release workflow triggered. Check progress at: https://github.com/open-wander/ramble/actions"
+
+release-major:
+	@echo "Triggering major release via GitHub Actions..."
+	gh workflow run release.yml -f bump_type=major -f deploy_compose=true -f deploy_nomad=false
+	@echo "Release workflow triggered. Check progress at: https://github.com/open-wander/ramble/actions"
+
+# Interactive release - prompts for bump type
+release:
+	@echo "Select version bump type:"
+	@echo "  1) patch ($(shell cat VERSION) -> next patch)"
+	@echo "  2) minor ($(shell cat VERSION) -> next minor)"
+	@echo "  3) major ($(shell cat VERSION) -> next major)"
+	@read -p "Enter choice [1-3]: " choice; \
+	case $$choice in \
+		1) $(MAKE) release-patch ;; \
+		2) $(MAKE) release-minor ;; \
+		3) $(MAKE) release-major ;; \
+		*) echo "Invalid choice" ;; \
+	esac
+
+.PHONY: build run dev migrate test swagger bootstrap update security docker-build docker-push nomad-vars tailwind-install css-build css-watch deploy release release-patch release-minor release-major

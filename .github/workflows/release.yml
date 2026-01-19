@@ -1,0 +1,220 @@
+name: Release and Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      deploy_compose:
+        description: 'Deploy via Docker Compose'
+        required: true
+        type: boolean
+        default: true
+      deploy_nomad:
+        description: 'Deploy via Nomad'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.bump.outputs.new_version }}
+      new_version_num: ${{ steps.bump.outputs.new_version_num }}
+      old_version: ${{ steps.bump.outputs.old_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        id: bump
+        run: |
+          # Read current version
+          CURRENT_VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "old_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+          # Remove 'v' prefix for parsing
+          VERSION_NUM=${CURRENT_VERSION#v}
+
+          # Split into parts
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_NUM"
+
+          # Bump based on input
+          case "${{ inputs.bump_type }}" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+
+          NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          NEW_VERSION_NUM="${MAJOR}.${MINOR}.${PATCH}"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "new_version_num=$NEW_VERSION_NUM" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION (docker tag: $NEW_VERSION_NUM)"
+
+          # Update VERSION file
+          echo "$NEW_VERSION" > VERSION
+
+          # Commit and tag
+          git add VERSION
+          git commit -m "Bump version to $NEW_VERSION"
+          git tag -a "$NEW_VERSION" -m "Release $NEW_VERSION"
+          git push origin main --follow-tags
+
+  build-and-push:
+    needs: bump-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-version.outputs.new_version }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ needs.bump-version.outputs.new_version_num }}
+            ghcr.io/${{ github.repository }}:latest
+          labels: |
+            org.opencontainers.image.version=${{ needs.bump-version.outputs.new_version }}
+
+      - name: Attest Build Provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  deploy-compose:
+    needs: [bump-version, build-and-push]
+    if: inputs.deploy_compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-version.outputs.new_version }}
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            cd /opt/wander
+
+            # Update compose file with new version
+            sed -i "s|ghcr.io/open-wander/ramble:[0-9.]*|ghcr.io/open-wander/ramble:${{ needs.bump-version.outputs.new_version_num }}|g" docker-compose.yml
+
+            # Pull new image
+            docker compose pull ramble
+
+            # Restart ramble service only (keeps traefik, db, etc running)
+            docker compose up -d ramble
+
+            # Wait for container to be healthy
+            echo "Waiting for service to be healthy..."
+            sleep 10
+
+            # Health check via traefik
+            curl -sf https://ramble.openwander.org/ > /dev/null && echo "Health check passed!" || echo "Health check failed!"
+
+      - name: Verify deployment
+        run: |
+          sleep 5
+          curl -sf https://ramble.openwander.org/ > /dev/null && echo "Site is up!" || exit 1
+
+  deploy-nomad:
+    needs: [bump-version, build-and-push]
+    if: inputs.deploy_nomad
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-version.outputs.new_version }}
+
+      - name: Deploy to Nomad
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.NOMAD_SSH_HOST || secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            # Update nomad job with new version
+            cd ${{ secrets.DEPLOY_PATH || '~/ramble' }}
+            sed -i 's|ghcr.io/open-wander/ramble:.*|ghcr.io/open-wander/ramble:${{ needs.bump-version.outputs.new_version }}|g' ramble.nomad.hcl
+
+            # Run the job
+            nomad job run ramble.nomad.hcl
+
+  release:
+    needs: [bump-version, build-and-push]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-version.outputs.new_version }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          check-latest: true
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

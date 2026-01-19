@@ -9,7 +9,12 @@ const docTemplate = `{
     "info": {
         "description": "{{escape .Description}}",
         "title": "{{.Title}}",
-        "contact": {},
+        "contact": {
+            "name": "API Support"
+        },
+        "license": {
+            "name": "MPL-2.0"
+        },
         "version": "{{.Version}}"
     },
     "host": "{{.Host}}",
@@ -51,7 +56,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/internal_handlers.DevPack"
+                                "$ref": "#/definitions/handlers.DevPack"
                             }
                         }
                     }
@@ -510,7 +515,7 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "array",
                                 "items": {
-                                    "$ref": "#/definitions/internal_handlers.JobSummary"
+                                    "$ref": "#/definitions/handlers.JobSummary"
                                 }
                             }
                         }
@@ -545,7 +550,7 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "array",
                                 "items": {
-                                    "$ref": "#/definitions/internal_handlers.JobSummary"
+                                    "$ref": "#/definitions/handlers.JobSummary"
                                 }
                             }
                         }
@@ -571,7 +576,7 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "array",
                                 "items": {
-                                    "$ref": "#/definitions/internal_handlers.PackSummary"
+                                    "$ref": "#/definitions/handlers.PackSummary"
                                 }
                             }
                         }
@@ -606,7 +611,7 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "array",
                                 "items": {
-                                    "$ref": "#/definitions/internal_handlers.PackSummary"
+                                    "$ref": "#/definitions/handlers.PackSummary"
                                 }
                             }
                         }
@@ -758,7 +763,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.JobDetail"
+                            "$ref": "#/definitions/handlers.JobDetail"
                         }
                     },
                     "404": {
@@ -800,7 +805,7 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "array",
                                 "items": {
-                                    "$ref": "#/definitions/internal_handlers.PackSummary"
+                                    "$ref": "#/definitions/handlers.PackSummary"
                                 }
                             }
                         }
@@ -847,7 +852,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.PackDetail"
+                            "$ref": "#/definitions/handlers.PackDetail"
                         }
                     },
                     "404": {
@@ -1040,7 +1045,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "internal_handlers.DevPack": {
+        "handlers.DevPack": {
             "type": "object",
             "properties": {
                 "name": {
@@ -1051,7 +1056,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handlers.JobDetail": {
+        "handlers.JobDetail": {
             "type": "object",
             "properties": {
                 "description": {
@@ -1064,12 +1069,12 @@ const docTemplate = `{
                     "description": "Reuse PackVersion structure",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_handlers.PackVersion"
+                        "$ref": "#/definitions/handlers.PackVersion"
                     }
                 }
             }
         },
-        "internal_handlers.JobSummary": {
+        "handlers.JobSummary": {
             "type": "object",
             "properties": {
                 "description": {
@@ -1083,7 +1088,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handlers.PackDetail": {
+        "handlers.PackDetail": {
             "type": "object",
             "properties": {
                 "description": {
@@ -1095,12 +1100,12 @@ const docTemplate = `{
                 "versions": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_handlers.PackVersion"
+                        "$ref": "#/definitions/handlers.PackVersion"
                     }
                 }
             }
         },
-        "internal_handlers.PackSummary": {
+        "handlers.PackSummary": {
             "type": "object",
             "properties": {
                 "description": {
@@ -1114,7 +1119,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handlers.PackVersion": {
+        "handlers.PackVersion": {
             "type": "object",
             "properties": {
                 "url": {
@@ -1130,12 +1135,12 @@ const docTemplate = `{
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "",
-	Host:             "",
-	BasePath:         "",
+	Version:          "1.0",
+	Host:             "localhost:3000",
+	BasePath:         "/",
 	Schemes:          []string{},
-	Title:            "",
-	Description:      "",
+	Title:            "RMBL Nomad Registry API",
+	Description:      "This is the API documentation for the RMBL Nomad Job & Pack Registry.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",
