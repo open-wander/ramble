@@ -36,13 +36,36 @@
                      class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">{{.Org.Description}}</textarea>
             </div>
 
-            <!-- Members -->
-            {{if .Org.Memberships}}
+            <!-- Members Management -->
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Members ({{len .Org.Memberships}})</label>
-              <div class="space-y-2 max-h-60 overflow-y-auto">
+
+              <!-- Add Member Form -->
+              <div class="flex gap-2 mb-3">
+                <input type="text" id="add-member-username-{{.Org.ID}}" placeholder="Username"
+                       class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                <select id="add-member-role-{{.Org.ID}}"
+                        class="px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                  <option value="member">Member</option>
+                  <option value="owner">Owner</option>
+                </select>
+                <button type="button"
+                        hx-post="/admin/organizations/{{.Org.ID}}/members/add"
+                        hx-target="#admin-members-list-{{.Org.ID}}"
+                        hx-swap="beforeend"
+                        hx-headers='{"X-CSRF-Token": "{{.CSRFToken}}"}'
+                        hx-include="#add-member-username-{{.Org.ID}}, #add-member-role-{{.Org.ID}}"
+                        hx-vals='js:{"username": document.getElementById("add-member-username-{{.Org.ID}}").value, "role": document.getElementById("add-member-role-{{.Org.ID}}").value}'
+                        class="px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm">
+                  Add
+                </button>
+              </div>
+
+              <!-- Members List -->
+              <div id="admin-members-list-{{.Org.ID}}" class="space-y-2 max-h-60 overflow-y-auto">
+                {{if .Org.Memberships}}
                 {{range .Org.Memberships}}
-                <div class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                <div id="admin-member-{{.ID}}" class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded">
                   <div class="flex items-center space-x-2">
                     {{if .User.AvatarURL}}
                       <img class="h-6 w-6 rounded-full" src="{{.User.AvatarURL}}" alt="{{.User.Username}} avatar">
@@ -55,14 +78,36 @@
                       {{.User.Username}}
                     </a>
                   </div>
-                  <span class="text-xs px-2 py-1 rounded {{if eq .Role "owner"}}bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200{{else}}bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-300{{end}}">
-                    {{.Role}}
-                  </span>
+                  <div class="flex items-center space-x-2">
+                    <select hx-post="/admin/organizations/{{$.Org.ID}}/members/{{.ID}}/role"
+                            hx-target="#admin-member-{{.ID}}"
+                            hx-swap="outerHTML"
+                            hx-headers='{"X-CSRF-Token": "{{$.CSRFToken}}"}'
+                            hx-trigger="change"
+                            name="role"
+                            class="text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-600 dark:text-white rounded">
+                      <option value="member" {{if eq .Role "member"}}selected{{end}}>Member</option>
+                      <option value="owner" {{if eq .Role "owner"}}selected{{end}}>Owner</option>
+                    </select>
+                    <button type="button"
+                            hx-delete="/admin/organizations/{{$.Org.ID}}/members/{{.ID}}"
+                            hx-target="#admin-member-{{.ID}}"
+                            hx-swap="outerHTML"
+                            hx-headers='{"X-CSRF-Token": "{{$.CSRFToken}}"}'
+                            hx-confirm="Remove {{.User.Username}} from this organization?"
+                            class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300">
+                      <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
+                {{end}}
+                {{else}}
+                <p class="text-sm text-gray-500 dark:text-gray-400 italic">No members</p>
                 {{end}}
               </div>
             </div>
-            {{end}}
 
             <!-- Resources Count -->
             <div>

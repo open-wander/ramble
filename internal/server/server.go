@@ -254,6 +254,11 @@ func Run(cfg Config) error {
 	admin.Delete("/requests/:id", handlers.DeleteRequest)
 	admin.Post("/requests/sync", handlers.PostSyncGitHubRequests)
 	admin.Get("/audit", handlers.GetAdminAudit)
+	// Admin membership management
+	admin.Post("/organizations/:id/members/add", handlers.PostAdminAddMember)
+	admin.Delete("/organizations/:id/members/:member_id", handlers.PostAdminRemoveMember)
+	admin.Post("/organizations/:id/members/:member_id/role", handlers.PostAdminChangeMemberRole)
+	admin.Delete("/users/:id/memberships/:org_id", handlers.DeleteAdminUserMembership)
 
 	// Resource Routes
 	app.Get("/new", handlers.RequireAuth, handlers.GetNewResource)
