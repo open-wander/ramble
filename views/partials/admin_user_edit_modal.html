@@ -60,21 +60,38 @@
             {{end}}
 
             <!-- Organizations -->
-            {{if .User.Memberships}}
             <div>
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Organizations</label>
-              <div class="space-y-2">
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Organizations ({{len .User.Memberships}})</label>
+              <div id="admin-user-memberships-{{.User.ID}}" class="space-y-2">
+                {{if .User.Memberships}}
                 {{range .User.Memberships}}
-                <div class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded">
-                  <a href="/{{.Organization.Name}}" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
-                    {{.Organization.Name}}
-                  </a>
-                  <span class="text-xs text-gray-500 dark:text-gray-400">{{.Role}}</span>
+                <div id="admin-user-membership-{{.OrganizationID}}" class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                  <div class="flex items-center space-x-2">
+                    <a href="/{{.Organization.Name}}" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
+                      {{.Organization.Name}}
+                    </a>
+                    <span class="text-xs px-2 py-1 rounded {{if eq .Role "owner"}}bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200{{else}}bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-300{{end}}">
+                      {{.Role}}
+                    </span>
+                  </div>
+                  <button type="button"
+                          hx-delete="/admin/users/{{$.User.ID}}/memberships/{{.OrganizationID}}"
+                          hx-target="#admin-user-membership-{{.OrganizationID}}"
+                          hx-swap="outerHTML"
+                          hx-headers='{"X-CSRF-Token": "{{$.CSRFToken}}"}'
+                          hx-confirm="Remove {{$.User.Username}} from {{.Organization.Name}}?"
+                          class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
+                {{end}}
+                {{else}}
+                <p class="text-sm text-gray-500 dark:text-gray-400 italic">Not a member of any organizations</p>
                 {{end}}
               </div>
             </div>
-            {{end}}
 
             <!-- Resources Count -->
             <div>

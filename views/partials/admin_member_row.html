@@ -1,0 +1,37 @@
+<div id="admin-member-{{.Membership.ID}}" class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded">
+  <div class="flex items-center space-x-2">
+    {{if .Membership.User.AvatarURL}}
+      <img class="h-6 w-6 rounded-full" src="{{.Membership.User.AvatarURL}}" alt="{{.Membership.User.Username}} avatar">
+    {{else}}
+      <div class="h-6 w-6 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-xs font-bold text-indigo-600">
+        {{slice .Membership.User.Username 0 1 | upper}}
+      </div>
+    {{end}}
+    <a href="/{{.Membership.User.Username}}" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
+      {{.Membership.User.Username}}
+    </a>
+  </div>
+  <div class="flex items-center space-x-2">
+    <select hx-post="/admin/organizations/{{.OrgID}}/members/{{.Membership.ID}}/role"
+            hx-target="#admin-member-{{.Membership.ID}}"
+            hx-swap="outerHTML"
+            hx-headers='{"X-CSRF-Token": "{{.CSRFToken}}"}'
+            hx-trigger="change"
+            name="role"
+            class="text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-600 dark:text-white rounded">
+      <option value="member" {{if eq .Membership.Role "member"}}selected{{end}}>Member</option>
+      <option value="owner" {{if eq .Membership.Role "owner"}}selected{{end}}>Owner</option>
+    </select>
+    <button type="button"
+            hx-delete="/admin/organizations/{{.OrgID}}/members/{{.Membership.ID}}"
+            hx-target="#admin-member-{{.Membership.ID}}"
+            hx-swap="outerHTML"
+            hx-headers='{"X-CSRF-Token": "{{.CSRFToken}}"}'
+            hx-confirm="Remove {{.Membership.User.Username}} from this organization?"
+            class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300">
+      <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+      </svg>
+    </button>
+  </div>
+</div>

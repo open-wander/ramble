@@ -411,3 +411,154 @@ func GetAdminAudit(c *fiber.Ctx) error {
 		"Page":         "admin_audit",
 	}), "layouts/main")
 }
+
+// PostAdminAddMember adds a user to an organization (admin only)
+func PostAdminAddMember(c *fiber.Ctx) error {
+	orgID := c.Params("id")
+	username := c.FormValue("username")
+	role := c.FormValue("role")
+
+	if role != "member" && role != "owner" {
+		role = "member"
+	}
+
+	var org models.Organization
+	if err := database.DB.First(&org, orgID).Error; err != nil {
+		return c.Status(404).SendString("Organization not found")
+	}
+
+	var user models.User
+	if err := database.DB.Where("username = ?", username).First(&user).Error; err != nil {
+		return c.Status(404).SendString("User not found")
+	}
+
+	// Check if already a member
+	var existing models.Membership
+	if err := database.DB.Where("user_id = ? AND organization_id = ?", user.ID, org.ID).First(&existing).Error; err == nil {
+		return c.Status(400).SendString("User is already a member")
+	}
+
+	membership := models.Membership{
+		UserID:         user.ID,
+		OrganizationID: org.ID,
+		Role:           role,
+	}
+	database.DB.Create(&membership)
+
+	// Reload membership with user data for the response
+	database.DB.Preload("User").First(&membership, membership.ID)
+
+	AuditLog(c, "admin.add_member", "organization", org.ID, org.Name, map[string]interface{}{
+		"member":   username,
+		"role":     role,
+		"added_by": "admin",
+	})
+
+	return c.Render("partials/admin_member_row", fiber.Map{
+		"Membership": membership,
+		"OrgID":      org.ID,
+		"CSRFToken":  c.Locals("CSRFToken"),
+	})
+}
+
+// PostAdminRemoveMember removes a member from an organization (admin only)
+func PostAdminRemoveMember(c *fiber.Ctx) error {
+	orgID := c.Params("id")
+	memberID := c.Params("member_id")
+
+	var org models.Organization
+	if err := database.DB.First(&org, orgID).Error; err != nil {
+		return c.Status(404).SendString("Organization not found")
+	}
+
+	var membership models.Membership
+	if err := database.DB.Preload("User").First(&membership, memberID).Error; err != nil {
+		return c.Status(404).SendString("Member not found")
+	}
+
+	if membership.OrganizationID != org.ID {
+		return c.Status(400).SendString("Member does not belong to this organization")
+	}
+
+	AuditLog(c, "admin.remove_member", "organization", org.ID, org.Name, map[string]interface{}{
+		"member":     membership.User.Username,
+		"removed_by": "admin",
+	})
+
+	database.DB.Delete(&membership)
+
+	// Return empty string for HTMX to remove the row
+	return c.SendString("")
+}
+
+// PostAdminChangeMemberRole changes a member's role in an organization (admin only)
+func PostAdminChangeMemberRole(c *fiber.Ctx) error {
+	orgID := c.Params("id")
+	memberID := c.Params("member_id")
+	newRole := c.FormValue("role")
+
+	if newRole != "member" && newRole != "owner" {
+		return c.Status(400).SendString("Invalid role")
+	}
+
+	var org models.Organization
+	if err := database.DB.First(&org, orgID).Error; err != nil {
+		return c.Status(404).SendString("Organization not found")
+	}
+
+	var membership models.Membership
+	if err := database.DB.Preload("User").First(&membership, memberID).Error; err != nil {
+		return c.Status(404).SendString("Member not found")
+	}
+
+	if membership.OrganizationID != org.ID {
+		return c.Status(400).SendString("Member does not belong to this organization")
+	}
+
+	oldRole := membership.Role
+	membership.Role = newRole
+	database.DB.Save(&membership)
+
+	AuditLog(c, "admin.change_member_role", "organization", org.ID, org.Name, map[string]interface{}{
+		"member":   membership.User.Username,
+		"old_role": oldRole,
+		"new_role": newRole,
+	})
+
+	return c.Render("partials/admin_member_row", fiber.Map{
+		"Membership": membership,
+		"OrgID":      org.ID,
+		"CSRFToken":  c.Locals("CSRFToken"),
+	})
+}
+
+// DeleteAdminUserMembership removes a user from an organization (from user edit modal)
+func DeleteAdminUserMembership(c *fiber.Ctx) error {
+	userID := c.Params("id")
+	orgID := c.Params("org_id")
+
+	var user models.User
+	if err := database.DB.First(&user, userID).Error; err != nil {
+		return c.Status(404).SendString("User not found")
+	}
+
+	var org models.Organization
+	if err := database.DB.First(&org, orgID).Error; err != nil {
+		return c.Status(404).SendString("Organization not found")
+	}
+
+	var membership models.Membership
+	if err := database.DB.Where("user_id = ? AND organization_id = ?", user.ID, org.ID).First(&membership).Error; err != nil {
+		return c.Status(404).SendString("Membership not found")
+	}
+
+	AuditLog(c, "admin.remove_user_membership", "user", user.ID, user.Username, map[string]interface{}{
+		"organization": org.Name,
+		"removed_by":   "admin",
+	})
+
+	database.DB.Delete(&membership)
+
+	// Return empty string for HTMX to remove the row
+	return c.SendString("")
+}

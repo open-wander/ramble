@@ -335,8 +335,15 @@ func PostEditResource(c *fiber.Ctx) error {
 	}
 	var input EditInput; if err := c.BodyParser(&input); err != nil { return c.Status(400).SendString("Invalid input") }
 	var newOrgID *uint
+	originalOrgID := resource.OrganizationID
 	if strings.HasPrefix(input.Owner, "org:") {
 		oid, _ := strconv.ParseUint(strings.TrimPrefix(input.Owner, "org:"), 10, 32); val := uint(oid); newOrgID = &val
+	}
+	if newOrgID != nil && (originalOrgID == nil || *originalOrgID != *newOrgID) {
+		var membership models.Membership
+		if err := database.DB.Where("user_id = ? AND organization_id = ?", currentUserID, *newOrgID).First(&membership).Error; err != nil {
+			return c.Status(403).SendString("You must be a member of the target organization")
+		}
 	}
 	if input.Name != resource.Name || (resource.OrganizationID != newOrgID) {
 		var count int64; collideQuery := database.DB.Model(&models.NomadResource{}).Where("name = ?", input.Name)
@@ -358,14 +365,19 @@ func PostEditResource(c *fiber.Ctx) error {
 	if err := database.DB.Save(&resource).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString("Failed to save resource")
 	}
-	AuditLog(c, "resource.edit", "resource", resource.ID, resource.Name, nil)
-	SetFlash(c, "success", "Resource updated successfully!")
 	newNamespace := ""
 	if resource.OrganizationID != nil {
 		var o models.Organization; database.DB.First(&o, *resource.OrganizationID); newNamespace = o.Name
+		if originalOrgID == nil || *originalOrgID != *resource.OrganizationID {
+			AuditLog(c, "resource.transfer", "resource", resource.ID, resource.Name, map[string]interface{}{
+				"to_org_id": *resource.OrganizationID, "to_org_name": o.Name,
+			})
+		}
 	} else {
 		var u models.User; database.DB.First(&u, resource.UserID); newNamespace = u.Username
 	}
+	AuditLog(c, "resource.edit", "resource", resource.ID, resource.Name, nil)
+	SetFlash(c, "success", "Resource updated successfully!")
 	c.Set("HX-Redirect", "/"+newNamespace+"/"+resource.Name); return c.SendStatus(200)
 }
 
