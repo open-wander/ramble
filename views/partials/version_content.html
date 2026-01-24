@@ -22,6 +22,12 @@
         <dd class="mt-1 text-sm text-gray-900 sm:mt-0">
             <div class="relative group">
                 <pre class="bg-gray-900 text-gray-100 p-4 rounded-md overflow-x-auto text-xs font-mono border border-gray-700"><code class="language-hcl">{{.Version.Content}}</code></pre>
+                <button
+                    _="on click call navigator.clipboard.writeText(my.previousElementSibling.innerText) then set my.innerText to 'Copied!' then wait 2s then set my.innerText to 'Copy'"
+                    class="absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded text-xs transition-colors"
+                >
+                    Copy
+                </button>
             </div>
         </dd>
     </div>

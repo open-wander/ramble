@@ -20,10 +20,14 @@
                 </p>
             </div>
             <div class="mt-8 lg:mt-0 lg:ml-8">
-                <div class="bg-indigo-800 p-4 rounded-md">
-                    <code class="text-indigo-100 text-sm">
-                        ramble registry add rmbl https://{{.Host}}
-                    </code>
+                <div class="bg-indigo-800 p-4 rounded-md relative group">
+                    <code class="text-indigo-100 text-sm pr-16">ramble registry add rmbl https://{{.Host}}</code>
+                    <button
+                        _="on click call navigator.clipboard.writeText('ramble registry add rmbl https://{{.Host}}') then set my.innerText to 'Copied!' then wait 2s then set my.innerText to 'Copy'"
+                        class="absolute top-1/2 right-2 -translate-y-1/2 bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded text-xs transition-colors"
+                    >
+                        Copy
+                    </button>
                 </div>
             </div>
         </div>
@@ -95,12 +99,16 @@
             </div>
             <div class="bg-gray-50 dark:bg-gray-700 px-4 py-4 sm:px-6">
                 <div class="text-sm flex flex-col space-y-2">
-                    <div class="flex justify-between">
+                    <div class="flex justify-between items-center">
                         <span class="text-gray-500 dark:text-gray-400">Registry Command:</span>
+                        <button
+                            _="on click call navigator.clipboard.writeText('ramble registry add {{.Name}} https://{{$.Host}}/{{.Name}}') then set my.innerText to 'Copied!' then wait 2s then set my.innerText to 'Copy'"
+                            class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 transition-colors"
+                        >
+                            Copy
+                        </button>
                     </div>
-                    <code class="bg-gray-100 dark:bg-gray-900 p-2 rounded text-xs text-indigo-600 dark:text-indigo-400 break-all">
-                        ramble registry add {{.Name}} https://{{$.Host}}/{{.Name}}
-                    </code>
+                    <code class="bg-gray-100 dark:bg-gray-900 p-2 rounded text-xs text-indigo-600 dark:text-indigo-400 break-all">ramble registry add {{.Name}} https://{{$.Host}}/{{.Name}}</code>
                 </div>
             </div>
         </div>
