@@ -7,7 +7,7 @@
     {{$sort := .Sort}}
     
     {{range $index, $res := .Resources}}
-    <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow duration-200"
+    <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
          {{if eq (add $index 1) $length}}
             {{if $nextPage}}
                 hx-get="/search?q={{$query}}&type={{$type}}&tag={{$tag}}&sort={{$sort}}&page={{$nextPage}}"
@@ -22,7 +22,12 @@
                     <span class="text-gray-300 dark:text-gray-600 font-light mx-1">/</span>
                     <a href="/{{$res.User.Username}}/{{$res.Name}}" class="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline transition-colors">{{$res.Name}}</a>
                 </h3>
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{if eq $res.Type "job"}}bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200{{else}}bg-teal-100 dark:bg-teal-900/50 text-teal-800 dark:text-teal-200{{end}}">
+                    {{if eq $res.Type "job"}}
+                    <svg class="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    {{else}}
+                    <svg class="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+                    {{end}}
                     {{$res.Type}}
                 </span>
             </div>

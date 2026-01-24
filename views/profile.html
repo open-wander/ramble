@@ -122,8 +122,18 @@
             {{if .Resources}}
                 {{template "partials/resource_list" .}}
             {{else}}
-                <div class="text-center text-gray-500 dark:text-gray-400 w-full col-span-full py-10 bg-white dark:bg-gray-800 shadow rounded-lg">
-                    No repositories found.
+                <div class="col-span-full flex flex-col items-center justify-center py-16 px-4 bg-white dark:bg-gray-800 shadow rounded-lg">
+                    <svg class="h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                    <h3 class="mt-4 text-lg font-medium text-gray-900 dark:text-white">No resources yet</h3>
+                    {{if .Query}}
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">No resources match your filter.</p>
+                    {{else}}
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        {{if .ProfileUser}}This user hasn't{{else}}This organization hasn't{{end}} published any resources yet.
+                    </p>
+                    {{end}}
                 </div>
             {{end}}
         </div>

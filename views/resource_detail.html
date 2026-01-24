@@ -46,7 +46,12 @@
                     {{end}}
                 </p>
             </div>
-            <span class="inline-flex items-center px-3 py-0.5 rounded-full text-sm font-medium bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200">
+            <span class="inline-flex items-center px-3 py-0.5 rounded-full text-sm font-medium {{if eq .Resource.Type "job"}}bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200{{else}}bg-teal-100 dark:bg-teal-900/50 text-teal-800 dark:text-teal-200{{end}}">
+                {{if eq .Resource.Type "job"}}
+                <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                {{else}}
+                <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+                {{end}}
                 {{.Resource.Type}}
             </span>
         </div>

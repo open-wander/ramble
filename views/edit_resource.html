@@ -89,26 +89,29 @@
                         <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Comma separated tags.</p>
                     </div>
 
-                    {{if not .Resource.OrganizationID}}
-                    {{if .Organizations}}
                     <div class="sm:col-span-6 pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
                         <label for="owner" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Transfer to Organization (Optional)
+                            Owner
                         </label>
                         <div class="mt-1">
+                            {{if .Organizations}}
                             <select id="owner" name="owner" class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-md p-2 border">
-                                <option value="">Keep as personal resource</option>
+                                <option value="" {{if not .Resource.OrganizationID}}selected{{end}}>Personal ({{.Resource.User.Username}})</option>
                                 {{range .Organizations}}
                                 <option value="org:{{.ID}}">{{.Name}}</option>
                                 {{end}}
                             </select>
+                            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                Transfer this resource to an organization you belong to.
+                            </p>
+                            {{else}}
+                            <input type="text" disabled value="Personal ({{.Resource.User.Username}})" class="shadow-sm block w-full sm:text-sm border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-md p-2 border bg-gray-100 dark:bg-gray-800">
+                            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                <a href="/orgs/new" class="text-indigo-600 dark:text-indigo-400 hover:underline">Create an organization</a> to transfer this resource.
+                            </p>
+                            {{end}}
                         </div>
-                        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                            Once transferred, the resource will belong to the organization.
-                        </p>
                     </div>
-                    {{end}}
-                    {{end}}
 
                 </div>
             </div>
