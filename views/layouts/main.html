@@ -67,6 +67,14 @@
         .htmx-request.htmx-indicator{
             opacity:1;
         }
+        /* Skeleton loading cards - use display instead of opacity */
+        .htmx-indicator.hidden {
+            display: none !important;
+        }
+        .htmx-request .htmx-indicator.hidden {
+            display: grid !important;
+            opacity: 1;
+        }
     </style>
     <script>
         // Check for dark mode preference
