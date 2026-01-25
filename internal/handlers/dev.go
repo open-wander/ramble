@@ -12,13 +12,8 @@ type DevPack struct {
 	Path string `json:"path"`
 }
 
-// GetDevelopmentPacks godoc
-// @Summary List example packs (Dev)
-// @Description Lists the example packs found in the local examples directory. Useful for development and testing.
-// @Tags dev
-// @Produce json
-// @Success 200 {array} DevPack
-// @Router /api/dev/packs [get]
+// GetDevelopmentPacks returns example packs for local development.
+// This endpoint is disabled in production and not included in API docs.
 func GetDevelopmentPacks(c *fiber.Ctx) error {
 	packsDir := "examples"
 	if _, err := os.Stat(packsDir); os.IsNotExist(err) {

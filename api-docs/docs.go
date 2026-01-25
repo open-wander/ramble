@@ -40,29 +40,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/dev/packs": {
-            "get": {
-                "description": "Lists the example packs found in the local examples directory. Useful for development and testing.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "dev"
-                ],
-                "summary": "List example packs (Dev)",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/handlers.DevPack"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/docs": {
             "get": {
                 "description": "Renders the documentation page with sidebar navigation.",
@@ -619,6 +596,46 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/recent": {
+            "get": {
+                "description": "Fetch a list of recently updated packs and jobs, optionally filtered by time.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "resources"
+                ],
+                "summary": "List recently updated resources",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ISO8601 timestamp to filter resources updated after this time",
+                        "name": "since",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum number of results (default 50, max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/definitions/handlers.RecentResource"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/registries": {
             "get": {
                 "description": "Returns a JSON list of all namespaces that contain at least one Nomad Pack.",
@@ -675,6 +692,54 @@ const docTemplate = `{
                                     "type": "string"
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        },
+        "/webhooks/github/issues": {
+            "post": {
+                "description": "Webhook endpoint for GitHub to send issue events. Used to sync community pack/job requests with GitHub issues. Requires valid X-Hub-Signature-256 header.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "webhooks"
+                ],
+                "summary": "Receive GitHub issue webhooks",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "GitHub webhook signature",
+                        "name": "X-Hub-Signature-256",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "GitHub event type",
+                        "name": "X-GitHub-Event",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "Invalid signature",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Webhook secret not configured",
+                        "schema": {
+                            "type": "string"
                         }
                     }
                 }
@@ -1045,17 +1110,6 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "handlers.DevPack": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string"
-                },
-                "path": {
-                    "type": "string"
-                }
-            }
-        },
         "handlers.JobDetail": {
             "type": "object",
             "properties": {
@@ -1129,6 +1183,41 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "handlers.RecentResource": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "latest_version": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "namespace": {
+                    "type": "string"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "type": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
         }
     }
 }`
@@ -1136,7 +1225,7 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "localhost:3000",
+	Host:             "ramble.openwander.org",
 	BasePath:         "/",
 	Schemes:          []string{},
 	Title:            "RMBL Nomad Registry API",

@@ -481,7 +481,8 @@ func ListRecentAPI(c *fiber.Ctx) error {
 		Preload("Organization").
 		Preload("Tags").
 		Preload("Versions", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created_at DESC").Limit(1)
+			// Note: Don't use Limit(1) here - GORM applies it globally, not per-resource
+			return db.Order("created_at DESC")
 		}).
 		Order("updated_at DESC").
 		Limit(limit)
