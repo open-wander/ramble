@@ -135,15 +135,19 @@ type SiteSetting struct {
 }
 
 // AuditLog records security-relevant actions for compliance and debugging
+// Uses explicit fields instead of gorm.Model to prevent soft deletes and ensure immutability
 type AuditLog struct {
-	gorm.Model
-	Action     string `gorm:"not null;index"` // e.g., "user.login", "admin.delete_user"
-	ActorID    uint   `gorm:"index"`          // User who performed action (0 for system/anonymous)
-	ActorName  string // Username at time of action
-	TargetType string `gorm:"index"` // e.g., "user", "resource", "organization"
-	TargetID   uint   // ID of affected entity
-	TargetName string // Name/identifier at time of action
-	Details    string `gorm:"type:text"` // JSON with additional context
+	ID         uint      `gorm:"primaryKey"`
+	CreatedAt  time.Time `gorm:"index"`
+	Action     string    `gorm:"not null;index"` // e.g., "user.login", "admin.delete_user"
+	ActorID    uint      `gorm:"index"`          // User who performed action (0 for system/anonymous)
+	ActorName  string    // Username at time of action
+	TargetType string    `gorm:"index"` // e.g., "user", "resource", "organization"
+	TargetID   uint      // ID of affected entity
+	TargetName string    // Name/identifier at time of action
+	Details    string    `gorm:"type:text"` // JSON with additional context
 	IPAddress  string
 	UserAgent  string
+	RequestID  string `gorm:"index"` // Request ID for tracing
+	Checksum   string `gorm:"index"` // SHA-256 hash of all fields for integrity verification
 }

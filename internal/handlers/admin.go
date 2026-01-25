@@ -386,7 +386,8 @@ func GetAdminAudit(c *fiber.Ctx) error {
 	query := database.DB.Order("created_at desc").Limit(pageSize).Offset((page - 1) * pageSize)
 
 	if actionFilter != "" {
-		query = query.Where("action LIKE ?", actionFilter+"%")
+		escapedFilter := escapeLikeString(actionFilter)
+		query = query.Where("action LIKE ? ESCAPE '\\'", escapedFilter+"%")
 	}
 
 	query.Find(&logs)
@@ -395,7 +396,8 @@ func GetAdminAudit(c *fiber.Ctx) error {
 	var totalCount int64
 	countQuery := database.DB.Model(&models.AuditLog{})
 	if actionFilter != "" {
-		countQuery = countQuery.Where("action LIKE ?", actionFilter+"%")
+		escapedFilter := escapeLikeString(actionFilter)
+		countQuery = countQuery.Where("action LIKE ? ESCAPE '\\'", escapedFilter+"%")
 	}
 	countQuery.Count(&totalCount)
 

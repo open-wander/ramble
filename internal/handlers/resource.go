@@ -1,11 +1,14 @@
 package handlers
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"regexp"
+	"rmbl/internal/crypto"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"strconv"
@@ -15,6 +18,30 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
+
+// validateGitHubSignature validates GitHub webhook signature (X-Hub-Signature-256)
+func validateGitHubSignature(payload []byte, secret, signature string) bool {
+	if secret == "" || signature == "" {
+		return false
+	}
+
+	// GitHub signature format: sha256=<hex>
+	if !strings.HasPrefix(signature, "sha256=") {
+		return false
+	}
+
+	expectedSig := strings.TrimPrefix(signature, "sha256=")
+	expectedBytes, err := hex.DecodeString(expectedSig)
+	if err != nil {
+		return false
+	}
+
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(payload)
+	actualBytes := mac.Sum(nil)
+
+	return hmac.Equal(expectedBytes, actualBytes)
+}
 
 var tagRegex = regexp.MustCompile(`^[a-z0-9-]+$`)
 
@@ -85,26 +112,46 @@ type GitRepoInfo struct {
 
 func GetMyRepos(c *fiber.Ctx) error {
 	sess, err := Store.Get(c)
-	if err != nil || sess.Get("user_id") == nil { return c.Status(401).SendString("Unauthorized") }
+	if err != nil || sess.Get("user_id") == nil {
+		return c.Status(401).SendString("Unauthorized")
+	}
 	userID := sess.Get("user_id").(uint)
 	var user models.User
 	database.DB.First(&user, userID)
-	if user.AccessToken == "" { return c.SendString("<p class='text-sm text-red-500'>No access token found. Please logout and login again.</p>") }
+	if user.AccessToken == "" {
+		return c.SendString("<p class='text-sm text-red-500'>No access token found. Please logout and login again.</p>")
+	}
+
+	// Decrypt the access token
+	accessToken, err := crypto.DecryptToken(user.AccessToken)
+	if err != nil {
+		return c.SendString("<p class='text-sm text-red-500'>Failed to decrypt access token.</p>")
+	}
+
 	var repos []GitRepoInfo
 	if user.Provider == "github" {
 		agent := fiber.Get("https://api.github.com/user/repos?sort=updated&per_page=50")
-		agent.Set("Authorization", "token "+user.AccessToken)
+		agent.Set("Authorization", "token "+accessToken)
 		agent.Set("User-Agent", "RMBL-Registry")
 		statusCode, _, errs := agent.Struct(&repos)
-		if len(errs) > 0 || statusCode != 200 { return c.SendString("<p class='text-sm text-red-500'>Failed to fetch GitHub repositories.</p>") }
+		if len(errs) > 0 || statusCode != 200 {
+			return c.SendString("<p class='text-sm text-red-500'>Failed to fetch GitHub repositories.</p>")
+		}
 	} else if user.Provider == "gitlab" {
-		type GitLabProject struct { Name string `json:"name"`; WebURL string `json:"web_url"`; Description string `json:"description"` }
+		type GitLabProject struct {
+			Name        string `json:"name"`
+			WebURL      string `json:"web_url"`
+			Description string `json:"description"`
+		}
 		var gitlabRepos []GitLabProject
 		agent := fiber.Get("https://gitlab.com/api/v4/projects?membership=true&simple=true&per_page=50")
-		agent.Set("Authorization", "Bearer "+user.AccessToken)
+		agent.Set("Authorization", "Bearer "+accessToken)
 		statusCode, _, errs := agent.Struct(&gitlabRepos)
-		if len(errs) > 0 || statusCode != 200 { return c.SendString("<p class='text-sm text-red-500'>Failed to fetch GitLab projects.</p>") }
-		for _, r := range gitlabRepos { repos = append(repos, GitRepoInfo{Name: r.Name, FullURL: r.WebURL, Description: r.Description})
+		if len(errs) > 0 || statusCode != 200 {
+			return c.SendString("<p class='text-sm text-red-500'>Failed to fetch GitLab projects.</p>")
+		}
+		for _, r := range gitlabRepos {
+			repos = append(repos, GitRepoInfo{Name: r.Name, FullURL: r.WebURL, Description: r.Description})
 		}
 	}
 	return c.Render("partials/repo_importer_list", fiber.Map{"Repos": repos})
@@ -122,7 +169,8 @@ func FetchInfo(c *fiber.Ctx) error {
 			var user models.User
 			database.DB.First(&user, uID.(uint))
 			if user.AccessToken != "" {
-				token = user.AccessToken
+				decryptedToken, _ := crypto.DecryptToken(user.AccessToken)
+				token = decryptedToken
 			}
 		}
 	}
@@ -337,7 +385,17 @@ func PostEditResource(c *fiber.Ctx) error {
 	var newOrgID *uint
 	originalOrgID := resource.OrganizationID
 	if strings.HasPrefix(input.Owner, "org:") {
-		oid, _ := strconv.ParseUint(strings.TrimPrefix(input.Owner, "org:"), 10, 32); val := uint(oid); newOrgID = &val
+		oid, err := strconv.ParseUint(strings.TrimPrefix(input.Owner, "org:"), 10, 32)
+		if err != nil {
+			return c.Status(400).SendString("Invalid organization ID")
+		}
+		val := uint(oid)
+		// Verify organization exists
+		var org models.Organization
+		if err := database.DB.First(&org, val).Error; err != nil {
+			return c.Status(400).SendString("Organization not found")
+		}
+		newOrgID = &val
 	}
 	if newOrgID != nil && (originalOrgID == nil || *originalOrgID != *newOrgID) {
 		var membership models.Membership
@@ -472,8 +530,23 @@ func HandleWebhook(c *fiber.Ctx) error {
 		return c.SendStatus(404)
 	}
 
-	// Use constant-time comparison to prevent timing attacks
-	if secret == "" || subtle.ConstantTimeCompare([]byte(resource.WebhookSecret), []byte(secret)) != 1 {
+	// Validate webhook authentication
+	isValid := false
+
+	// Check for GitHub HMAC signature (X-Hub-Signature-256)
+	if signature := c.Get("X-Hub-Signature-256"); signature != "" {
+		isValid = validateGitHubSignature(c.Body(), resource.WebhookSecret, signature)
+	} else if secret != "" {
+		// Fallback to query parameter secret (legacy method)
+		// Check empty secret separately to avoid timing leak
+		if resource.WebhookSecret == "" {
+			isValid = false
+		} else {
+			isValid = subtle.ConstantTimeCompare([]byte(resource.WebhookSecret), []byte(secret)) == 1
+		}
+	}
+
+	if !isValid {
 		resource.LastWebhookDelivery = time.Now()
 		resource.LastWebhookStatus = "failure"
 		resource.LastWebhookError = "Invalid or missing secret"
@@ -637,21 +710,38 @@ func PostResetWebhookSecret(c *fiber.Ctx) error {
 // @Failure 401 {string} string "Unauthorized"
 // @Router /resource/{id}/star [post]
 func ToggleStar(c *fiber.Ctx) error {
-	id := c.Params("id"); sess, _ := Store.Get(c); userID := sess.Get("user_id").(uint)
+	id := c.Params("id")
+	sess, _ := Store.Get(c)
+	userID := sess.Get("user_id").(uint)
+
 	var resource models.NomadResource
-	if err := database.DB.Preload("StarredBy").First(&resource, id).Error; err != nil { return c.Status(404).SendString("Resource not found") }
+	if err := database.DB.Preload("StarredBy").First(&resource, id).Error; err != nil {
+		return c.Status(404).SendString("Resource not found")
+	}
+
 	isStarred := false
-	for _, u := range resource.StarredBy { if u.ID == userID { isStarred = true; break } }
-	if isStarred {
-		if err := database.DB.Model(&resource).Association("StarredBy").Delete(&models.User{Model: gorm.Model{ID: userID}}); err != nil {
-			return c.Status(fiber.StatusInternalServerError).SendString("Failed to unstar resource")
+	for _, u := range resource.StarredBy {
+		if u.ID == userID {
+			isStarred = true
+			break
 		}
-		database.DB.Model(&resource).Update("star_count", gorm.Expr("star_count - ?", 1))
-	} else {
-		if err := database.DB.Model(&resource).Association("StarredBy").Append(&models.User{Model: gorm.Model{ID: userID}}); err != nil {
-			return c.Status(fiber.StatusInternalServerError).SendString("Failed to star resource")
+	}
+
+	// Use transaction to prevent race condition between star operation and count update
+	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		if isStarred {
+			if err := tx.Model(&resource).Association("StarredBy").Delete(&models.User{Model: gorm.Model{ID: userID}}); err != nil {
+				return err
+			}
+			return tx.Model(&resource).Update("star_count", gorm.Expr("star_count - ?", 1)).Error
 		}
-		database.DB.Model(&resource).Update("star_count", gorm.Expr("star_count + ?", 1))
+		if err := tx.Model(&resource).Association("StarredBy").Append(&models.User{Model: gorm.Model{ID: userID}}); err != nil {
+			return err
+		}
+		return tx.Model(&resource).Update("star_count", gorm.Expr("star_count + ?", 1)).Error
+	})
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString("Failed to update star status")
 	}
 
 	// Refetch count

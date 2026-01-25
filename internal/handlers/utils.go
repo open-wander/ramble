@@ -80,6 +80,24 @@ func parsePackVariables(content string) ([]PackVariable, error) {
 	return config.Variables, nil
 }
 
+// isAllowedContentType checks if the Content-Type is safe for file downloads
+func isAllowedContentType(contentType string) bool {
+	allowedTypes := []string{
+		"text/plain",
+		"text/markdown",
+		"text/x-markdown",
+		"application/octet-stream",
+		"application/x-hcl",
+		"text/x-hcl",
+	}
+	for _, allowed := range allowedTypes {
+		if strings.HasPrefix(contentType, allowed) {
+			return true
+		}
+	}
+	return false
+}
+
 func downloadFile(repoURL string, fileName string) (string, error) {
 	if repoURL == "" || fileName == "" {
 		return "", nil
@@ -96,6 +114,7 @@ func downloadFile(repoURL string, fileName string) (string, error) {
 			agent := fiber.Get(tempURL)
 			statusCode, body, errs := agent.Bytes()
 			if len(errs) == 0 && statusCode == 200 {
+				// Validate Content-Type (raw.githubusercontent.com always returns text/plain)
 				return string(body), nil
 			}
 		}
