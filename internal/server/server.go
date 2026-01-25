@@ -203,10 +203,11 @@ func Run(cfg Config) error {
 	// SEO Routes
 	app.Get("/sitemap.xml", handlers.GenerateSitemap)
 
-	// Swagger UI (disabled in production)
-	if os.Getenv("ENV") != "production" {
-		app.Get("/swagger/*", swagger.HandlerDefault)
-	}
+	// Swagger UI / API Docs
+	app.Get("/swagger/*", swagger.HandlerDefault)
+	app.Get("/api-docs", func(c *fiber.Ctx) error {
+		return c.Redirect("/swagger/index.html", fiber.StatusMovedPermanently)
+	})
 
 	// Rate limiter for search endpoints
 	searchLimiter := limiter.New(limiter.Config{

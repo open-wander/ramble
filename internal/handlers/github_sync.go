@@ -340,7 +340,17 @@ func PostSyncGitHubRequests(c *fiber.Ctx) error {
 	})
 }
 
-// HandleGitHubIssueWebhook processes GitHub issue events
+// HandleGitHubIssueWebhook godoc
+// @Summary Receive GitHub issue webhooks
+// @Description Webhook endpoint for GitHub to send issue events. Used to sync community pack/job requests with GitHub issues. Requires valid X-Hub-Signature-256 header.
+// @Tags webhooks
+// @Accept json
+// @Param X-Hub-Signature-256 header string true "GitHub webhook signature"
+// @Param X-GitHub-Event header string true "GitHub event type"
+// @Success 200 {string} string "OK"
+// @Failure 403 {string} string "Invalid signature"
+// @Failure 500 {string} string "Webhook secret not configured"
+// @Router /webhooks/github/issues [post]
 func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
 	// Validate signature
 	secret := os.Getenv("GITHUB_WEBHOOK_SECRET")

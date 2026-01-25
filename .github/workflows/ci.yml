@@ -25,6 +25,16 @@ jobs:
     - name: Run Tests
       run: go test -v ./...
 
+    - name: Check Swagger docs are up to date
+      run: |
+        go install github.com/swaggo/swag/cmd/swag@latest
+        make swagger
+        if ! git diff --quiet api-docs/; then
+          echo "Swagger docs are out of date. Run 'make swagger' and commit the changes."
+          git diff api-docs/
+          exit 1
+        fi
+
   build-docker:
     needs: test
     runs-on: ubuntu-latest

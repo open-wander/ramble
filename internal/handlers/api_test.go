@@ -805,3 +805,129 @@ func TestGetJobAPI_NamespaceNotFound(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 404, resp.StatusCode)
 }
+
+// ==================== Recent API Tests ====================
+
+func TestListRecentAPI_VersionsWithAndWithoutVPrefix(t *testing.T) {
+	defer cleanupTestData(t)
+
+	user := createTestUser(t, "recentuser")
+
+	// Create pack with v-prefixed version
+	pack1 := models.NomadResource{
+		Name:          "pack-with-v-prefix",
+		Description:   "Pack with v prefix",
+		Type:          models.ResourceTypePack,
+		UserID:        user.ID,
+		RepositoryURL: "https://github.com/test/pack1",
+	}
+	database.DB.Create(&pack1)
+	version1 := models.ResourceVersion{
+		ResourceID: pack1.ID,
+		Version:    "v0.0.1",
+		Readme:     "# Pack 1",
+	}
+	database.DB.Create(&version1)
+
+	// Create pack without v-prefix version
+	pack2 := models.NomadResource{
+		Name:          "pack-without-v-prefix",
+		Description:   "Pack without v prefix",
+		Type:          models.ResourceTypePack,
+		UserID:        user.ID,
+		RepositoryURL: "https://github.com/test/pack2",
+	}
+	database.DB.Create(&pack2)
+	version2 := models.ResourceVersion{
+		ResourceID: pack2.ID,
+		Version:    "1.1.0",
+		Readme:     "# Pack 2",
+	}
+	database.DB.Create(&version2)
+
+	app := setupTestApp()
+	app.Get("/v1/recent", ListRecentAPI)
+
+	req := httptest.NewRequest("GET", "/v1/recent", nil)
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string][]RecentResource
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	assert.NoError(t, err)
+
+	resources := result["resources"]
+	assert.GreaterOrEqual(t, len(resources), 2, "Should have at least 2 resources")
+
+	// Find both packs and verify their latest_version is populated
+	foundPack1 := false
+	foundPack2 := false
+	for _, r := range resources {
+		if r.Name == "pack-with-v-prefix" {
+			foundPack1 = true
+			assert.Equal(t, "v0.0.1", r.LatestVersion, "v-prefixed version should be populated")
+		}
+		if r.Name == "pack-without-v-prefix" {
+			foundPack2 = true
+			assert.Equal(t, "1.1.0", r.LatestVersion, "non-v-prefixed version should be populated")
+		}
+	}
+	assert.True(t, foundPack1, "Should find pack-with-v-prefix")
+	assert.True(t, foundPack2, "Should find pack-without-v-prefix")
+}
+
+func TestListRecentAPI_MultipleVersionsReturnsLatest(t *testing.T) {
+	defer cleanupTestData(t)
+
+	user := createTestUser(t, "recentuser2")
+
+	// Create pack with multiple versions
+	pack := models.NomadResource{
+		Name:          "multi-version-pack",
+		Description:   "Pack with multiple versions",
+		Type:          models.ResourceTypePack,
+		UserID:        user.ID,
+		RepositoryURL: "https://github.com/test/multipack",
+	}
+	database.DB.Create(&pack)
+
+	// Create older version first
+	oldVersion := models.ResourceVersion{
+		ResourceID: pack.ID,
+		Version:    "v1.0.0",
+		Readme:     "# Old Version",
+	}
+	database.DB.Create(&oldVersion)
+
+	// Create newer version
+	newVersion := models.ResourceVersion{
+		ResourceID: pack.ID,
+		Version:    "v2.0.0",
+		Readme:     "# New Version",
+	}
+	database.DB.Create(&newVersion)
+
+	app := setupTestApp()
+	app.Get("/v1/recent", ListRecentAPI)
+
+	req := httptest.NewRequest("GET", "/v1/recent", nil)
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string][]RecentResource
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	assert.NoError(t, err)
+
+	// Find our pack and verify it has the latest version
+	for _, r := range result["resources"] {
+		if r.Name == "multi-version-pack" {
+			assert.Equal(t, "v2.0.0", r.LatestVersion, "Should return the most recent version")
+			return
+		}
+	}
+	t.Fatal("Should find multi-version-pack in results")
+}

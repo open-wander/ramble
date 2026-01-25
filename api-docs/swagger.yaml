@@ -1,12 +1,5 @@
 basePath: /
 definitions:
-  handlers.DevPack:
-    properties:
-      name:
-        type: string
-      path:
-        type: string
-    type: object
   handlers.JobDetail:
     properties:
       description:
@@ -55,7 +48,30 @@ definitions:
       version:
         type: string
     type: object
-host: localhost:3000
+  handlers.RecentResource:
+    properties:
+      description:
+        type: string
+      id:
+        type: integer
+      latest_version:
+        type: string
+      name:
+        type: string
+      namespace:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      type:
+        type: string
+      updated_at:
+        type: string
+      url:
+        type: string
+    type: object
+host: ramble.openwander.org
 info:
   contact:
     name: API Support
@@ -327,22 +343,6 @@ paths:
       summary: Get about page
       tags:
       - pages
-  /api/dev/packs:
-    get:
-      description: Lists the example packs found in the local examples directory.
-        Useful for development and testing.
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/handlers.DevPack'
-            type: array
-      summary: List example packs (Dev)
-      tags:
-      - dev
   /docs:
     get:
       description: Renders the documentation page with sidebar navigation.
@@ -715,6 +715,33 @@ paths:
       summary: Search packs
       tags:
       - nomad-pack
+  /v1/recent:
+    get:
+      description: Fetch a list of recently updated packs and jobs, optionally filtered
+        by time.
+      parameters:
+      - description: ISO8601 timestamp to filter resources updated after this time
+        in: query
+        name: since
+        type: string
+      - description: Maximum number of results (default 50, max 100)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/handlers.RecentResource'
+              type: array
+            type: object
+      summary: List recently updated resources
+      tags:
+      - resources
   /v1/registries:
     get:
       description: Returns a JSON list of all namespaces that contain at least one
@@ -756,4 +783,38 @@ paths:
       summary: Search registry namespaces
       tags:
       - nomad-pack
+  /webhooks/github/issues:
+    post:
+      consumes:
+      - application/json
+      description: Webhook endpoint for GitHub to send issue events. Used to sync
+        community pack/job requests with GitHub issues. Requires valid X-Hub-Signature-256
+        header.
+      parameters:
+      - description: GitHub webhook signature
+        in: header
+        name: X-Hub-Signature-256
+        required: true
+        type: string
+      - description: GitHub event type
+        in: header
+        name: X-GitHub-Event
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "403":
+          description: Invalid signature
+          schema:
+            type: string
+        "500":
+          description: Webhook secret not configured
+          schema:
+            type: string
+      summary: Receive GitHub issue webhooks
+      tags:
+      - webhooks
 swagger: "2.0"
