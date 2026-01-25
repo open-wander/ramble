@@ -26,17 +26,13 @@
     {{if .CanonicalURL}}
     <meta property="og:url" content="{{.CanonicalURL}}">
     {{end}}
-    {{if .OGImage}}
-    <meta property="og:image" content="{{.OGImage}}">
-    {{end}}
+    <meta property="og:image" content="{{if .OGImage}}{{.OGImage}}{{else}}https://ramble.openwander.org/public/og-image.png{{end}}">
 
     <!-- Twitter Card Tags -->
-    <meta name="twitter:card" content="summary">
+    <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{{if .SEOTitle}}{{.SEOTitle}}{{else}}RMBL - Nomad Registry{{end}}">
     <meta name="twitter:description" content="{{if .SEODescription}}{{.SEODescription}}{{else}}Community registry for HashiCorp Nomad job specifications and packs.{{end}}">
-    {{if .OGImage}}
-    <meta name="twitter:image" content="{{.OGImage}}">
-    {{end}}
+    <meta name="twitter:image" content="{{if .OGImage}}{{.OGImage}}{{else}}https://ramble.openwander.org/public/og-image.png{{end}}">
 
     <!-- Tailwind CSS -->
     <link href="/public/css/style.css" rel="stylesheet">
