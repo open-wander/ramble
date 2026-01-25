@@ -125,7 +125,7 @@ func Run(cfg Config) error {
 	// CSRF Middleware
 	isProduction := os.Getenv("ENV") == "production"
 	app.Use(csrf.New(csrf.Config{
-		KeyLookup:      "header:X-CSRF-Token",
+		KeyLookup:      "header:X-CSRF-Token,form:_csrf",
 		ContextKey:     "csrf",
 		CookieName:     "csrf_token",
 		CookieSameSite: "Lax",
