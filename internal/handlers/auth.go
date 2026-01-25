@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"rmbl/internal/crypto"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"rmbl/internal/services/email"
@@ -48,7 +49,7 @@ func InitSession() {
 		Expiration:     24 * time.Hour,
 		CookieSecure:   os.Getenv("ENV") == "production", // Only send over HTTPS in production
 		CookieHTTPOnly: true,                             // Prevent XSS access to cookies
-		CookieSameSite: "Lax",                            // CSRF protection
+		CookieSameSite: "Lax",                            // Lax allows OAuth redirects while still protecting POST/PUT/DELETE
 		CookiePath:     "/",
 	})
 
@@ -89,7 +90,8 @@ func AuthCallback(c *fiber.Ctx) error {
 			// Link account
 			user.Provider = gothUser.Provider
 			user.ProviderID = gothUser.UserID
-			user.AccessToken = gothUser.AccessToken
+			encryptedToken, _ := crypto.EncryptToken(gothUser.AccessToken)
+			user.AccessToken = encryptedToken
 			user.EmailVerified = true // OAuth users are pre-verified
 			database.DB.Save(&user)
 		} else {
@@ -99,6 +101,7 @@ func AuthCallback(c *fiber.Ctx) error {
 				username = gothUser.Name
 			}
 			// Simple username collision check or suffix
+			encryptedToken, _ := crypto.EncryptToken(gothUser.AccessToken)
 			user = models.User{
 				Username:      username,
 				Email:         gothUser.Email,
@@ -106,7 +109,7 @@ func AuthCallback(c *fiber.Ctx) error {
 				AvatarURL:     gothUser.AvatarURL,
 				Provider:      gothUser.Provider,
 				ProviderID:    gothUser.UserID,
-				AccessToken:   gothUser.AccessToken,
+				AccessToken:   encryptedToken,
 				EmailVerified: true, // OAuth users are pre-verified
 			}
 			if err := database.DB.Create(&user).Error; err != nil {
@@ -116,7 +119,8 @@ func AuthCallback(c *fiber.Ctx) error {
 		}
 	} else {
 		// Update existing user token
-		user.AccessToken = gothUser.AccessToken
+		encryptedToken, _ := crypto.EncryptToken(gothUser.AccessToken)
+		user.AccessToken = encryptedToken
 		database.DB.Save(&user)
 	}
 
@@ -127,6 +131,7 @@ func AuthCallback(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusInternalServerError).SendString("Failed to regenerate session")
 		}
 		sess.Set("user_id", user.ID)
+		sess.Set("session_created_at", time.Now().Unix())
 		sess.Set("flash_type", "success")
 		sess.Set("flash_message", "Successfully logged in via "+gothUser.Provider)
 		if err := sess.Save(); err != nil {
@@ -161,9 +166,14 @@ func PostLogin(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid input")
 	}
 
+	// Dummy hash for timing attack prevention - same cost as real hashes
+	dummyHash := "$2a$10$dummyHashForTimingAttackPreventionXXXXXXXXXXXXXXXXXXXXX"
+
 	var user models.User
 	result := database.DB.Where("email = ?", input.Email).First(&user)
 	if result.Error != nil {
+		// Always perform bcrypt comparison to prevent timing-based username enumeration
+		bcrypt.CompareHashAndPassword([]byte(dummyHash), []byte(input.Password))
 		AuditLog(c, "auth.login_failed", "user", 0, input.Email, nil)
 		return c.Status(fiber.StatusUnauthorized).SendString("Invalid email or password")
 	}
@@ -215,6 +225,7 @@ func PostLogin(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).SendString("Failed to regenerate session")
 	}
 	sess.Set("user_id", user.ID)
+	sess.Set("session_created_at", time.Now().Unix())
 	sess.Set("flash_type", "success")
 	sess.Set("flash_message", "Welcome back, "+user.Name+"!")
 	if err := sess.Save(); err != nil {
@@ -315,6 +326,7 @@ func PostSignup(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).SendString("Failed to regenerate session")
 	}
 	sess.Set("user_id", user.ID)
+	sess.Set("session_created_at", time.Now().Unix())
 	if err := sess.Save(); err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString("Failed to save session")
 	}

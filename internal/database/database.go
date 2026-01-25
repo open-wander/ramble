@@ -14,6 +14,17 @@ import (
 
 var DB *gorm.DB
 
+// getSSLMode returns the appropriate SSL mode based on environment
+func getSSLMode() string {
+	if mode := os.Getenv("DB_SSLMODE"); mode != "" {
+		return mode
+	}
+	if os.Getenv("ENV") == "production" {
+		return "require"
+	}
+	return "disable"
+}
+
 func Connect() {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
@@ -25,8 +36,11 @@ func Connect() {
 		port := os.Getenv("DB_PORT")
 
 		if host != "" && user != "" && dbname != "" {
-			dsn = fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
-				host, user, password, dbname, port)
+			sslmode := getSSLMode()
+			dsn = fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
+				host, user, password, dbname, port, sslmode)
+		} else if os.Getenv("ENV") == "production" {
+			log.Fatal("Database credentials required in production")
 		} else {
 			// Fallback to local default for development
 			dsn = "host=localhost user=postgres password=postgres dbname=rmbl port=5432 sslmode=disable"

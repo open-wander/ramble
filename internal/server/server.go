@@ -18,6 +18,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/helmet"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 	fiberlogger "github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"github.com/gofiber/swagger"
 	"github.com/gofiber/template/html/v2"
 	_ "rmbl/api-docs"
@@ -83,7 +84,13 @@ func Run(cfg Config) error {
 	})
 
 	// 4. Middleware
-	app.Use(fiberlogger.New())
+	// Request ID middleware for tracing
+	app.Use(requestid.New())
+
+	// Logger with request ID
+	app.Use(fiberlogger.New(fiberlogger.Config{
+		Format: "[${time}] ${status} - ${latency} ${method} ${path} [${locals:requestid}]\n",
+	}))
 
 	// HTTPS enforcement middleware (only in production)
 	app.Use(func(c *fiber.Ctx) error {
@@ -109,6 +116,12 @@ func Run(cfg Config) error {
 		ReferrerPolicy:            "same-origin",
 	}))
 
+	// Add Permissions-Policy header
+	app.Use(func(c *fiber.Ctx) error {
+		c.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+		return c.Next()
+	})
+
 	// CSRF Middleware
 	isProduction := os.Getenv("ENV") == "production"
 	app.Use(csrf.New(csrf.Config{
@@ -122,10 +135,27 @@ func Run(cfg Config) error {
 		SingleUseToken: false,
 	}))
 
+	// Maximum absolute session lifetime (7 days)
+	const maxSessionLifetime = 7 * 24 * time.Hour
+
 	// Session and Flash middleware
 	app.Use(func(c *fiber.Ctx) error {
 		sess, err := handlers.Store.Get(c)
 		if err == nil {
+			// Check absolute session timeout
+			if createdAt := sess.Get("session_created_at"); createdAt != nil {
+				if created, ok := createdAt.(int64); ok {
+					if time.Since(time.Unix(created, 0)) > maxSessionLifetime {
+						// Session expired - destroy and redirect to login
+						sess.Destroy()
+						if c.Get("Accept") == "application/json" {
+							return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Session expired"})
+						}
+						return c.Next() // Continue without user context
+					}
+				}
+			}
+
 			if userID := sess.Get("user_id"); userID != nil {
 				var user models.User
 				if err := database.DB.Preload("Memberships.Organization").First(&user, userID).Error; err == nil {
@@ -167,9 +197,21 @@ func Run(cfg Config) error {
 		app.Get("/swagger/*", swagger.HandlerDefault)
 	}
 
+	// Rate limiter for search endpoints
+	searchLimiter := limiter.New(limiter.Config{
+		Max:        60,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).SendString("Too many search requests. Please try again later.")
+		},
+	})
+
 	// 6. Routes
 	app.Get("/", handlers.Home)
-	app.Get("/search", handlers.Search)
+	app.Get("/search", searchLimiter, handlers.Search)
 	app.Get("/packs", handlers.GetPacks)
 	app.Get("/jobs", handlers.GetJobs)
 	app.Get("/registries", handlers.GetRegistries)
@@ -189,6 +231,7 @@ func Run(cfg Config) error {
 			return c.Status(fiber.StatusTooManyRequests).SendString("Too many vote requests. Please try again later.")
 		},
 	})
+
 	app.Get("/requests", handlers.GetRequests)
 	app.Get("/requests/new", handlers.RequireAuth, handlers.GetNewRequest)
 	app.Post("/requests/new", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostNewRequest)
@@ -214,7 +257,7 @@ func Run(cfg Config) error {
 	app.Post("/login", authLimiter, handlers.PostLogin)
 	app.Get("/signup", handlers.GetSignup)
 	app.Post("/signup", authLimiter, handlers.PostSignup)
-	app.Get("/logout", handlers.Logout)
+	app.Post("/logout", handlers.Logout)
 	app.Get("/forgot-password", handlers.GetForgotPassword)
 	app.Post("/forgot-password", authLimiter, handlers.PostForgotPassword)
 	app.Get("/reset-password", handlers.GetResetPassword)
@@ -281,12 +324,13 @@ func Run(cfg Config) error {
 	}
 
 	// API Routes (must be before catch-all /:username routes)
+	app.Get("/v1/recent", handlers.ListRecentAPI)
 	app.Get("/v1/packs", handlers.ListAllPacksAPI)
-	app.Get("/v1/packs/search", handlers.SearchPacksAPI)
+	app.Get("/v1/packs/search", searchLimiter, handlers.SearchPacksAPI)
 	app.Get("/v1/registries", handlers.ListUserRegistriesAPI)
-	app.Get("/v1/registries/search", handlers.SearchRegistriesAPI)
+	app.Get("/v1/registries/search", searchLimiter, handlers.SearchRegistriesAPI)
 	app.Get("/v1/jobs", handlers.ListAllJobsAPI)
-	app.Get("/v1/jobs/search", handlers.SearchJobsAPI)
+	app.Get("/v1/jobs/search", searchLimiter, handlers.SearchJobsAPI)
 
 	// Webhook Routes
 	app.Post("/webhooks/github/issues", handlers.HandleGitHubIssueWebhook)

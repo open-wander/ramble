@@ -1,7 +1,11 @@
 package handlers
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"time"
 
 	"rmbl/internal/database"
 	"rmbl/internal/models"
@@ -9,6 +13,25 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 )
+
+// computeAuditChecksum generates a SHA-256 checksum of all audit log fields for integrity
+func computeAuditChecksum(audit *models.AuditLog) string {
+	data := fmt.Sprintf("%s|%d|%s|%s|%d|%s|%s|%s|%s|%s|%s",
+		audit.CreatedAt.Format(time.RFC3339Nano),
+		audit.ActorID,
+		audit.ActorName,
+		audit.Action,
+		audit.TargetID,
+		audit.TargetName,
+		audit.TargetType,
+		audit.Details,
+		audit.IPAddress,
+		audit.UserAgent,
+		audit.RequestID,
+	)
+	hash := sha256.Sum256([]byte(data))
+	return hex.EncodeToString(hash[:])
+}
 
 // AuditLog records an action to both structured logs and database
 func AuditLog(c *fiber.Ctx, action string, targetType string, targetID uint, targetName string, details map[string]interface{}) {
@@ -20,6 +43,12 @@ func AuditLog(c *fiber.Ctx, action string, targetType string, targetID uint, tar
 		if user, ok := c.Locals("User").(models.User); ok {
 			actorName = user.Username
 		}
+	}
+
+	// Get request ID for tracing
+	requestID := ""
+	if rid := c.Locals("requestid"); rid != nil {
+		requestID = rid.(string)
 	}
 
 	detailsJSON := ""
@@ -37,7 +66,8 @@ func AuditLog(c *fiber.Ctx, action string, targetType string, targetID uint, tar
 		Str("target_type", targetType).
 		Uint("target_id", targetID).
 		Str("target_name", targetName).
-		Str("ip", c.IP())
+		Str("ip", c.IP()).
+		Str("request_id", requestID)
 
 	if details != nil {
 		logEvent = logEvent.Interface("details", details)
@@ -47,6 +77,7 @@ func AuditLog(c *fiber.Ctx, action string, targetType string, targetID uint, tar
 
 	// Log to database
 	audit := models.AuditLog{
+		CreatedAt:  time.Now(),
 		Action:     action,
 		ActorID:    actorID,
 		ActorName:  actorName,
@@ -56,7 +87,9 @@ func AuditLog(c *fiber.Ctx, action string, targetType string, targetID uint, tar
 		Details:    detailsJSON,
 		IPAddress:  c.IP(),
 		UserAgent:  c.Get("User-Agent"),
+		RequestID:  requestID,
 	}
+	audit.Checksum = computeAuditChecksum(&audit)
 	database.DB.Create(&audit)
 }
 
@@ -86,6 +119,7 @@ func AuditLogNoContext(action string, actorID uint, actorName string, targetType
 
 	// Log to database
 	audit := models.AuditLog{
+		CreatedAt:  time.Now(),
 		Action:     action,
 		ActorID:    actorID,
 		ActorName:  actorName,
@@ -94,5 +128,6 @@ func AuditLogNoContext(action string, actorID uint, actorName string, targetType
 		TargetName: targetName,
 		Details:    detailsJSON,
 	}
+	audit.Checksum = computeAuditChecksum(&audit)
 	database.DB.Create(&audit)
 }

@@ -5,8 +5,10 @@ import (
 	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 )
 
 type PackSummary struct {
@@ -440,4 +442,88 @@ func getDownloadURL(repoURL string, version string) string {
 	}
 
 	return repoURL // Fallback to repo URL
+}
+
+// RecentResource represents a recently updated resource in the API response.
+type RecentResource struct {
+	ID            uint      `json:"id"`
+	Name          string    `json:"name"`
+	Namespace     string    `json:"namespace"`
+	Type          string    `json:"type"`
+	Description   string    `json:"description"`
+	LatestVersion string    `json:"latest_version"`
+	Tags          []string  `json:"tags"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	URL           string    `json:"url"`
+}
+
+// ListRecentAPI godoc
+// @Summary List recently updated resources
+// @Description Fetch a list of recently updated packs and jobs, optionally filtered by time.
+// @Tags resources
+// @Produce json
+// @Param since query string false "ISO8601 timestamp to filter resources updated after this time"
+// @Param limit query int false "Maximum number of results (default 50, max 100)"
+// @Success 200 {object} map[string][]RecentResource
+// @Router /v1/recent [get]
+func ListRecentAPI(c *fiber.Ctx) error {
+	since := c.Query("since")
+	limit := c.QueryInt("limit", 50)
+	if limit > 100 {
+		limit = 100
+	}
+	if limit < 1 {
+		limit = 50
+	}
+
+	query := database.DB.
+		Preload("User").
+		Preload("Organization").
+		Preload("Tags").
+		Preload("Versions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at DESC").Limit(1)
+		}).
+		Order("updated_at DESC").
+		Limit(limit)
+
+	if since != "" {
+		sinceTime, err := time.Parse(time.RFC3339, since)
+		if err == nil {
+			query = query.Where("updated_at > ?", sinceTime)
+		}
+	}
+
+	var resources []models.NomadResource
+	if err := query.Find(&resources).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database error"})
+	}
+
+	results := make([]RecentResource, len(resources))
+	for i, r := range resources {
+		namespace := getResourceNamespace(r)
+
+		var latestVersion string
+		if len(r.Versions) > 0 {
+			latestVersion = r.Versions[0].Version
+		}
+
+		tags := make([]string, len(r.Tags))
+		for j, t := range r.Tags {
+			tags[j] = t.Name
+		}
+
+		results[i] = RecentResource{
+			ID:            r.ID,
+			Name:          r.Name,
+			Namespace:     namespace,
+			Type:          string(r.Type),
+			Description:   r.Description,
+			LatestVersion: latestVersion,
+			Tags:          tags,
+			UpdatedAt:     r.UpdatedAt,
+			URL:           fmt.Sprintf("https://%s/%s/%s", c.Hostname(), namespace, r.Name),
+		}
+	}
+
+	return c.JSON(fiber.Map{"resources": results})
 }

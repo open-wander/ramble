@@ -2,11 +2,13 @@ package render
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"text/template"
+	"time"
 )
 
 // RenderContext holds the context for template rendering
@@ -109,8 +111,16 @@ func (e *Engine) RenderPack(packDir string) (string, error) {
 	return result.String(), nil
 }
 
+// TemplateTimeout is the maximum duration for template execution
+const TemplateTimeout = 5 * time.Second
+
 // RenderTemplate renders a single template string
 func (e *Engine) RenderTemplate(content string) (string, error) {
+	return e.RenderTemplateWithContext(context.Background(), content)
+}
+
+// RenderTemplateWithContext renders a single template string with context for cancellation
+func (e *Engine) RenderTemplateWithContext(ctx context.Context, content string) (string, error) {
 	// Create template with custom delimiters [[ and ]]
 	tmpl := template.New("pack").Delims("[[", "]]").Funcs(TemplateFuncs(e.ctx))
 
@@ -120,13 +130,30 @@ func (e *Engine) RenderTemplate(content string) (string, error) {
 		return "", fmt.Errorf("template parse error: %w", err)
 	}
 
-	// Execute the template
-	var buf bytes.Buffer
-	if err := parsed.Execute(&buf, e.ctx); err != nil {
-		return "", fmt.Errorf("template execution error: %w", err)
-	}
+	// Execute the template with timeout
+	ctx, cancel := context.WithTimeout(ctx, TemplateTimeout)
+	defer cancel()
 
-	return buf.String(), nil
+	resultCh := make(chan string, 1)
+	errCh := make(chan error, 1)
+
+	go func() {
+		var buf bytes.Buffer
+		if err := parsed.Execute(&buf, e.ctx); err != nil {
+			errCh <- fmt.Errorf("template execution error: %w", err)
+			return
+		}
+		resultCh <- buf.String()
+	}()
+
+	select {
+	case result := <-resultCh:
+		return result, nil
+	case err := <-errCh:
+		return "", err
+	case <-ctx.Done():
+		return "", fmt.Errorf("template execution timed out after %v", TemplateTimeout)
+	}
 }
 
 // RenderFile renders a single template file
