@@ -125,7 +125,7 @@ func Run(cfg Config) error {
 	// CSRF Middleware
 	isProduction := os.Getenv("ENV") == "production"
 	app.Use(csrf.New(csrf.Config{
-		KeyLookup:      "header:X-CSRF-Token,form:_csrf",
+		KeyLookup:      "header:X-CSRF-Token",
 		ContextKey:     "csrf",
 		CookieName:     "csrf_token",
 		CookieSameSite: "Lax",
@@ -133,6 +133,17 @@ func Run(cfg Config) error {
 		CookieHTTPOnly: true,
 		Expiration:     1 * time.Hour,
 		SingleUseToken: false,
+		Extractor: func(c *fiber.Ctx) (string, error) {
+			// Check header first (for HTMX requests)
+			if token := c.Get("X-CSRF-Token"); token != "" {
+				return token, nil
+			}
+			// Check form field (for regular form submissions)
+			if token := c.FormValue("_csrf"); token != "" {
+				return token, nil
+			}
+			return "", csrf.ErrTokenNotFound
+		},
 	}))
 
 	// Maximum absolute session lifetime (7 days)
