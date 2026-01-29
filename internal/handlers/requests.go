@@ -437,3 +437,42 @@ func DeleteUserRequest(c *fiber.Ctx) error {
 	c.Set("HX-Redirect", "/requests")
 	return c.SendStatus(fiber.StatusOK)
 }
+
+// RetryGitHubIssue retries creating a GitHub issue for a request that's missing one
+func RetryGitHubIssue(c *fiber.Ctx) error {
+	id := c.Params("id")
+	sess, _ := Store.Get(c)
+	userID := sess.Get("user_id").(uint)
+
+	var request models.PackRequest
+	if err := database.DB.First(&request, id).Error; err != nil {
+		return c.Status(404).SendString("Request not found")
+	}
+
+	// Check ownership or admin
+	isAdmin := false
+	if user := c.Locals("User"); user != nil {
+		isAdmin = user.(models.User).IsAdmin
+	}
+	if request.UserID != userID && !isAdmin {
+		return c.Status(403).SendString("You can only retry GitHub issue creation for your own requests")
+	}
+
+	// Check if already has GitHub issue
+	if request.GitHubIssueURL != "" {
+		return c.Status(400).SendString("This request already has a GitHub issue")
+	}
+
+	// Try to create the GitHub issue (synchronously so we can report the result)
+	createGitHubIssueForRequest(request.ID)
+
+	// Reload to check if it worked
+	database.DB.First(&request, id)
+	if request.GitHubIssueURL == "" {
+		return c.Status(500).SendString("Failed to create GitHub issue. Check that GitHub integration is configured.")
+	}
+
+	SetFlash(c, "success", "GitHub issue created successfully!")
+	c.Set("HX-Redirect", "/requests/"+strconv.Itoa(int(request.ID)))
+	return c.SendStatus(fiber.StatusOK)
+}

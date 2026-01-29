@@ -7,7 +7,7 @@
     {{$sort := .Sort}}
     
     {{range $index, $res := .Resources}}
-    <div class="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
+    <div class="relative bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
          {{if eq (add $index 1) $length}}
             {{if $nextPage}}
                 hx-get="/search?q={{$query}}&type={{$type}}&tag={{$tag}}&sort={{$sort}}&page={{$nextPage}}"
@@ -18,7 +18,7 @@
         <div class="px-4 py-5 sm:p-6">
             <div class="flex items-center justify-between">
                 <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white">
-                    <a href="/{{$res.User.Username}}" class="text-gray-400 font-normal hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline transition-colors">{{$res.User.Username}}</a>
+                    <a href="/{{$res.User.Username}}" class="relative z-10 text-gray-400 font-normal hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline transition-colors">{{$res.User.Username}}</a>
                     <span class="text-gray-300 dark:text-gray-600 font-light mx-1">/</span>
                     <a href="/{{$res.User.Username}}/{{$res.Name}}" class="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline transition-colors">{{$res.Name}}</a>
                 </h3>
@@ -61,7 +61,7 @@
                         {{$res.UpdatedAt.Format "Jan 02, 2006"}}
                     </div>
                 </div>
-                <a href="/{{$res.User.Username}}/{{$res.Name}}" class="font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300">
+                <a href="/{{$res.User.Username}}/{{$res.Name}}" class="font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 after:absolute after:inset-0">
                     View &rarr;
                 </a>
             </div>
