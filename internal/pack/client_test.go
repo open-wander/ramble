@@ -222,3 +222,216 @@ func TestListRegistries(t *testing.T) {
 	assert.Len(t, registries, 3)
 	assert.Contains(t, registries, "user1")
 }
+
+func TestSearchRegistries(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v1/registries/search", r.URL.Path)
+		assert.Equal(t, "user", r.URL.Query().Get("q"))
+		json.NewEncoder(w).Encode(map[string][]string{
+			"registries": {"user1", "user2"},
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	registries, err := client.SearchRegistries("user")
+
+	require.NoError(t, err)
+	assert.Len(t, registries, 2)
+	assert.Equal(t, "user1", registries[0])
+}
+
+func TestSearchRegistries_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.SearchRegistries("test")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestListRegistries_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.ListRegistries()
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "503")
+}
+
+func TestListPacks_NamespaceNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.ListPacks("nonexistent")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "namespace not found")
+}
+
+func TestListPacks_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.ListPacks("user")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestGetJob(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/myuser/myjob", r.URL.Path)
+		json.NewEncoder(w).Encode(JobDetail{
+			Name:        "myjob",
+			Description: "My job description",
+			Versions: []PackVersion{
+				{Version: "v1.0.0", URL: "https://example.com/v1.0.0.tar.gz"},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	detail, err := client.GetJob("myuser", "myjob")
+
+	require.NoError(t, err)
+	assert.Equal(t, "myjob", detail.Name)
+	assert.Len(t, detail.Versions, 1)
+}
+
+func TestGetJob_NotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.GetJob("myuser", "nonexistent")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "job not found")
+}
+
+func TestGetJob_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.GetJob("myuser", "job")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestGetRawContent_NotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.GetRawContent("user", "nonexistent", "")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "pack not found")
+}
+
+func TestGetRawContent_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.GetRawContent("user", "pack", "")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestListAllPacks_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.ListAllPacks()
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "502")
+}
+
+func TestListAllJobs_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.ListAllJobs()
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "502")
+}
+
+func TestSearchPacks_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.SearchPacks("test")
+
+	assert.Error(t, err)
+}
+
+func TestSearchJobs_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.SearchJobs("test")
+
+	assert.Error(t, err)
+}
+
+func TestGetPack_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	_, err := client.GetPack("user", "pack")
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "502")
+}
+
+func TestNewClient_HTTPClientConfig(t *testing.T) {
+	client := NewClient("https://example.com")
+
+	assert.NotNil(t, client.HTTPClient)
+	assert.NotNil(t, client.HTTPClient.Transport)
+}
