@@ -119,8 +119,8 @@ type PackRequest struct {
 	Type           ResourceType  `gorm:"default:'pack'"` // pack or job
 	Status         RequestStatus `gorm:"default:'open'"`
 	UserID         uint          `gorm:"not null;index"`
-	GitHubIssueURL string        // URL to the created GitHub issue
-	GitHubIssueNum int           // GitHub issue number
+	GitHubIssueURL string `gorm:"column:github_issue_url"` // URL to the created GitHub issue
+	GitHubIssueNum int    `gorm:"column:github_issue_num"` // GitHub issue number
 	VoteCount      int           `gorm:"default:0"`
 	// Relations
 	User   User   `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`

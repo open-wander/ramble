@@ -12,11 +12,36 @@ const (
 	cacheDuration = 1 * time.Hour
 )
 
+// DefaultBaseURL is the default GitHub API base URL
+const DefaultBaseURL = "https://api.github.com"
+
 var (
 	cachedVersion string
 	cacheTime     time.Time
 	cacheMutex    sync.RWMutex
+	// httpClient is the HTTP client used for API requests (can be overridden in tests)
+	httpClient = &http.Client{Timeout: 5 * time.Second}
+	// baseURL is the base URL for API requests (can be overridden in tests)
+	baseURL = DefaultBaseURL
 )
+
+// SetHTTPClient sets the HTTP client for testing
+func SetHTTPClient(client *http.Client) {
+	httpClient = client
+}
+
+// SetBaseURL sets the base URL for testing
+func SetBaseURL(url string) {
+	baseURL = url
+}
+
+// ResetCache clears the version cache (for testing)
+func ResetCache() {
+	cacheMutex.Lock()
+	cachedVersion = ""
+	cacheTime = time.Time{}
+	cacheMutex.Unlock()
+}
 
 type githubRelease struct {
 	TagName string `json:"tag_name"`
@@ -46,8 +71,7 @@ func GetLatestVersion() string {
 }
 
 func fetchLatestVersion() string {
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get("https://api.github.com/repos/" + githubRepo + "/releases/latest")
+	resp, err := httpClient.Get(baseURL + "/repos/" + githubRepo + "/releases/latest")
 	if err != nil {
 		return ""
 	}

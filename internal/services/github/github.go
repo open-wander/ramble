@@ -12,6 +12,26 @@ import (
 	"strings"
 )
 
+// DefaultBaseURL is the default GitHub API base URL
+const DefaultBaseURL = "https://api.github.com"
+
+// Client is a GitHub API client
+type Client struct {
+	BaseURL    string
+	HTTPClient *http.Client
+}
+
+// NewClient creates a new GitHub API client with the default base URL
+func NewClient() *Client {
+	return &Client{
+		BaseURL:    DefaultBaseURL,
+		HTTPClient: &http.Client{},
+	}
+}
+
+// defaultClient is used by package-level functions
+var defaultClient = NewClient()
+
 // IssueRequest represents a GitHub issue creation request
 type IssueRequest struct {
 	Title  string   `json:"title"`
@@ -27,7 +47,12 @@ type IssueResponse struct {
 
 // CreateIssue creates a GitHub issue in the specified repository
 func CreateIssue(token, owner, repo string, issue IssueRequest) (*IssueResponse, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues", owner, repo)
+	return defaultClient.CreateIssue(token, owner, repo, issue)
+}
+
+// CreateIssue creates a GitHub issue in the specified repository
+func (c *Client) CreateIssue(token, owner, repo string, issue IssueRequest) (*IssueResponse, error) {
+	url := fmt.Sprintf("%s/repos/%s/%s/issues", c.BaseURL, owner, repo)
 
 	body, err := json.Marshal(issue)
 	if err != nil {
@@ -45,8 +70,7 @@ func CreateIssue(token, owner, repo string, issue IssueRequest) (*IssueResponse,
 	req.Header.Set("User-Agent", "RMBL-Registry")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -92,7 +116,12 @@ type IssueUpdate struct {
 
 // ListIssues fetches issues from a repository with optional state filter
 func ListIssues(token, owner, repo, state string) ([]Issue, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues?state=%s&per_page=100", owner, repo, state)
+	return defaultClient.ListIssues(token, owner, repo, state)
+}
+
+// ListIssues fetches issues from a repository with optional state filter
+func (c *Client) ListIssues(token, owner, repo, state string) ([]Issue, error) {
+	url := fmt.Sprintf("%s/repos/%s/%s/issues?state=%s&per_page=100", c.BaseURL, owner, repo, state)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -104,8 +133,7 @@ func ListIssues(token, owner, repo, state string) ([]Issue, error) {
 	req.Header.Set("User-Agent", "RMBL-Registry")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -125,7 +153,12 @@ func ListIssues(token, owner, repo, state string) ([]Issue, error) {
 
 // GetIssue fetches a single issue by number
 func GetIssue(token, owner, repo string, issueNum int) (*Issue, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues/%d", owner, repo, issueNum)
+	return defaultClient.GetIssue(token, owner, repo, issueNum)
+}
+
+// GetIssue fetches a single issue by number
+func (c *Client) GetIssue(token, owner, repo string, issueNum int) (*Issue, error) {
+	url := fmt.Sprintf("%s/repos/%s/%s/issues/%d", c.BaseURL, owner, repo, issueNum)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -137,8 +170,7 @@ func GetIssue(token, owner, repo string, issueNum int) (*Issue, error) {
 	req.Header.Set("User-Agent", "RMBL-Registry")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -158,7 +190,12 @@ func GetIssue(token, owner, repo string, issueNum int) (*Issue, error) {
 
 // UpdateIssue updates an issue's title, body, state, and/or labels
 func UpdateIssue(token, owner, repo string, issueNum int, update IssueUpdate) error {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/issues/%d", owner, repo, issueNum)
+	return defaultClient.UpdateIssue(token, owner, repo, issueNum, update)
+}
+
+// UpdateIssue updates an issue's title, body, state, and/or labels
+func (c *Client) UpdateIssue(token, owner, repo string, issueNum int, update IssueUpdate) error {
+	url := fmt.Sprintf("%s/repos/%s/%s/issues/%d", c.BaseURL, owner, repo, issueNum)
 
 	body, err := json.Marshal(update)
 	if err != nil {
@@ -176,8 +213,7 @@ func UpdateIssue(token, owner, repo string, issueNum int, update IssueUpdate) er
 	req.Header.Set("User-Agent", "RMBL-Registry")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}

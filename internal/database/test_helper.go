@@ -58,6 +58,9 @@ func SetupTestDB() (*gorm.DB, func()) {
 		&models.NomadResource{},
 		&models.ResourceVersion{},
 		&models.Tag{},
+		&models.PackRequest{},
+		&models.SiteSetting{},
+		&models.AuditLog{},
 	)
 	if err != nil {
 		log.Fatalf("Migration failed: %s", err)
