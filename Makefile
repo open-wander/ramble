@@ -7,7 +7,11 @@ run:
 	go run ./cmd/ramble server
 
 # Run with hot reload (requires air)
-dev:
+# Builds CSS first, then runs air and css-watch in parallel
+dev: css-build
+	@if [ ! -f ./tailwindcss ]; then echo "Tailwind CLI not found. Run 'make bootstrap' first."; exit 1; fi
+	@trap 'kill 0' EXIT; \
+	./tailwindcss -i ./public/css/input.css -o ./public/css/style.css --watch & \
 	air
 
 # Run migrations (handled automatically by app, but good to have)
@@ -23,7 +27,7 @@ swagger:
 	go run github.com/swaggo/swag/cmd/swag@latest init -g main.go --output api-docs --dir ./cmd/ramble,./internal/handlers,./internal/models --parseDependency --parseInternal
 
 # Bootstrap development environment
-bootstrap:
+bootstrap: tailwind-install
 	go install github.com/air-verse/air@latest
 	go install github.com/swaggo/swag/cmd/swag@latest
 	go install github.com/securego/gosec/v2/cmd/gosec@latest
@@ -54,6 +58,7 @@ tailwind-install:
 
 # Build CSS for production
 css-build:
+	@if [ ! -f ./tailwindcss ]; then echo "Tailwind CLI not found. Run 'make tailwind-install' first."; exit 1; fi
 	./tailwindcss -i ./public/css/input.css -o ./public/css/style.css --minify
 
 # Watch CSS for development

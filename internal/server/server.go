@@ -252,6 +252,7 @@ func Run(cfg Config) error {
 	app.Post("/requests/:id/edit", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostEditRequest)
 	app.Delete("/requests/:id", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.DeleteUserRequest)
 	app.Post("/requests/:id/vote", handlers.RequireAuth, voteLimiter, handlers.ToggleRequestVote)
+	app.Post("/requests/:id/github-issue", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.RetryGitHubIssue)
 
 	// Auth Routes with rate limiter
 	authLimiter := limiter.New(limiter.Config{
