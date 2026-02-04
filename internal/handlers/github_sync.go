@@ -348,7 +348,7 @@ func PostSyncGitHubRequests(c *fiber.Ctx) error {
 // @Param X-Hub-Signature-256 header string true "GitHub webhook signature"
 // @Param X-GitHub-Event header string true "GitHub event type"
 // @Success 200 {string} string "OK"
-// @Failure 403 {string} string "Invalid signature"
+// @Failure 401 {string} string "Invalid signature"
 // @Failure 500 {string} string "Webhook secret not configured"
 // @Router /webhooks/github/issues [post]
 func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
@@ -360,8 +360,28 @@ func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
 	}
 
 	signature := c.Get("X-Hub-Signature-256")
-	if !github.ValidateWebhookSignature(c.Body(), signature, secret) {
-		return c.SendStatus(403)
+	timestamp := c.Get("X-Webhook-Timestamp")
+
+	var isValid bool
+	if timestamp != "" {
+		// New format: timestamp + signature with replay protection
+		valid, _, reason := ValidateWebhookRequest(c.Body(), signature, timestamp, "", secret)
+		if !valid {
+			log.Printf("WARN: GitHub sync webhook validation failed: %s", reason)
+			return c.Status(401).SendString("Invalid webhook signature")
+		}
+		isValid = valid
+	} else if signature != "" {
+		// GitHub format: signature only (GitHub doesn't send X-Webhook-Timestamp yet)
+		// This maintains backward compatibility with GitHub's current webhook format
+		isValid = github.ValidateWebhookSignature(c.Body(), signature, secret)
+		if !isValid {
+			log.Printf("WARN: GitHub sync webhook signature validation failed")
+			return c.Status(401).SendString("Invalid webhook signature")
+		}
+	} else {
+		log.Printf("WARN: GitHub sync webhook missing signature header")
+		return c.Status(401).SendString("Invalid webhook signature")
 	}
 
 	// Check event type
