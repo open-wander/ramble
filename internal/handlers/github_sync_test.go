@@ -187,7 +187,7 @@ func TestHandleGitHubIssueWebhook_InvalidSignature(t *testing.T) {
 	resp, err := app.Test(req)
 
 	assert.Nil(t, err)
-	assert.Equal(t, 403, resp.StatusCode)
+	assert.Equal(t, 401, resp.StatusCode)
 }
 
 func TestHandleGitHubIssueWebhook_NonIssueEvent(t *testing.T) {
@@ -363,4 +363,105 @@ func TestHandleIssueStateChange_TrackedRequest(t *testing.T) {
 	var updated models.PackRequest
 	database.DB.First(&updated, request.ID)
 	assert.Equal(t, models.RequestStatusCompleted, updated.Status)
+}
+
+func TestHandleGitHubIssueWebhook_WithTimestamp(t *testing.T) {
+	secret := "test-secret"
+	t.Setenv("GITHUB_WEBHOOK_SECRET", secret)
+
+	app := fiber.New()
+	app.Post("/webhooks/github/issues", HandleGitHubIssueWebhook)
+
+	payload := IssueWebhookPayload{
+		Action: "opened",
+		Issue: IssuePayload{
+			Number:  456,
+			Title:   "Test Issue With Timestamp",
+			Body:    "Test body",
+			State:   "open",
+			HTMLURL: "https://github.com/owner/repo/issues/456",
+			Labels:  []LabelPayload{{Name: "pack-request"}},
+		},
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	// Generate timestamp and signature using new format
+	timestamp := fmt.Sprintf("%d", time.Now().Unix())
+	signaturePayload := timestamp + "." + string(payloadBytes)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(signaturePayload))
+	signature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+
+	req := httptest.NewRequest("POST", "/webhooks/github/issues", strings.NewReader(string(payloadBytes)))
+	req.Header.Set("X-Hub-Signature-256", signature)
+	req.Header.Set("X-Webhook-Timestamp", timestamp)
+	req.Header.Set("X-GitHub-Event", "issues")
+
+	resp, err := app.Test(req)
+
+	assert.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+}
+
+func TestHandleGitHubIssueWebhook_TimestampExpired(t *testing.T) {
+	secret := "test-secret"
+	t.Setenv("GITHUB_WEBHOOK_SECRET", secret)
+
+	app := fiber.New()
+	app.Post("/webhooks/github/issues", HandleGitHubIssueWebhook)
+
+	payloadBytes := []byte(`{"action":"opened"}`)
+
+	// Generate timestamp 6 minutes old (360 seconds)
+	expiredTimestamp := fmt.Sprintf("%d", time.Now().Unix()-360)
+	signaturePayload := expiredTimestamp + "." + string(payloadBytes)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(signaturePayload))
+	signature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+
+	req := httptest.NewRequest("POST", "/webhooks/github/issues", strings.NewReader(string(payloadBytes)))
+	req.Header.Set("X-Hub-Signature-256", signature)
+	req.Header.Set("X-Webhook-Timestamp", expiredTimestamp)
+	req.Header.Set("X-GitHub-Event", "issues")
+
+	resp, err := app.Test(req)
+
+	assert.Nil(t, err)
+	assert.Equal(t, 401, resp.StatusCode)
+}
+
+func TestHandleGitHubIssueWebhook_BackwardCompatible(t *testing.T) {
+	secret := "test-secret"
+	t.Setenv("GITHUB_WEBHOOK_SECRET", secret)
+
+	app := fiber.New()
+	app.Post("/webhooks/github/issues", HandleGitHubIssueWebhook)
+
+	payload := IssueWebhookPayload{
+		Action: "opened",
+		Issue: IssuePayload{
+			Number:  789,
+			Title:   "Test Issue GitHub Format",
+			Body:    "Test body",
+			State:   "open",
+			HTMLURL: "https://github.com/owner/repo/issues/789",
+			Labels:  []LabelPayload{{Name: "pack-request"}},
+		},
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	// Generate signature without timestamp (GitHub's current format)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(payloadBytes)
+	signature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+
+	req := httptest.NewRequest("POST", "/webhooks/github/issues", strings.NewReader(string(payloadBytes)))
+	req.Header.Set("X-Hub-Signature-256", signature)
+	// Intentionally NOT setting X-Webhook-Timestamp to test backward compatibility
+	req.Header.Set("X-GitHub-Event", "issues")
+
+	resp, err := app.Test(req)
+
+	assert.Nil(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
 }
