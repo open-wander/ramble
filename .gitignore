@@ -46,3 +46,6 @@ Thumbs.db
 tmp/
 temp/
 *.tmp
+
+# Planning docs (local only)
+.planning/
