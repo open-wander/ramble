@@ -2,10 +2,13 @@ package handlers
 
 import (
 	"fmt"
+	"io"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hashicorp/hcl/v2/hclsimple"
+	"rmbl/internal/security"
 )
 
 type Flash struct {
@@ -106,15 +109,32 @@ func downloadFile(repoURL string, fileName string) (string, error) {
 	repoURL = strings.TrimSuffix(repoURL, ".git")
 	repoURL = strings.TrimSuffix(repoURL, "/")
 
+	// Create SSRF-protected client
+	cfg := security.SSRFConfig{
+		AllowedHosts: security.DefaultAllowedHosts(),
+		MaxRedirects: 3,
+		Timeout:      30 * time.Second,
+	}
+	client, err := security.NewProtectedClient(cfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to create protected client: %w", err)
+	}
+
 	// GitHub Logic
 	if strings.Contains(repoURL, "github.com") {
 		baseURL := strings.Replace(repoURL, "github.com", "raw.githubusercontent.com", 1)
 		for _, branch := range []string{"main", "master"} {
 			tempURL := fmt.Sprintf("%s/%s/%s", baseURL, branch, fileName)
-			agent := fiber.Get(tempURL)
-			statusCode, body, errs := agent.Bytes()
-			if len(errs) == 0 && statusCode == 200 {
-				// Validate Content-Type (raw.githubusercontent.com always returns text/plain)
+			resp, err := client.Get(tempURL)
+			if err != nil {
+				continue // try next branch
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode == 200 {
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					continue
+				}
 				return string(body), nil
 			}
 		}
@@ -132,9 +152,16 @@ func downloadFile(repoURL string, fileName string) (string, error) {
 
 		for _, branch := range []string{"main", "master"} {
 			tempURL := fmt.Sprintf("https://gitlab.com/api/v4/projects/%s/repository/files/%s/raw?ref=%s", projectPath, fileNameEncoded, branch)
-			agent := fiber.Get(tempURL)
-			statusCode, body, errs := agent.Bytes()
-			if len(errs) == 0 && statusCode == 200 {
+			resp, err := client.Get(tempURL)
+			if err != nil {
+				continue // try next branch
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode == 200 {
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					continue
+				}
 				return string(body), nil
 			}
 		}
