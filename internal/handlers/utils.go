@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"time"
 
@@ -194,16 +196,38 @@ func fetchGitHubMetadata(repoURL string, token string) (*GitHubRepo, error) {
 	}
 	apiURL := fmt.Sprintf("https://api.github.com/repos/%s", parts[1])
 
-	agent := fiber.Get(apiURL)
-	agent.Set("User-Agent", "RMBL-Registry")
+	cfg := security.SSRFConfig{
+		AllowedHosts: security.DefaultAllowedHosts(),
+		MaxRedirects: 3,
+		Timeout:      30 * time.Second,
+	}
+	client, err := security.NewProtectedClient(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create protected client: %w", err)
+	}
+
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "RMBL-Registry")
 	if token != "" {
-		agent.Set("Authorization", "token "+token)
+		req.Header.Set("Authorization", "token "+token)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch github metadata: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("failed to fetch github metadata: status %d", resp.StatusCode)
 	}
 
 	var repo GitHubRepo
-	statusCode, _, errs := agent.Struct(&repo)
-	if len(errs) > 0 || statusCode != 200 {
-		return nil, fmt.Errorf("failed to fetch github metadata")
+	if err := json.NewDecoder(resp.Body).Decode(&repo); err != nil {
+		return nil, err
 	}
 	return &repo, nil
 }
@@ -216,18 +240,43 @@ func fetchGitHubLatestTag(repoURL string, token string) (string, error) {
 	}
 	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/tags", parts[1])
 
-	agent := fiber.Get(apiURL)
-	agent.Set("User-Agent", "RMBL-Registry")
+	cfg := security.SSRFConfig{
+		AllowedHosts: security.DefaultAllowedHosts(),
+		MaxRedirects: 3,
+		Timeout:      30 * time.Second,
+	}
+	client, err := security.NewProtectedClient(cfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to create protected client: %w", err)
+	}
+
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "RMBL-Registry")
 	if token != "" {
-		agent.Set("Authorization", "token "+token)
+		req.Header.Set("Authorization", "token "+token)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch github tags: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("failed to fetch github tags: status %d", resp.StatusCode)
 	}
 
 	type GitHubTag struct {
 		Name string `json:"name"`
 	}
 	var tags []GitHubTag
-	statusCode, _, errs := agent.Struct(&tags)
-	if len(errs) > 0 || statusCode != 200 || len(tags) == 0 {
+	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
+		return "", err
+	}
+	if len(tags) == 0 {
 		return "", fmt.Errorf("no tags found")
 	}
 	return tags[0].Name, nil
@@ -242,10 +291,33 @@ func fetchGitHubJobFile(repoURL string, token string) (string, error) {
 	// We'll check the default branch tree
 	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/contents", parts[1])
 
-	agent := fiber.Get(apiURL)
-	agent.Set("User-Agent", "RMBL-Registry")
+	cfg := security.SSRFConfig{
+		AllowedHosts: security.DefaultAllowedHosts(),
+		MaxRedirects: 3,
+		Timeout:      30 * time.Second,
+	}
+	client, err := security.NewProtectedClient(cfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to create protected client: %w", err)
+	}
+
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "RMBL-Registry")
 	if token != "" {
-		agent.Set("Authorization", "token "+token)
+		req.Header.Set("Authorization", "token "+token)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch github contents: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("failed to fetch github contents: status %d", resp.StatusCode)
 	}
 
 	type GitHubContent struct {
@@ -253,9 +325,8 @@ func fetchGitHubJobFile(repoURL string, token string) (string, error) {
 		Type string `json:"type"`
 	}
 	var contents []GitHubContent
-	statusCode, _, errs := agent.Struct(&contents)
-	if len(errs) > 0 || statusCode != 200 {
-		return "", fmt.Errorf("failed to fetch contents")
+	if err := json.NewDecoder(resp.Body).Decode(&contents); err != nil {
+		return "", err
 	}
 
 	for _, item := range contents {
