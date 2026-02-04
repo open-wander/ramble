@@ -1,6 +1,7 @@
 package security
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -164,7 +165,7 @@ func TestSSRFProtection_SubdomainMatching(t *testing.T) {
 	}{
 		{
 			name:          "allow subdomain of allowlisted host",
-			allowedHosts:  []string{"github.com"},
+			allowedHosts:  []string{"githubusercontent.com"},
 			targetHost:    "raw.githubusercontent.com",
 			expectAllowed: true,
 		},
@@ -227,50 +228,70 @@ func TestSSRFProtection_SubdomainMatching(t *testing.T) {
 
 // TestSSRFProtection_RedirectLimits tests that redirect limits are enforced
 func TestSSRFProtection_RedirectLimits(t *testing.T) {
-	// Create a chain of redirect servers
-	redirectCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		redirectCount++
-		if redirectCount <= 5 {
-			http.Redirect(w, r, "http://localhost:8999/next", http.StatusFound)
-		} else {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("final"))
+	// Test max redirects by checking the CheckRedirect logic directly
+	t.Run("enforce max redirect limit", func(t *testing.T) {
+		cfg := SSRFConfig{
+			AllowedHosts: []string{"example.com"},
+			MaxRedirects: 3,
+			Timeout:      5 * time.Second,
 		}
-	}))
-	defer server.Close()
 
-	cfg := SSRFConfig{
-		AllowedHosts: []string{"localhost"},
-		MaxRedirects: 3,
-		Timeout:      5 * time.Second,
-	}
+		client, err := NewProtectedClient(cfg)
+		if err != nil {
+			t.Fatalf("failed to create protected client: %v", err)
+		}
 
-	client, err := NewProtectedClient(cfg)
-	if err != nil {
-		t.Fatalf("failed to create protected client: %v", err)
-	}
+		// Simulate the CheckRedirect being called with 4 prior requests (exceeding limit of 3)
+		testReq, _ := http.NewRequest("GET", "http://example.com/page4", nil)
+		via := make([]*http.Request, 3)
+		for i := range via {
+			via[i], _ = http.NewRequest("GET", fmt.Sprintf("http://example.com/page%d", i), nil)
+		}
 
-	req, err := http.NewRequest("GET", server.URL+"/start", nil)
-	if err != nil {
-		t.Fatalf("failed to create request: %v", err)
-	}
+		// Call the CheckRedirect function
+		err = client.CheckRedirect(testReq, via)
+		if err == nil {
+			t.Error("expected redirect limit error after 3 redirects")
+			return
+		}
 
-	resp, err := client.Do(req)
-	if resp != nil {
-		resp.Body.Close()
-	}
+		errStr := strings.ToLower(err.Error())
+		if !strings.Contains(errStr, "redirect") && !strings.Contains(errStr, "stopped") {
+			t.Errorf("expected redirect limit error, got: %v", err)
+		}
+	})
 
-	// Should fail due to redirect limit
-	if err == nil {
-		t.Error("expected redirect limit error, but request succeeded")
-		return
-	}
+	// Test redirect to disallowed host
+	t.Run("block redirect to disallowed host", func(t *testing.T) {
+		cfg := SSRFConfig{
+			AllowedHosts: []string{"example.com"},
+			MaxRedirects: 3,
+			Timeout:      5 * time.Second,
+		}
 
-	errStr := strings.ToLower(err.Error())
-	if !strings.Contains(errStr, "redirect") && !strings.Contains(errStr, "stopped") {
-		t.Errorf("expected redirect limit error, got: %v", err)
-	}
+		client, err := NewProtectedClient(cfg)
+		if err != nil {
+			t.Fatalf("failed to create protected client: %v", err)
+		}
+
+		// Simulate redirect to a non-allowlisted host
+		testReq, _ := http.NewRequest("GET", "http://evil.com/malicious", nil)
+		via := []*http.Request{
+			{},
+		}
+
+		// Call the CheckRedirect function
+		err = client.CheckRedirect(testReq, via)
+		if err == nil {
+			t.Error("expected redirect block for disallowed host")
+			return
+		}
+
+		errStr := strings.ToLower(err.Error())
+		if !strings.Contains(errStr, "disallowed") {
+			t.Errorf("expected disallowed host error, got: %v", err)
+		}
+	})
 }
 
 // TestDefaultAllowedHosts tests that default allowed hosts are returned correctly
