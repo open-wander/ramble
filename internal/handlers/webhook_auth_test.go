@@ -317,6 +317,18 @@ func TestValidateWebhookRequest(t *testing.T) {
 			wantIsLegacy:  false,
 			wantReason:    "invalid secret",
 		},
+		{
+			name:          "empty stored secret",
+			body:          body,
+			signature:     validSignature,
+			timestamp:     validTimestamp,
+			querySecret:   "",
+			storedSecret:  "",
+			legacyEnabled: false,
+			wantValid:     false,
+			wantIsLegacy:  false,
+			wantReason:    "signature",
+		},
 	}
 
 	for _, tt := range tests {
@@ -347,4 +359,130 @@ func TestValidateWebhookRequest(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWebhookAuthEdgeCases(t *testing.T) {
+	now := time.Now().Unix()
+	secret := "test-secret"
+	body := []byte("test-body")
+
+	t.Run("clock skew boundary - 4m59s past should pass", func(t *testing.T) {
+		timestamp := fmt.Sprintf("%d", now-299)
+		err := ValidateTimestamp(timestamp)
+		if err != nil {
+			t.Errorf("ValidateTimestamp() with 4m59s past should pass, got error: %v", err)
+		}
+	})
+
+	t.Run("clock skew boundary - 4m59s future should pass", func(t *testing.T) {
+		timestamp := fmt.Sprintf("%d", now+299)
+		err := ValidateTimestamp(timestamp)
+		if err != nil {
+			t.Errorf("ValidateTimestamp() with 4m59s future should pass, got error: %v", err)
+		}
+	})
+
+	t.Run("clock skew boundary - 5m1s past should fail", func(t *testing.T) {
+		timestamp := fmt.Sprintf("%d", now-301)
+		err := ValidateTimestamp(timestamp)
+		if err == nil {
+			t.Error("ValidateTimestamp() with 5m1s past should fail")
+		}
+	})
+
+	t.Run("clock skew boundary - 5m1s future should fail", func(t *testing.T) {
+		timestamp := fmt.Sprintf("%d", now+301)
+		err := ValidateTimestamp(timestamp)
+		if err == nil {
+			t.Error("ValidateTimestamp() with 5m1s future should fail")
+		}
+	})
+
+	t.Run("empty secret handling - returns invalid", func(t *testing.T) {
+		validTimestamp := fmt.Sprintf("%d", now)
+		signature := ComputeSignature(body, validTimestamp, secret)
+
+		valid := ValidateWebhookSignature(body, signature, validTimestamp, "")
+		if valid {
+			t.Error("ValidateWebhookSignature() with empty secret should return false")
+		}
+	})
+
+	t.Run("empty timestamp string - returns error", func(t *testing.T) {
+		err := ValidateTimestamp("")
+		if err == nil {
+			t.Error("ValidateTimestamp() with empty string should return error")
+		}
+	})
+
+	t.Run("malformed signature - non-hex after prefix", func(t *testing.T) {
+		validTimestamp := fmt.Sprintf("%d", now)
+		malformedSig := "sha256=notahexstring!!!"
+
+		valid := ValidateWebhookSignature(body, malformedSig, validTimestamp, secret)
+		if valid {
+			t.Error("ValidateWebhookSignature() with malformed signature should return false")
+		}
+	})
+
+	t.Run("legacy auth transition - from allowed to disallowed", func(t *testing.T) {
+		// First, test with legacy enabled
+		os.Setenv("ALLOW_LEGACY_WEBHOOK_AUTH", "true")
+		valid, isLegacy, _ := ValidateWebhookRequest(body, "", "", secret, secret)
+		if !valid || !isLegacy {
+			t.Error("Legacy auth should work when enabled")
+		}
+
+		// Now disable and verify it fails
+		os.Unsetenv("ALLOW_LEGACY_WEBHOOK_AUTH")
+		valid, isLegacy, _ = ValidateWebhookRequest(body, "", "", secret, secret)
+		if valid || isLegacy {
+			t.Error("Legacy auth should fail when disabled")
+		}
+	})
+
+	t.Run("reason strings contain no sensitive data", func(t *testing.T) {
+		validTimestamp := fmt.Sprintf("%d", now)
+		expiredTimestamp := fmt.Sprintf("%d", now-400)
+
+		// Test timestamp failure reason
+		_, _, reason := ValidateWebhookRequest(
+			body,
+			computeExpectedSignature(body, expiredTimestamp, secret),
+			expiredTimestamp,
+			"",
+			secret,
+		)
+		if reason == "" {
+			t.Error("Expected non-empty reason for timestamp validation failure")
+		}
+		// Verify no secret in reason - simple substring check
+		if len(reason) > 0 && len(secret) > 0 {
+			for i := 0; i <= len(reason)-len(secret); i++ {
+				if reason[i:i+len(secret)] == secret {
+					t.Errorf("Reason string should not contain secret: %s", reason)
+				}
+			}
+		}
+
+		// Test signature failure reason
+		_, _, reason = ValidateWebhookRequest(
+			body,
+			"sha256=wrong",
+			validTimestamp,
+			"",
+			secret,
+		)
+		if reason == "" {
+			t.Error("Expected non-empty reason for signature validation failure")
+		}
+		// Verify no secret in reason
+		if len(reason) > 0 && len(secret) > 0 {
+			for i := 0; i <= len(reason)-len(secret); i++ {
+				if reason[i:i+len(secret)] == secret {
+					t.Errorf("Reason string should not contain secret: %s", reason)
+				}
+			}
+		}
+	})
 }
