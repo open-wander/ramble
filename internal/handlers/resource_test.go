@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http/httptest"
 	"rmbl/internal/database"
@@ -12,6 +15,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// computeTestSignature computes HMAC-SHA256 signature over "timestamp.body" format
+func computeTestSignature(body []byte, timestamp, secret string) string {
+	payload := fmt.Sprintf("%s.%s", timestamp, body)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(payload))
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
+}
 
 // setupAuthenticatedApp creates an app with session middleware that authenticates as the given user
 func setupAuthenticatedApp(user models.User) *fiber.App {
@@ -508,7 +519,7 @@ func TestHandleWebhook_InvalidSecret(t *testing.T) {
 	resp, err := app.Test(req)
 
 	assert.NoError(t, err)
-	assert.Equal(t, 403, resp.StatusCode)
+	assert.Equal(t, 401, resp.StatusCode)
 
 	// Verify failure was logged
 	var updated models.NomadResource
@@ -535,7 +546,7 @@ func TestHandleWebhook_MissingSecret(t *testing.T) {
 	resp, err := app.Test(req)
 
 	assert.NoError(t, err)
-	assert.Equal(t, 403, resp.StatusCode)
+	assert.Equal(t, 401, resp.StatusCode)
 }
 
 func TestHandleWebhook_ValidSecret(t *testing.T) {
