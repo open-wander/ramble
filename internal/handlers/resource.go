@@ -4,9 +4,9 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"log"
 	"regexp"
 	"rmbl/internal/crypto"
 	"rmbl/internal/database"
@@ -521,7 +521,6 @@ func DeleteResource(c *fiber.Ctx) error {
 // @Router /resource/{id}/webhook [post]
 func HandleWebhook(c *fiber.Ctx) error {
 	id := c.Params("id")
-	secret := c.Query("secret")
 
 	var resource models.NomadResource
 	if err := database.DB.Preload("Versions", func(db *gorm.DB) *gorm.DB {
@@ -530,28 +529,34 @@ func HandleWebhook(c *fiber.Ctx) error {
 		return c.SendStatus(404)
 	}
 
-	// Validate webhook authentication
-	isValid := false
+	// Extract authentication headers and query params
+	signature := c.Get("X-Hub-Signature-256")
+	timestamp := c.Get("X-Webhook-Timestamp")
+	querySecret := c.Query("secret")
 
-	// Check for GitHub HMAC signature (X-Hub-Signature-256)
-	if signature := c.Get("X-Hub-Signature-256"); signature != "" {
-		isValid = validateGitHubSignature(c.Body(), resource.WebhookSecret, signature)
-	} else if secret != "" {
-		// Fallback to query parameter secret (legacy method)
-		// Check empty secret separately to avoid timing leak
-		if resource.WebhookSecret == "" {
-			isValid = false
-		} else {
-			isValid = subtle.ConstantTimeCompare([]byte(resource.WebhookSecret), []byte(secret)) == 1
-		}
-	}
+	// Validate webhook request
+	valid, isLegacy, reason := ValidateWebhookRequest(
+		c.Body(), signature, timestamp, querySecret, resource.WebhookSecret,
+	)
 
-	if !isValid {
+	if !valid {
+		// Log validation failure with reason (for debugging)
+		log.Printf("WARN: Webhook validation failed for resource %d: %s", resource.ID, reason)
+
+		// Record failure in database
 		resource.LastWebhookDelivery = time.Now()
 		resource.LastWebhookStatus = "failure"
 		resource.LastWebhookError = "Invalid or missing secret"
 		database.DB.Save(&resource)
-		return c.SendStatus(403)
+
+		// Return generic error to client (401 with no details)
+		return c.Status(401).SendString("Invalid webhook signature")
+	}
+
+	// Handle legacy auth deprecation warning
+	if isLegacy {
+		c.Set("X-Deprecation-Warning", "Query parameter authentication is deprecated. Migrate to X-Hub-Signature-256 headers.")
+		log.Printf("WARN: Resource %d using deprecated query parameter webhook authentication", resource.ID)
 	}
 
 	// Initial success state (might be updated later if fetch fails)
