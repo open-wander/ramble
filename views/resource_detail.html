@@ -136,18 +136,36 @@
                     <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Webhook Settings</dt>
                     <dd class="mt-1 text-sm text-gray-900 dark:text-gray-100 sm:mt-0 sm:col-span-2">
                         <div class="flex items-center space-x-2">
-                            <code class="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-xs">http://{{.Host}}/resource/{{.Resource.ID}}/webhook?secret={{.Resource.WebhookSecret}}</code>
-                            <button 
-                                _="on click call navigator.clipboard.writeText('http://{{.Host}}/resource/{{.Resource.ID}}/webhook?secret={{.Resource.WebhookSecret}}') then set my.innerText to 'Copied!' then wait 2s then set my.innerText to 'Copy'"
+                            <code class="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-xs">http://{{.Host}}/resource/{{.Resource.ID}}/webhook</code>
+                            <button
+                                _="on click call navigator.clipboard.writeText('http://{{.Host}}/resource/{{.Resource.ID}}/webhook') then set my.innerText to 'Copied!' then wait 2s then set my.innerText to 'Copy'"
                                 class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
                             >Copy URL</button>
                             <span class="text-gray-300 dark:text-gray-600">|</span>
-                            <button 
+                            <button
                                 hx-post="/resource/{{.Resource.ID}}/webhook/reset"
                                 hx-confirm="Are you sure you want to rotate the webhook secret? This will break your existing Git integrations until you update them."
                                 class="text-xs text-red-600 dark:text-red-400 hover:underline"
                             >Rotate Secret</button>
                         </div>
+                        <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                            <p class="font-medium mb-1">Required Headers:</p>
+                            <ul class="list-disc list-inside space-y-1">
+                                <li><code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">X-Hub-Signature-256</code>: sha256=&lt;HMAC-SHA256 of timestamp.body&gt;</li>
+                                <li><code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">X-Webhook-Timestamp</code>: Unix timestamp (seconds)</li>
+                            </ul>
+                        </div>
+                        <div class="mt-2">
+                            <span class="text-xs text-gray-500 dark:text-gray-400">Webhook Secret:</span>
+                            <code class="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-xs ml-2">{{.Resource.WebhookSecret}}</code>
+                            <button
+                                _="on click call navigator.clipboard.writeText('{{.Resource.WebhookSecret}}') then set my.innerText to 'Copied!' then wait 2s then set my.innerText to 'Copy Secret'"
+                                class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline ml-2"
+                            >Copy Secret</button>
+                        </div>
+                        <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                            Signature is computed as: HMAC-SHA256(secret, "timestamp.body")
+                        </p>
                         {{if not .Resource.LastWebhookDelivery.IsZero}}
                         <div class="mt-2 flex flex-col space-y-1">
                             <div class="flex items-center text-[10px]">
