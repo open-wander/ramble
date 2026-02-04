@@ -345,15 +345,37 @@ func fetchGitLabMetadata(repoURL string, token string) (*GitLabProject, error) {
 	projectPath := strings.ReplaceAll(strings.TrimSuffix(parts[1], ".git"), "/", "%2F")
 	apiURL := fmt.Sprintf("https://gitlab.com/api/v4/projects/%s", projectPath)
 
-	agent := fiber.Get(apiURL)
+	cfg := security.SSRFConfig{
+		AllowedHosts: security.DefaultAllowedHosts(),
+		MaxRedirects: 3,
+		Timeout:      30 * time.Second,
+	}
+	client, err := security.NewProtectedClient(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create protected client: %w", err)
+	}
+
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return nil, err
+	}
 	if token != "" {
-		agent.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch gitlab metadata: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("failed to fetch gitlab metadata: status %d", resp.StatusCode)
 	}
 
 	var project GitLabProject
-	statusCode, _, errs := agent.Struct(&project)
-	if len(errs) > 0 || statusCode != 200 {
-		return nil, fmt.Errorf("failed to fetch gitlab metadata")
+	if err := json.NewDecoder(resp.Body).Decode(&project); err != nil {
+		return nil, err
 	}
 	return &project, nil
 }
@@ -366,17 +388,42 @@ func fetchGitLabLatestTag(repoURL string, token string) (string, error) {
 	projectPath := strings.ReplaceAll(strings.TrimSuffix(parts[1], ".git"), "/", "%2F")
 	apiURL := fmt.Sprintf("https://gitlab.com/api/v4/projects/%s/repository/tags", projectPath)
 
-	agent := fiber.Get(apiURL)
+	cfg := security.SSRFConfig{
+		AllowedHosts: security.DefaultAllowedHosts(),
+		MaxRedirects: 3,
+		Timeout:      30 * time.Second,
+	}
+	client, err := security.NewProtectedClient(cfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to create protected client: %w", err)
+	}
+
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return "", err
+	}
 	if token != "" {
-		agent.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch gitlab tags: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("failed to fetch gitlab tags: status %d", resp.StatusCode)
 	}
 
 	type GitLabTag struct {
 		Name string `json:"name"`
 	}
 	var tags []GitLabTag
-	statusCode, _, errs := agent.Struct(&tags)
-	if len(errs) > 0 || statusCode != 200 || len(tags) == 0 {
+	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
+		return "", err
+	}
+	if len(tags) == 0 {
 		return "", fmt.Errorf("no tags found")
 	}
 	return tags[0].Name, nil
@@ -390,9 +437,32 @@ func fetchGitLabJobFile(repoURL string, token string) (string, error) {
 	projectPath := strings.ReplaceAll(strings.TrimSuffix(parts[1], ".git"), "/", "%2F")
 	apiURL := fmt.Sprintf("https://gitlab.com/api/v4/projects/%s/repository/tree", projectPath)
 
-	agent := fiber.Get(apiURL)
+	cfg := security.SSRFConfig{
+		AllowedHosts: security.DefaultAllowedHosts(),
+		MaxRedirects: 3,
+		Timeout:      30 * time.Second,
+	}
+	client, err := security.NewProtectedClient(cfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to create protected client: %w", err)
+	}
+
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return "", err
+	}
 	if token != "" {
-		agent.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch gitlab tree: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("failed to fetch gitlab tree: status %d", resp.StatusCode)
 	}
 
 	type GitLabTreeItem struct {
@@ -400,9 +470,8 @@ func fetchGitLabJobFile(repoURL string, token string) (string, error) {
 		Type string `json:"type"`
 	}
 	var tree []GitLabTreeItem
-	statusCode, _, errs := agent.Struct(&tree)
-	if len(errs) > 0 || statusCode != 200 {
-		return "", fmt.Errorf("failed to fetch tree")
+	if err := json.NewDecoder(resp.Body).Decode(&tree); err != nil {
+		return "", err
 	}
 
 	for _, item := range tree {
