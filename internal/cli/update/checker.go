@@ -216,7 +216,7 @@ func saveCache(cache *cacheData) {
 		return
 	}
 
-	os.WriteFile(path, data, 0644)
+	os.WriteFile(path, data, 0600)
 }
 
 // FormatUpdateMessage returns a formatted message about the available update
