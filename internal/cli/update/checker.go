@@ -138,13 +138,15 @@ func isNewerVersion(a, b string) bool {
 }
 
 func parseVersion(v string) [3]int {
-	var parts [3]int
+	var major, minor, patch int
 	// Remove any pre-release suffix (e.g., -rc1, -beta)
 	if idx := strings.IndexAny(v, "-+"); idx != -1 {
 		v = v[:idx]
 	}
-	fmt.Sscanf(v, "%d.%d.%d", &parts[0], &parts[1], &parts[2])
-	return parts
+	// Parse version string - ignore error since invalid versions default to 0
+	// Using separate variables avoids G602 false positive from array pointer args
+	_, _ = fmt.Sscanf(v, "%d.%d.%d", &major, &minor, &patch)
+	return [3]int{major, minor, patch}
 }
 
 func getDownloadURL(version string) string {
@@ -216,7 +218,8 @@ func saveCache(cache *cacheData) {
 		return
 	}
 
-	os.WriteFile(path, data, 0600)
+	// Best effort cache save - ignore error as cache is non-critical
+	_ = os.WriteFile(path, data, 0600)
 }
 
 // FormatUpdateMessage returns a formatted message about the available update
