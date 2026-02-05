@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"rmbl/internal/cli/config"
@@ -138,9 +139,12 @@ func runPackRun(cmd *cobra.Command, args []string) error {
 
 	// Load variables defaults from variables.hcl
 	variables := make(map[string]any)
-	varsPath := packPath + "/variables.hcl"
+	varsPath := filepath.Join(filepath.Clean(packPath), "variables.hcl")
 	if _, err := os.Stat(varsPath); err == nil {
-		content, err := os.ReadFile(varsPath)
+		// G304: varsPath is derived from packPath which is either:
+		// 1. User-provided CLI path (intentional functionality)
+		// 2. Cache directory path (system-controlled)
+		content, err := os.ReadFile(varsPath) //#nosec G304 -- user-provided CLI path or cached pack path
 		if err == nil {
 			if defs, err := parseVariablesSimple(string(content)); err == nil {
 				for k, v := range defs {

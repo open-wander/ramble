@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -32,8 +33,15 @@ type variableBlock struct {
 }
 
 // ParseVariablesFile parses a variables.hcl file and returns variable definitions
+// Note: Path is provided by CLI user (intentional file access) or from validated pack directory
 func ParseVariablesFile(path string) ([]Variable, error) {
-	content, err := os.ReadFile(path)
+	// Clean path to normalize and remove any . or .. elements
+	cleanPath := filepath.Clean(path)
+
+	// G304: This function is called with paths from:
+	// 1. CLI commands where user explicitly provides the path (intentional functionality)
+	// 2. Pack directories that are already validated
+	content, err := os.ReadFile(cleanPath) //#nosec G304 -- user-provided CLI path or validated pack path
 	if err != nil {
 		return nil, fmt.Errorf("failed to read variables file: %w", err)
 	}
@@ -157,8 +165,14 @@ func ParseVarFlag(s string) (key string, value any, err error) {
 }
 
 // ParseVarFile parses a variable file (HCL or JSON)
+// Note: Path is explicitly provided by CLI user via --var-file flag
 func ParseVarFile(path string) (map[string]any, error) {
-	content, err := os.ReadFile(path)
+	// Clean path to normalize and remove any . or .. elements
+	cleanPath := filepath.Clean(path)
+
+	// G304: Path is explicitly provided by user via CLI --var-file flag.
+	// This is intentional functionality - users choose which files to use.
+	content, err := os.ReadFile(cleanPath) //#nosec G304 -- user-provided CLI path via --var-file flag
 	if err != nil {
 		return nil, fmt.Errorf("failed to read var file: %w", err)
 	}
