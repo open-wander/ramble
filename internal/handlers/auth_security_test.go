@@ -379,11 +379,21 @@ func TestAuth_AccountLockout(t *testing.T) {
 
 	// Documentation: Lock expires after 15 minutes
 	// In production, time passes naturally
-	// For testing, we can simulate by updating LockedUntil
-	database.DB.Model(&lockedUser).Update("locked_until", time.Now().Add(-1*time.Minute))
+	// For testing, we simulate by updating LockedUntil to past time and reload user
+	pastTime := time.Now().Add(-1 * time.Minute)
+	database.DB.Model(&models.User{}).Where("id = ?", user.ID).Updates(map[string]interface{}{
+		"locked_until":          pastTime,
+		"failed_login_attempts": 5, // Keep failed attempts count
+	})
 
-	// Now login should work
-	reqUnlocked := httptest.NewRequest("POST", "/login", correctPayload)
+	// Reload to get updated values
+	var unlockedUser models.User
+	database.DB.First(&unlockedUser, user.ID)
+	assert.True(t, unlockedUser.LockedUntil.Before(time.Now()), "Lock should be expired")
+
+	// Now login with correct password should work
+	correctPayloadRetry := strings.NewReader("email=lockoutuser1@test.com&password=CorrectPass123!")
+	reqUnlocked := httptest.NewRequest("POST", "/login", correctPayloadRetry)
 	reqUnlocked.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	respUnlocked, err := app.Test(reqUnlocked)
@@ -391,9 +401,9 @@ func TestAuth_AccountLockout(t *testing.T) {
 	assert.Equal(t, 200, respUnlocked.StatusCode, "Login succeeds after lock expires")
 
 	// Verify failed attempts reset on successful login
-	var unlockedUser models.User
-	database.DB.First(&unlockedUser, user.ID)
-	assert.Equal(t, 0, unlockedUser.FailedLoginAttempts, "Successful login resets counter")
+	var finalUser models.User
+	database.DB.First(&finalUser, user.ID)
+	assert.Equal(t, 0, finalUser.FailedLoginAttempts, "Successful login resets counter")
 }
 
 // TestAuth_PasswordValidation verifies password strength requirements
