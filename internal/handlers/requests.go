@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
@@ -13,6 +14,17 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
+
+// safeUintToInt safely converts uint to int with bounds checking.
+// Returns an error if the value exceeds math.MaxInt.
+// For database IDs this should never happen in practice, but
+// checking satisfies gosec G115 requirements.
+func safeUintToInt(u uint) (int, error) {
+	if u > math.MaxInt {
+		return 0, fmt.Errorf("value %d exceeds maximum int", u)
+	}
+	return int(u), nil
+}
 
 // GetRequests lists pack/job requests with filtering and sorting
 func GetRequests(c *fiber.Ctx) error {
@@ -184,7 +196,11 @@ func PostNewRequest(c *fiber.Ctx) error {
 	go createGitHubIssueForRequest(request.ID)
 
 	SetFlash(c, "success", "Request submitted successfully!")
-	c.Set("HX-Redirect", "/requests/"+strconv.Itoa(int(request.ID)))
+	requestIDInt, err := safeUintToInt(request.ID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString("Invalid request ID")
+	}
+	c.Set("HX-Redirect", "/requests/"+strconv.Itoa(requestIDInt))
 	return c.SendStatus(fiber.StatusOK)
 }
 
@@ -404,7 +420,11 @@ func PostEditRequest(c *fiber.Ctx) error {
 	AuditLog(c, "request.edit", "request", request.ID, request.Title, nil)
 
 	SetFlash(c, "success", "Request updated successfully!")
-	c.Set("HX-Redirect", "/requests/"+strconv.Itoa(int(request.ID)))
+	requestIDInt, err := safeUintToInt(request.ID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString("Invalid request ID")
+	}
+	c.Set("HX-Redirect", "/requests/"+strconv.Itoa(requestIDInt))
 	return c.SendStatus(fiber.StatusOK)
 }
 
@@ -473,6 +493,10 @@ func RetryGitHubIssue(c *fiber.Ctx) error {
 	}
 
 	SetFlash(c, "success", "GitHub issue created successfully!")
-	c.Set("HX-Redirect", "/requests/"+strconv.Itoa(int(request.ID)))
+	requestIDInt, err := safeUintToInt(request.ID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString("Invalid request ID")
+	}
+	c.Set("HX-Redirect", "/requests/"+strconv.Itoa(requestIDInt))
 	return c.SendStatus(fiber.StatusOK)
 }
