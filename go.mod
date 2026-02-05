@@ -1,8 +1,9 @@
 module rmbl
 
-go 1.25.5
+go 1.25.7
 
 require (
+	code.dny.dev/ssrf v0.2.0
 	github.com/gofiber/fiber/v2 v2.52.10
 	github.com/gofiber/swagger v1.1.1
 	github.com/gofiber/template/html/v2 v2.1.3
@@ -22,7 +23,6 @@ require (
 )
 
 require (
-	code.dny.dev/ssrf v0.2.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
