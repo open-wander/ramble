@@ -101,7 +101,7 @@ func runPackRender(cmd *cobra.Command, args []string) error {
 
 	// Output result
 	if renderOutput != "" {
-		if err := os.WriteFile(renderOutput, []byte(result), 0644); err != nil {
+		if err := os.WriteFile(renderOutput, []byte(result), 0600); err != nil {
 			return fmt.Errorf("failed to write output: %w", err)
 		}
 		fmt.Printf("Rendered to %s\n", renderOutput)
