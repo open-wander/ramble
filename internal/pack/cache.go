@@ -78,8 +78,8 @@ func (c *Cache) Store(registry, namespace, name, version, tarballURL string) (st
 
 	// Extract tarball
 	if err := extractTarGz(resp.Body, packPath); err != nil {
-		// Clean up on failure
-		os.RemoveAll(packPath)
+		// Clean up on failure - best effort, ignore error
+		_ = os.RemoveAll(packPath)
 		return "", fmt.Errorf("failed to extract pack: %w", err)
 	}
 
@@ -214,11 +214,21 @@ func extractTarGz(r io.Reader, destDir string) error {
 				return fmt.Errorf("failed to create file: %w", err)
 			}
 
-			if _, err := io.Copy(f, tr); err != nil {
-				f.Close()
+			// Limit decompressed file size to prevent decompression bombs (G110)
+			const maxFileSize = 100 * 1024 * 1024 // 100MB per file
+			limitedReader := io.LimitReader(tr, maxFileSize+1)
+			n, err := io.Copy(f, limitedReader)
+			if err != nil {
+				_ = f.Close() // Close file on write error, ignore close error
 				return fmt.Errorf("failed to write file: %w", err)
 			}
-			f.Close()
+			if n > maxFileSize {
+				_ = f.Close() // Close file on size limit, ignore close error
+				return fmt.Errorf("file %s exceeds maximum size of %d bytes", name, maxFileSize)
+			}
+			if err := f.Close(); err != nil {
+				return fmt.Errorf("failed to close file: %w", err)
+			}
 		}
 	}
 
