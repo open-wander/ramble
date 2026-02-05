@@ -170,6 +170,20 @@ func Run(cfg Config) error {
 			if userID := sess.Get("user_id"); userID != nil {
 				var user models.User
 				if err := database.DB.Preload("Memberships.Organization").First(&user, userID).Error; err == nil {
+					// Check if password was changed after session was created
+					// If so, invalidate this session (force logout on password reset)
+					if createdAt := sess.Get("session_created_at"); createdAt != nil {
+						if created, ok := createdAt.(int64); ok {
+							sessionTime := time.Unix(created, 0)
+							// PasswordChangedAt is zero value for users who never changed password
+							if !user.PasswordChangedAt.IsZero() && user.PasswordChangedAt.After(sessionTime) {
+								// Session is stale - password was changed after this session was created
+								sess.Destroy()
+								// Continue request without user context (will redirect to login on protected routes)
+								return c.Next()
+							}
+						}
+					}
 					c.Locals("UserID", userID)
 					c.Locals("User", user)
 				}
