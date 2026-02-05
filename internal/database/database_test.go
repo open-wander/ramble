@@ -1,7 +1,10 @@
 package database
 
 import (
+	"reflect"
 	"testing"
+
+	"rmbl/internal/models"
 )
 
 func TestGetSSLMode_Default(t *testing.T) {
@@ -58,5 +61,28 @@ func TestGetSSLMode_EmptyWithNoEnv(t *testing.T) {
 	mode := getSSLMode()
 	if mode != "disable" {
 		t.Errorf("getSSLMode() = %s, want disable for empty ENV", mode)
+	}
+}
+
+func TestUserModelHasTokenSecurityFields(t *testing.T) {
+	// Verify User struct has required fields for token security
+	userType := reflect.TypeOf(models.User{})
+
+	// Check ResetTokenUsedAt field
+	usedAtField, found := userType.FieldByName("ResetTokenUsedAt")
+	if !found {
+		t.Error("User model missing ResetTokenUsedAt field")
+	}
+	if usedAtField.Type.String() != "*time.Time" {
+		t.Errorf("ResetTokenUsedAt should be *time.Time, got %s", usedAtField.Type.String())
+	}
+
+	// Check PasswordChangedAt field
+	changedAtField, found := userType.FieldByName("PasswordChangedAt")
+	if !found {
+		t.Error("User model missing PasswordChangedAt field")
+	}
+	if changedAtField.Type.String() != "time.Time" {
+		t.Errorf("PasswordChangedAt should be time.Time, got %s", changedAtField.Type.String())
 	}
 }
