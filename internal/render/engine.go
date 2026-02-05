@@ -80,7 +80,13 @@ func (e *Engine) RenderPack(packDir string) (string, error) {
 			continue
 		}
 
-		content, err := os.ReadFile(filepath.Join(templatesDir, name))
+		// Construct and validate template path to prevent directory traversal
+		templatePath := filepath.Join(templatesDir, filepath.Clean(name))
+		if !strings.HasPrefix(templatePath, filepath.Clean(templatesDir)+string(os.PathSeparator)) {
+			return "", fmt.Errorf("template path %q outside templates directory", name)
+		}
+
+		content, err := os.ReadFile(templatePath) //#nosec G304 -- path validated within templates directory
 		if err != nil {
 			return "", fmt.Errorf("failed to read template %s: %w", name, err)
 		}
@@ -157,8 +163,15 @@ func (e *Engine) RenderTemplateWithContext(ctx context.Context, content string) 
 }
 
 // RenderFile renders a single template file
+// Note: Caller is responsible for path validation when path comes from untrusted sources
 func (e *Engine) RenderFile(path string) (string, error) {
-	content, err := os.ReadFile(path)
+	// Clean path to normalize and remove any . or .. elements
+	cleanPath := filepath.Clean(path)
+
+	// G304: This function is called with user-provided paths from CLI commands.
+	// The path is explicitly provided by the user via command line argument,
+	// which is intentional functionality (users choose which files to render).
+	content, err := os.ReadFile(cleanPath) //#nosec G304 -- user-provided CLI path, intentional functionality
 	if err != nil {
 		return "", fmt.Errorf("failed to read file: %w", err)
 	}
