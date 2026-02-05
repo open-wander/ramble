@@ -32,7 +32,12 @@ func configPath() string {
 func Load() (*Config, error) {
 	path := configPath()
 
-	data, err := os.ReadFile(path)
+	// Clean path to normalize
+	cleanPath := filepath.Clean(path)
+
+	// G304: Config path is derived from XDG_CONFIG_HOME or user home directory,
+	// not from user input. This is the standard config file location.
+	data, err := os.ReadFile(cleanPath) //#nosec G304 -- config path from XDG/home, not user input
 	if os.IsNotExist(err) {
 		// Return default config
 		return &Config{
