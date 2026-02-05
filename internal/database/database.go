@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"rmbl/internal/models"
 
@@ -75,4 +76,22 @@ func Connect() {
 		log.Fatal("Migration failed: ", err)
 	}
 	log.Println("Migrations completed")
+
+	// Clean up any existing reset tokens (security: fresh start on deploy)
+	cleanupExpiredTokens(DB)
+}
+
+// cleanupExpiredTokens invalidates all existing password reset tokens on startup.
+// Per security requirements: "Expire all existing tokens immediately on deploy (clean slate)"
+func cleanupExpiredTokens(db *gorm.DB) {
+	result := db.Model(&models.User{}).
+		Where("reset_token != ?", "").
+		Updates(map[string]interface{}{
+			"reset_token":          "",
+			"reset_token_expires":  time.Time{},
+			"reset_token_used_at":  nil,
+		})
+	if result.RowsAffected > 0 {
+		log.Printf("Cleared %d existing password reset tokens", result.RowsAffected)
+	}
 }
