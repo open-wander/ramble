@@ -11,6 +11,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"rmbl/internal/security"
 )
 
 // Cache manages locally cached packs
@@ -65,8 +68,27 @@ func (c *Cache) Store(registry, namespace, name, version, tarballURL string) (st
 		return "", fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	// Download tarball
-	resp, err := http.Get(tarballURL)
+	// Validate and parse URL before making request
+	parsedURL, err := url.Parse(tarballURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid tarball URL: %w", err)
+	}
+	if parsedURL.Scheme != "https" && parsedURL.Scheme != "http" {
+		return "", fmt.Errorf("unsupported URL scheme: %s (must be http or https)", parsedURL.Scheme)
+	}
+
+	// Create SSRF-protected HTTP client
+	// G107: URL is validated above and uses SSRF-protected client with host allowlist
+	client, err := security.NewProtectedClient(security.SSRFConfig{
+		AllowedHosts: security.DefaultAllowedHosts(),
+		Timeout:      30 * time.Second,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to create HTTP client: %w", err)
+	}
+
+	// Download tarball using protected client
+	resp, err := client.Get(tarballURL) //#nosec G107 -- URL validated and uses SSRF-protected client
 	if err != nil {
 		return "", fmt.Errorf("failed to download pack: %w", err)
 	}
@@ -209,7 +231,8 @@ func extractTarGz(r io.Reader, destDir string) error {
 				return fmt.Errorf("failed to create parent directory: %w", err)
 			}
 
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, safeFileMode(header.Mode))
+			// G304: target path is validated above (lines 194-199) to be within destDir
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, safeFileMode(header.Mode)) //#nosec G304 -- path validated to be within destDir
 			if err != nil {
 				return fmt.Errorf("failed to create file: %w", err)
 			}
