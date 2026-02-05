@@ -24,6 +24,10 @@ type User struct {
 	// Password Reset
 	ResetToken        string
 	ResetTokenExpires time.Time
+	ResetTokenUsedAt  *time.Time // NULL = unused, set on first use (for single-use enforcement)
+
+	// Session Security
+	PasswordChangedAt time.Time // Set on password change, used for session invalidation
 
 	// Email Verification
 	EmailVerified            bool      `gorm:"default:false"`
