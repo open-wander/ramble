@@ -183,7 +183,7 @@ func runPackRun(cmd *cobra.Command, args []string) error {
 
 	// Handle output modes
 	if runOutput != "" {
-		if err := os.WriteFile(runOutput, []byte(result), 0644); err != nil {
+		if err := os.WriteFile(runOutput, []byte(result), 0600); err != nil {
 			return fmt.Errorf("failed to write output: %w", err)
 		}
 		fmt.Printf("Rendered job written to: %s\n", runOutput)
