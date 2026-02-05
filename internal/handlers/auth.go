@@ -369,10 +369,15 @@ func GetForgotPassword(c *fiber.Ctx) error {
 
 func PostForgotPassword(c *fiber.Ctx) error {
 	emailAddr := c.FormValue("email")
+
+	// Always log reset request (for monitoring)
+	AuditLog(c, "auth.password_reset_requested", "user", 0, emailAddr, nil)
+
 	var user models.User
 	if err := database.DB.Where("email = ?", emailAddr).First(&user).Error; err != nil {
-		// We return success even if user not found for security (prevent email enumeration)
-		SetFlash(c, "success", "If an account exists with that email, a reset link has been sent.")
+		// Return success even if user not found (prevent email enumeration)
+		// User decision: "Unknown email requests show same success message"
+		SetFlash(c, "success", "If an account exists, we sent a reset link.")
 		c.Set("HX-Redirect", "/login")
 		return c.SendStatus(fiber.StatusOK)
 	}
@@ -381,6 +386,15 @@ func PostForgotPassword(c *fiber.Ctx) error {
 	if user.Provider != "" && user.PasswordHash == "" {
 		return c.Status(fiber.StatusBadRequest).SendString("This account is linked to " + user.Provider + ". Please sign in using your social account.")
 	}
+
+	// Invalidate all previous tokens for this user (user decision)
+	database.DB.Model(&models.User{}).
+		Where("id = ?", user.ID).
+		Updates(map[string]interface{}{
+			"reset_token":         "",
+			"reset_token_expires": time.Time{},
+			"reset_token_used_at": nil,
+		})
 
 	// Generate Token
 	b := make([]byte, 32)
@@ -393,6 +407,7 @@ func PostForgotPassword(c *fiber.Ctx) error {
 	hashedToken := sha256.Sum256([]byte(token))
 	user.ResetToken = hex.EncodeToString(hashedToken[:])
 	user.ResetTokenExpires = time.Now().Add(1 * time.Hour)
+	user.ResetTokenUsedAt = nil // Ensure it's marked as unused
 	database.DB.Save(&user)
 
 	// Send Email
@@ -401,13 +416,15 @@ func PostForgotPassword(c *fiber.Ctx) error {
 		baseURL = "http://localhost:3000"
 	}
 	resetLink := fmt.Sprintf("%s/reset-password?token=%s", baseURL, token)
-	
+
 	if err := email.SendResetEmail(user.Email, resetLink); err != nil {
 		fmt.Printf("Failed to send reset email: %v\n", err)
 		return c.Status(fiber.StatusInternalServerError).SendString("Failed to send reset email. Please try again later.")
 	}
 
-	SetFlash(c, "success", "A reset link has been sent to your email.")
+	AuditLog(c, "auth.password_reset_token_sent", "user", user.ID, user.Username, nil)
+
+	SetFlash(c, "success", "If an account exists, we sent a reset link.")
 	c.Set("HX-Redirect", "/login")
 	return c.SendStatus(fiber.StatusOK)
 }
