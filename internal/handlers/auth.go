@@ -173,7 +173,8 @@ func PostLogin(c *fiber.Ctx) error {
 	result := database.DB.Where("email = ?", input.Email).First(&user)
 	if result.Error != nil {
 		// Always perform bcrypt comparison to prevent timing-based username enumeration
-		bcrypt.CompareHashAndPassword([]byte(dummyHash), []byte(input.Password))
+		// Result intentionally ignored - we only need to consume the same time as a real comparison
+		_ = bcrypt.CompareHashAndPassword([]byte(dummyHash), []byte(input.Password))
 		AuditLog(c, "auth.login_failed", "user", 0, input.Email, nil)
 		return c.Status(fiber.StatusUnauthorized).SendString("Invalid email or password")
 	}

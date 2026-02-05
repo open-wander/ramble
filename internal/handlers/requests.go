@@ -307,10 +307,14 @@ func ToggleRequestVote(c *fiber.Ctx) error {
 	}
 
 	if hasVoted {
-		database.DB.Model(&request).Association("Voters").Delete(&models.User{Model: gorm.Model{ID: userID}})
+		if err := database.DB.Model(&request).Association("Voters").Delete(&models.User{Model: gorm.Model{ID: userID}}); err != nil {
+			return c.Status(fiber.StatusInternalServerError).SendString("Failed to remove vote")
+		}
 		database.DB.Model(&request).Update("vote_count", gorm.Expr("vote_count - ?", 1))
 	} else {
-		database.DB.Model(&request).Association("Voters").Append(&models.User{Model: gorm.Model{ID: userID}})
+		if err := database.DB.Model(&request).Association("Voters").Append(&models.User{Model: gorm.Model{ID: userID}}); err != nil {
+			return c.Status(fiber.StatusInternalServerError).SendString("Failed to add vote")
+		}
 		database.DB.Model(&request).Update("vote_count", gorm.Expr("vote_count + ?", 1))
 	}
 
