@@ -8,6 +8,33 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+// docsBaseDir is the base directory for documentation files
+const docsBaseDir = "docs"
+
+// validateDocsPath validates that a file path is within the docs directory
+// to prevent directory traversal attacks
+func validateDocsPath(filePath string) (string, error) {
+	// Clean the path to resolve . and .. elements
+	cleanPath := filepath.Clean(filePath)
+
+	// Get absolute paths for comparison
+	absDocsDir, err := filepath.Abs(docsBaseDir)
+	if err != nil {
+		return "", err
+	}
+	absPath, err := filepath.Abs(cleanPath)
+	if err != nil {
+		return "", err
+	}
+
+	// Ensure the path is within the docs directory
+	if !strings.HasPrefix(absPath, absDocsDir+string(os.PathSeparator)) && absPath != absDocsDir {
+		return "", fiber.NewError(fiber.StatusBadRequest, "invalid path")
+	}
+
+	return cleanPath, nil
+}
+
 // DocPage represents a documentation page
 type DocPage struct {
 	Path  string
@@ -96,14 +123,29 @@ func getDocsPage(c *fiber.Ctx, page string) error {
 		title = getPageTitle(page)
 	}
 
-	// Try to read the file
-	content, err := os.ReadFile(filePath)
+	// Validate file path to prevent directory traversal
+	validPath, err := validateDocsPath(filePath)
+	if err != nil {
+		// Invalid path, use empty content
+		return c.Render("docs", MergeContext(BaseContext(c), fiber.Map{
+			"Page":        "docs",
+			"Title":       "Documentation",
+			"DocsContent": "",
+			"DocSections": getDocSections(),
+			"CurrentPage": page,
+		}), "layouts/main")
+	}
+
+	// Try to read the validated file
+	// G304: Path is validated above to be within docs directory
+	content, err := os.ReadFile(validPath) //#nosec G304 -- path validated to be within docs directory
 	docsContent := ""
 	if err == nil {
 		docsContent = string(content)
 	} else {
 		// Fallback to REQUIREMENTS.md for backward compatibility
-		content, err = os.ReadFile("REQUIREMENTS.md")
+		// This is a hardcoded path, not user-controlled
+		content, err = os.ReadFile("REQUIREMENTS.md") //#nosec G304 -- hardcoded path, not user-controlled
 		if err == nil {
 			docsContent = string(content)
 		}

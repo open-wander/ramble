@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"rmbl/internal/cli/config"
@@ -50,8 +51,12 @@ func runJobRun(cmd *cobra.Command, args []string) error {
 
 	// Check if it's a local file
 	if _, err := os.Stat(jobRef); err == nil {
-		// Local file
-		content, err := os.ReadFile(jobRef)
+		// Local file - clean path to normalize
+		cleanPath := filepath.Clean(jobRef)
+
+		// G304: Path is explicitly provided by user via CLI argument.
+		// This is intentional functionality - users choose which job files to run.
+		content, err := os.ReadFile(cleanPath) //#nosec G304 -- user-provided CLI path, intentional functionality
 		if err != nil {
 			return fmt.Errorf("failed to read job file: %w", err)
 		}

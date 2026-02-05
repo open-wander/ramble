@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"rmbl/internal/pack"
 	"rmbl/internal/render"
@@ -56,9 +57,11 @@ func runPackRender(cmd *cobra.Command, args []string) error {
 
 	// Load variables defaults from variables.hcl
 	variables := make(map[string]any)
-	varsPath := packPath + "/variables.hcl"
+	varsPath := filepath.Join(filepath.Clean(packPath), "variables.hcl")
 	if _, err := os.Stat(varsPath); err == nil {
-		content, err := os.ReadFile(varsPath)
+		// G304: varsPath is derived from user-provided packPath (CLI argument)
+		// This is intentional functionality - users choose which packs to render
+		content, err := os.ReadFile(varsPath) //#nosec G304 -- user-provided CLI path, intentional functionality
 		if err == nil {
 			if defs, err := parseVariablesSimple(string(content)); err == nil {
 				for k, v := range defs {
@@ -121,8 +124,10 @@ type packMetadata struct {
 
 // loadPackMetadata loads metadata from a pack's metadata.hcl
 func loadPackMetadata(packPath string) (*packMetadata, error) {
-	metaPath := packPath + "/metadata.hcl"
-	content, err := os.ReadFile(metaPath)
+	metaPath := filepath.Join(filepath.Clean(packPath), "metadata.hcl")
+	// G304: metaPath is derived from user-provided packPath (CLI argument)
+	// This is intentional functionality - users choose which packs to load
+	content, err := os.ReadFile(metaPath) //#nosec G304 -- user-provided CLI path, intentional functionality
 	if err != nil {
 		return nil, err
 	}
