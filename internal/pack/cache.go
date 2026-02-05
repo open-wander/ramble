@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -139,6 +140,15 @@ func urlToHost(rawURL string) string {
 	return u.Host
 }
 
+// safeFileMode safely converts int64 to os.FileMode (uint32) with bounds checking.
+// Invalid or out-of-range values return a safe default mode (0640 for files).
+func safeFileMode(mode int64) os.FileMode {
+	if mode < 0 || mode > math.MaxUint32 {
+		return 0640 // Safe default for files
+	}
+	return os.FileMode(mode)
+}
+
 // extractTarGz extracts a tar.gz archive to a directory
 func extractTarGz(r io.Reader, destDir string) error {
 	gzr, err := gzip.NewReader(r)
@@ -199,7 +209,7 @@ func extractTarGz(r io.Reader, destDir string) error {
 				return fmt.Errorf("failed to create parent directory: %w", err)
 			}
 
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, safeFileMode(header.Mode))
 			if err != nil {
 				return fmt.Errorf("failed to create file: %w", err)
 			}
