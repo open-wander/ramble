@@ -5,7 +5,20 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 )
+
+// validateTempFilePath ensures the file path is within the system temp directory
+// to prevent path injection attacks
+func validateTempFilePath(path string) error {
+	cleanPath := filepath.Clean(path)
+	tempDir := filepath.Clean(os.TempDir())
+	if !strings.HasPrefix(cleanPath, tempDir+string(os.PathSeparator)) {
+		return fmt.Errorf("file path %q is outside temp directory", path)
+	}
+	return nil
+}
 
 // SubmitJob submits a job to Nomad by shelling out to the nomad binary
 func SubmitJob(jobHCL string, addr string) error {
@@ -22,9 +35,15 @@ func SubmitJob(jobHCL string, addr string) error {
 	}
 	tmpFile.Close()
 
-	// Build nomad command
-	args := []string{"job", "run", tmpFile.Name()}
-	cmd := exec.Command("nomad", args...)
+	// Validate temp file path to prevent command injection
+	tmpPath := filepath.Clean(tmpFile.Name())
+	if err := validateTempFilePath(tmpPath); err != nil {
+		return err
+	}
+
+	// Build nomad command with validated path
+	// G204: Subprocess uses hardcoded "nomad" executable and validated temp file path
+	cmd := exec.Command("nomad", "job", "run", tmpPath) //#nosec G204 -- executable is hardcoded, path is validated temp file
 
 	// Set environment
 	cmd.Env = os.Environ()
@@ -59,9 +78,15 @@ func ValidateJob(jobHCL string, addr string) error {
 	}
 	tmpFile.Close()
 
-	// Build nomad validate command
-	args := []string{"job", "validate", tmpFile.Name()}
-	cmd := exec.Command("nomad", args...)
+	// Validate temp file path to prevent command injection
+	tmpPath := filepath.Clean(tmpFile.Name())
+	if err := validateTempFilePath(tmpPath); err != nil {
+		return err
+	}
+
+	// Build nomad validate command with validated path
+	// G204: Subprocess uses hardcoded "nomad" executable and validated temp file path
+	cmd := exec.Command("nomad", "job", "validate", tmpPath) //#nosec G204 -- executable is hardcoded, path is validated temp file
 
 	// Set environment
 	cmd.Env = os.Environ()
@@ -97,9 +122,15 @@ func PlanJob(jobHCL string, addr string) (string, error) {
 	}
 	tmpFile.Close()
 
-	// Build nomad plan command
-	args := []string{"job", "plan", tmpFile.Name()}
-	cmd := exec.Command("nomad", args...)
+	// Validate temp file path to prevent command injection
+	tmpPath := filepath.Clean(tmpFile.Name())
+	if err := validateTempFilePath(tmpPath); err != nil {
+		return "", err
+	}
+
+	// Build nomad plan command with validated path
+	// G204: Subprocess uses hardcoded "nomad" executable and validated temp file path
+	cmd := exec.Command("nomad", "job", "plan", tmpPath) //#nosec G204 -- executable is hardcoded, path is validated temp file
 
 	// Set environment
 	cmd.Env = os.Environ()
