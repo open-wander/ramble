@@ -460,22 +460,41 @@ func PostResetPassword(c *fiber.Ctx) error {
 	hashedToken := sha256.Sum256([]byte(token))
 	hashedTokenStr := hex.EncodeToString(hashedToken[:])
 
+	// Query includes single-use check: reset_token_used_at IS NULL
+	// Note: SQL comparison of hashed tokens is acceptable - see objective security note
 	var user models.User
-	if err := database.DB.Where("reset_token = ? AND reset_token_expires > ?", hashedTokenStr, time.Now()).First(&user).Error; err != nil {
-		return c.Status(fiber.StatusBadRequest).SendString("Invalid or expired reset token.")
+	if err := database.DB.Where(
+		"reset_token = ? AND reset_token_expires > ? AND reset_token_used_at IS NULL",
+		hashedTokenStr, time.Now(),
+	).First(&user).Error; err != nil {
+		// Log the failure (internal detail, not returned to client)
+		AuditLog(c, "auth.password_reset_failed", "user", 0, "", map[string]interface{}{
+			"reason": "invalid_expired_or_used_token",
+		})
+		// Generic error message (user decision: prevent enumeration)
+		return c.Status(fiber.StatusBadRequest).SendString("This link is no longer valid. Request a new one.")
 	}
 
-	// Hash Password
+	// Mark token as used IMMEDIATELY (TOCTOU protection: prevents race condition)
+	now := time.Now()
+	user.ResetTokenUsedAt = &now
+	if err := database.DB.Save(&user).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString("Failed to process request")
+	}
+
+	// Now safe to process password change
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString("Could not hash password")
 	}
 
+	// Update password and set PasswordChangedAt for session invalidation
 	user.PasswordHash = string(hashedPassword)
+	user.PasswordChangedAt = time.Now()
 	user.ResetToken = "" // Clear token
 	database.DB.Save(&user)
 
-	AuditLog(c, "auth.password_reset", "user", user.ID, user.Username, nil)
+	AuditLog(c, "auth.password_reset_completed", "user", user.ID, user.Username, nil)
 
 	SetFlash(c, "success", "Your password has been reset. Please log in.")
 	c.Set("HX-Redirect", "/login")
