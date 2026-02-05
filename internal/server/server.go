@@ -158,7 +158,9 @@ func Run(cfg Config) error {
 				if created, ok := createdAt.(int64); ok {
 					if time.Since(time.Unix(created, 0)) > maxSessionLifetime {
 						// Session expired - destroy and redirect to login
-						sess.Destroy()
+						if err := sess.Destroy(); err != nil {
+							log.Printf("failed to destroy expired session: %v", err)
+						}
 						if c.Get("Accept") == "application/json" {
 							return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Session expired"})
 						}
@@ -178,7 +180,9 @@ func Run(cfg Config) error {
 							// PasswordChangedAt is zero value for users who never changed password
 							if !user.PasswordChangedAt.IsZero() && user.PasswordChangedAt.After(sessionTime) {
 								// Session is stale - password was changed after this session was created
-								sess.Destroy()
+								if err := sess.Destroy(); err != nil {
+									log.Printf("failed to destroy stale session: %v", err)
+								}
 								// Continue request without user context (will redirect to login on protected routes)
 								return c.Next()
 							}
