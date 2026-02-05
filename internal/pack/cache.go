@@ -60,7 +60,7 @@ func (c *Cache) Store(registry, namespace, name, version, tarballURL string) (st
 	packPath := c.PackPath(registry, namespace, name, version)
 
 	// Create cache directory
-	if err := os.MkdirAll(packPath, 0755); err != nil {
+	if err := os.MkdirAll(packPath, 0750); err != nil {
 		return "", fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
@@ -190,12 +190,12 @@ func extractTarGz(r io.Reader, destDir string) error {
 
 		switch header.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0755); err != nil {
+			if err := os.MkdirAll(target, 0750); err != nil {
 				return fmt.Errorf("failed to create directory: %w", err)
 			}
 		case tar.TypeReg:
 			// Ensure parent directory exists
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(target), 0750); err != nil {
 				return fmt.Errorf("failed to create parent directory: %w", err)
 			}
 
