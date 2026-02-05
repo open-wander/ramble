@@ -1,0 +1,52 @@
+name: Nightly Security Scan
+
+on:
+  schedule:
+    # Run at 2 AM UTC daily
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  full-security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25.x'
+        check-latest: true
+
+    - name: Install security tools
+      run: |
+        go install github.com/securego/gosec/v2/cmd/gosec@latest
+        go install golang.org/x/vuln/cmd/govulncheck@latest
+
+    - name: Run gosec with SARIF output
+      run: |
+        echo "=== Running gosec ==="
+        gosec -fmt sarif -out gosec-results.sarif ./... || true
+        gosec ./...
+
+    - name: Upload gosec SARIF
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: gosec-results.sarif
+      continue-on-error: true
+
+    - name: Run govulncheck
+      run: |
+        echo "=== Running govulncheck ==="
+        govulncheck ./...
+
+    - name: Run all security tests
+      run: |
+        echo "=== Running security tests ==="
+        go test -tags=security -v ./...
+
+    - name: Run regular tests (full suite)
+      run: |
+        echo "=== Running full test suite ==="
+        go test -v ./...
