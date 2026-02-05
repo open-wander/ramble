@@ -436,9 +436,14 @@ func GetResetPassword(c *fiber.Ctx) error {
 	hashedToken := sha256.Sum256([]byte(token))
 	hashedTokenStr := hex.EncodeToString(hashedToken[:])
 
+	// Query includes single-use check: reset_token_used_at IS NULL
 	var user models.User
-	if err := database.DB.Where("reset_token = ? AND reset_token_expires > ?", hashedTokenStr, time.Now()).First(&user).Error; err != nil {
-		SetFlash(c, "error", "Invalid or expired reset token.")
+	if err := database.DB.Where(
+		"reset_token = ? AND reset_token_expires > ? AND reset_token_used_at IS NULL",
+		hashedTokenStr, time.Now(),
+	).First(&user).Error; err != nil {
+		// Generic error message (user decision: prevent enumeration)
+		SetFlash(c, "error", "This link is no longer valid. Request a new one.")
 		return c.Redirect("/forgot-password")
 	}
 
