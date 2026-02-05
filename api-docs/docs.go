@@ -730,7 +730,7 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
-                    "403": {
+                    "401": {
                         "description": "Invalid signature",
                         "schema": {
                             "type": "string"
