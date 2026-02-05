@@ -30,10 +30,12 @@ func SubmitJob(jobHCL string, addr string) error {
 	defer os.Remove(tmpFile.Name())
 
 	if _, err := tmpFile.WriteString(jobHCL); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close() // Close on write error, ignore close error
 		return fmt.Errorf("failed to write job file: %w", err)
 	}
-	tmpFile.Close()
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("failed to close job file: %w", err)
+	}
 
 	// Validate temp file path to prevent command injection
 	tmpPath := filepath.Clean(tmpFile.Name())
@@ -73,10 +75,12 @@ func ValidateJob(jobHCL string, addr string) error {
 	defer os.Remove(tmpFile.Name())
 
 	if _, err := tmpFile.WriteString(jobHCL); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close() // Close on write error, ignore close error
 		return fmt.Errorf("failed to write job file: %w", err)
 	}
-	tmpFile.Close()
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("failed to close job file: %w", err)
+	}
 
 	// Validate temp file path to prevent command injection
 	tmpPath := filepath.Clean(tmpFile.Name())
@@ -117,10 +121,12 @@ func PlanJob(jobHCL string, addr string) (string, error) {
 	defer os.Remove(tmpFile.Name())
 
 	if _, err := tmpFile.WriteString(jobHCL); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close() // Close on write error, ignore close error
 		return "", fmt.Errorf("failed to write job file: %w", err)
 	}
-	tmpFile.Close()
+	if err := tmpFile.Close(); err != nil {
+		return "", fmt.Errorf("failed to close job file: %w", err)
+	}
 
 	// Validate temp file path to prevent command injection
 	tmpPath := filepath.Clean(tmpFile.Name())
@@ -144,7 +150,8 @@ func PlanJob(jobHCL string, addr string) (string, error) {
 	cmd.Stderr = &stderr
 
 	// Run (plan exits 1 if there are changes, which is not an error)
-	cmd.Run()
+	// Ignore the error from Run() since exit code 1 is normal for plan with changes
+	_ = cmd.Run()
 
 	if stderr.Len() > 0 {
 		return "", fmt.Errorf("plan failed: %s", stderr.String())
