@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"fmt"
 	"log"
+	"sort"
 	"strconv"
+	"time"
 
 	"rmbl/internal/database"
 	"rmbl/internal/models"
@@ -39,7 +42,7 @@ func GetAdminDashboard(c *fiber.Ctx) error {
 	database.DB.Order("created_at desc").Limit(5).Find(&latestUsers)
 
 	var latestResources []models.NomadResource
-	database.DB.Preload("User").Order("created_at desc").Limit(5).Find(&latestResources)
+	database.DB.Preload("User").Preload("Tags").Order("created_at desc").Limit(5).Find(&latestResources)
 
 	return c.Render("admin/dashboard", MergeContext(BaseContext(c), fiber.Map{
 		"UserCount":       userCount,
@@ -64,7 +67,7 @@ func GetAdminUsers(c *fiber.Ctx) error {
 
 func GetAdminResources(c *fiber.Ctx) error {
 	var resources []models.NomadResource
-	database.DB.Preload("User").Order("id asc").Find(&resources)
+	database.DB.Preload("User").Preload("Tags").Order("id asc").Find(&resources)
 
 	return c.Render("admin/resources", MergeContext(BaseContext(c), fiber.Map{
 		"Resources": resources,
@@ -563,4 +566,129 @@ func DeleteAdminUserMembership(c *fiber.Ctx) error {
 
 	// Return empty string for HTMX to remove the row
 	return c.SendString("")
+}
+
+// ErrorRecord represents a unified error entry for the admin dashboard
+type ErrorRecord struct {
+	Type         string
+	ResourceName string
+	ResourceID   uint
+	Version      string
+	ErrorMessage string
+	Timestamp    *time.Time
+}
+
+// GetAdminErrors shows the error dashboard with failed operations
+func GetAdminErrors(c *fiber.Ctx) error {
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	if page < 1 {
+		page = 1
+	}
+	operationType := c.Query("type", "")
+	pageSize := 50
+
+	var allErrors []ErrorRecord
+
+	// Query failed downloads
+	if operationType == "" || operationType == "download" {
+		var versions []models.ResourceVersion
+		database.DB.Where("fetch_status = ?", models.FetchStatusFailed).
+			Order("fetch_completed_at desc").
+			Find(&versions)
+
+		// Load resources for all versions
+		resourceIDs := make([]uint, 0, len(versions))
+		for _, v := range versions {
+			resourceIDs = append(resourceIDs, v.ResourceID)
+		}
+
+		resourceMap := make(map[uint]models.NomadResource)
+		if len(resourceIDs) > 0 {
+			var resources []models.NomadResource
+			database.DB.Preload("User").Where("id IN ?", resourceIDs).Find(&resources)
+			for _, r := range resources {
+				resourceMap[r.ID] = r
+			}
+		}
+
+		for _, v := range versions {
+			resourceName := ""
+			if r, ok := resourceMap[v.ResourceID]; ok && r.User.Username != "" {
+				resourceName = fmt.Sprintf("%s/%s", r.User.Username, r.Name)
+			}
+			allErrors = append(allErrors, ErrorRecord{
+				Type:         "download",
+				ResourceName: resourceName,
+				ResourceID:   v.ResourceID,
+				Version:      v.Version,
+				ErrorMessage: v.FetchError,
+				Timestamp:    v.FetchCompletedAt,
+			})
+		}
+	}
+
+	// Query webhook errors
+	if operationType == "" || operationType == "webhook" {
+		var resources []models.NomadResource
+		database.DB.Preload("User").
+			Where("last_webhook_error != '' AND last_webhook_error IS NOT NULL").
+			Order("last_webhook_delivery desc").
+			Find(&resources)
+
+		for _, r := range resources {
+			resourceName := ""
+			if r.User.Username != "" {
+				resourceName = fmt.Sprintf("%s/%s", r.User.Username, r.Name)
+			}
+			timestamp := r.LastWebhookDelivery
+			allErrors = append(allErrors, ErrorRecord{
+				Type:         "webhook",
+				ResourceName: resourceName,
+				ResourceID:   r.ID,
+				Version:      "",
+				ErrorMessage: r.LastWebhookError,
+				Timestamp:    &timestamp,
+			})
+		}
+	}
+
+	// Sort by timestamp descending (handle nil timestamps)
+	sort.Slice(allErrors, func(i, j int) bool {
+		if allErrors[i].Timestamp == nil && allErrors[j].Timestamp == nil {
+			return false
+		}
+		if allErrors[i].Timestamp == nil {
+			return false
+		}
+		if allErrors[j].Timestamp == nil {
+			return true
+		}
+		return allErrors[i].Timestamp.After(*allErrors[j].Timestamp)
+	})
+
+	totalErrors := len(allErrors)
+
+	// Apply pagination
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if start > len(allErrors) {
+		start = len(allErrors)
+	}
+	if end > len(allErrors) {
+		end = len(allErrors)
+	}
+	paginatedErrors := allErrors[start:end]
+
+	hasNextPage := totalErrors > page*pageSize
+	hasPrevPage := page > 1
+
+	return c.Render("admin/errors", MergeContext(BaseContext(c), fiber.Map{
+		"Errors":        paginatedErrors,
+		"CurrentPage":   page,
+		"OperationType": operationType,
+		"HasNextPage":   hasNextPage,
+		"HasPrevPage":   hasPrevPage,
+		"TotalErrors":   totalErrors,
+		"Page":          "admin_errors",
+	}), "layouts/main")
 }
