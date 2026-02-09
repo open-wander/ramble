@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"rmbl/internal/database"
+	resourcesvc "rmbl/internal/services/resource"
 	"strings"
 	"testing"
 
@@ -16,8 +17,11 @@ import (
 // Global test app setup
 func TestMain(m *testing.M) {
 	// Setup Test DB (Container)
-	_, cleanup := database.SetupTestDB()
-	
+	db, cleanup := database.SetupTestDB()
+
+	// Initialize resource service
+	resourcesvc.Init(db)
+
 	// Run tests
 	code := m.Run()
 

@@ -77,6 +77,9 @@ func Connect() {
 	}
 	log.Println("Migrations completed")
 
+	// Backfill fetch status for existing resource versions
+	backfillFetchStatus(DB)
+
 	// Clean up any existing reset tokens (security: fresh start on deploy)
 	cleanupExpiredTokens(DB)
 }
@@ -87,11 +90,23 @@ func cleanupExpiredTokens(db *gorm.DB) {
 	result := db.Model(&models.User{}).
 		Where("reset_token != ?", "").
 		Updates(map[string]interface{}{
-			"reset_token":          "",
-			"reset_token_expires":  time.Time{},
-			"reset_token_used_at":  nil,
+			"reset_token":         "",
+			"reset_token_expires": time.Time{},
+			"reset_token_used_at": nil,
 		})
 	if result.RowsAffected > 0 {
 		log.Printf("Cleared %d existing password reset tokens", result.RowsAffected)
+	}
+}
+
+// backfillFetchStatus sets FetchStatus to "completed" for any existing
+// ResourceVersions that have no FetchStatus set. This handles the migration
+// from before error tracking was added - existing versions are assumed complete.
+func backfillFetchStatus(db *gorm.DB) {
+	result := db.Model(&models.ResourceVersion{}).
+		Where("fetch_status = '' OR fetch_status IS NULL").
+		Update("fetch_status", models.FetchStatusCompleted)
+	if result.RowsAffected > 0 {
+		log.Printf("Backfilled %d resource versions with fetch_status=completed", result.RowsAffected)
 	}
 }

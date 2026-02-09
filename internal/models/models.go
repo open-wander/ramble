@@ -61,10 +61,18 @@ type Membership struct {
 type ResourceType string
 
 const (
-	ResourceTypeJob    ResourceType = "job"
-		ResourceTypePack ResourceType = "pack"
-	)
-	
+	ResourceTypeJob  ResourceType = "job"
+	ResourceTypePack ResourceType = "pack"
+)
+
+type FetchStatus string
+
+const (
+	FetchStatusPending   FetchStatus = "pending"
+	FetchStatusFetching  FetchStatus = "fetching"
+	FetchStatusCompleted FetchStatus = "completed"
+	FetchStatusFailed    FetchStatus = "failed"
+)
 
 type NomadResource struct {
 	gorm.Model
@@ -92,11 +100,15 @@ type NomadResource struct {
 
 type ResourceVersion struct {
 	gorm.Model
-	ResourceID uint   `gorm:"index;not null"`
-	Version    string `gorm:"not null"`
-	Readme     string `gorm:"type:text"`
-	Content    string `gorm:"type:text"` // Stores the actual .nomad.hcl content
-	Variables  string `gorm:"type:text"` // JSON string of variables
+	ResourceID       uint        `gorm:"index;not null"`
+	Version          string      `gorm:"not null"`
+	Readme           string      `gorm:"type:text"`
+	Content          string      `gorm:"type:text"` // Stores the actual .nomad.hcl content
+	Variables        string      `gorm:"type:text"` // JSON string of variables
+	FetchStatus      FetchStatus `gorm:"type:varchar(20);default:'pending'"`
+	FetchError       string      `gorm:"type:text"`
+	FetchStartedAt   *time.Time
+	FetchCompletedAt *time.Time
 }
 
 type Tag struct {

@@ -210,6 +210,12 @@ func GetResource(c *fiber.Ctx) error {
 		})
 	}
 
+	// Extract latest version for download status display
+	var latestVersion *models.ResourceVersion
+	if len(resource.Versions) > 0 {
+		latestVersion = &resource.Versions[0]
+	}
+
 	// Generate SEO data
 	seoData := GetResourceSEO(c, resource, displayName)
 
@@ -220,6 +226,7 @@ func GetResource(c *fiber.Ctx) error {
 		"StarCount":              len(resource.StarredBy),
 		"DisplayName":            displayName,
 		"Host":                   c.Hostname(),
+		"LatestVersion":          latestVersion,
 		"LatestVersionVariables": latestVariables,
 		// SEO fields
 		"SEOTitle":       seoData.Title,

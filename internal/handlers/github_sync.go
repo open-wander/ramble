@@ -3,15 +3,19 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"rmbl/internal/services/github"
+	"rmbl/internal/services/logger"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/gofiber/fiber/v2"
+	"golang.org/x/sync/errgroup"
 )
 
 // SyncConfig holds configuration for GitHub sync
@@ -170,6 +174,39 @@ func SyncRequestToGitHub(request models.PackRequest) error {
 	return nil
 }
 
+// syncRequestToGitHubWithRetry wraps SyncRequestToGitHub with exponential backoff retry
+func syncRequestToGitHubWithRetry(request models.PackRequest) error {
+	log := logger.Log.With().
+		Str("operation", "sync_request_to_github").
+		Uint("request_id", request.ID).
+		Int("issue_num", request.GitHubIssueNum).
+		Logger()
+
+	var attempt int
+	operation := func() error {
+		attempt++
+		log.Debug().Int("attempt", attempt).Msg("sync attempt")
+		return SyncRequestToGitHub(request)
+	}
+
+	b := backoff.NewExponentialBackOff()
+	b.InitialInterval = 1 * time.Second
+	b.Multiplier = 5.0
+	b.MaxInterval = 15 * time.Second
+	b.MaxElapsedTime = 30 * time.Second
+	b.RandomizationFactor = 0.5
+
+	if err := backoff.Retry(operation, backoff.WithMaxRetries(b, 3)); err != nil {
+		log.Error().Err(err).Int("attempts", attempt).Msg("sync failed after retries")
+		return err
+	}
+
+	if attempt > 1 {
+		log.Info().Int("attempts", attempt).Msg("sync succeeded after retries")
+	}
+	return nil
+}
+
 // SyncGitHubToRequest syncs GitHub issue state to a request
 func SyncGitHubToRequest(issueNum int) error {
 	cfg, err := getGitHubSyncConfig()
@@ -204,9 +241,13 @@ func SyncGitHubToRequest(issueNum int) error {
 
 // runBidirectionalSync performs full bidirectional sync
 func runBidirectionalSync() (*SyncResult, error) {
+	log := logger.Log.With().Str("operation", "github_sync").Logger()
+
 	result := &SyncResult{
 		SyncedAt: time.Now(),
 	}
+
+	log.Info().Msg("starting bidirectional sync")
 
 	cfg, err := getGitHubSyncConfig()
 	if err != nil {
@@ -219,6 +260,8 @@ func runBidirectionalSync() (*SyncResult, error) {
 		return nil, fmt.Errorf("failed to list issues: %w", err)
 	}
 
+	log.Info().Int("issue_count", len(issues)).Msg("fetched issues from GitHub")
+
 	// Build a map of issue numbers to issues
 	issueMap := make(map[int]*github.Issue)
 	for i := range issues {
@@ -229,28 +272,51 @@ func runBidirectionalSync() (*SyncResult, error) {
 	var requests []models.PackRequest
 	database.DB.Where("github_issue_num > 0").Find(&requests)
 
+	log.Info().Int("request_count", len(requests)).Msg("loaded linked requests")
+
 	// Sync app -> GitHub: update issues based on request status
+	g := new(errgroup.Group)
+	g.SetLimit(5) // Limit concurrent API calls
+	var syncErrors []string
+	var mu sync.Mutex
+	var updatedCount atomic.Int32
+
 	for _, request := range requests {
+		request := request
 		issue, exists := issueMap[request.GitHubIssueNum]
 		if !exists {
-			result.Errors = append(result.Errors, fmt.Sprintf("Issue #%d not found on GitHub", request.GitHubIssueNum))
+			mu.Lock()
+			syncErrors = append(syncErrors, fmt.Sprintf("Issue #%d not found on GitHub", request.GitHubIssueNum))
+			mu.Unlock()
+			delete(issueMap, request.GitHubIssueNum)
 			continue
 		}
 
 		// Check if sync is needed
 		currentGHStatus := mapGitHubToAppStatus(issue)
 		if currentGHStatus != request.Status {
-			// App status takes precedence - sync to GitHub
-			if err := SyncRequestToGitHub(request); err != nil {
-				result.Errors = append(result.Errors, fmt.Sprintf("Failed to sync request %d to GitHub: %v", request.ID, err))
-			} else {
-				result.UpdatedIssues++
-			}
+			g.Go(func() error {
+				if err := syncRequestToGitHubWithRetry(request); err != nil {
+					mu.Lock()
+					syncErrors = append(syncErrors, fmt.Sprintf("Failed to sync request %d to GitHub: %v", request.ID, err))
+					mu.Unlock()
+					log.Warn().Err(err).Uint("request_id", request.ID).Msg("sync request to GitHub failed")
+					return nil // Don't fail entire sync
+				}
+				updatedCount.Add(1)
+				return nil
+			})
 		}
 
 		// Remove from map so we can identify unlinked issues
 		delete(issueMap, request.GitHubIssueNum)
 	}
+
+	if err := g.Wait(); err != nil {
+		syncErrors = append(syncErrors, err.Error())
+	}
+	result.UpdatedIssues = int(updatedCount.Load())
+	result.Errors = syncErrors
 
 	// Sync GitHub -> app: create requests for unlinked issues
 	for _, issue := range issueMap {
@@ -299,12 +365,19 @@ func runBidirectionalSync() (*SyncResult, error) {
 			}
 		}
 
+		// Find an admin user to own the imported request
+		var adminUser models.User
+		if err := database.DB.Where("is_admin = ?", true).First(&adminUser).Error; err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("Failed to create request from issue #%d: no admin user found", issue.Number))
+			continue
+		}
+
 		newRequest := models.PackRequest{
 			Title:          title,
 			Description:    body,
 			Type:           reqType,
 			Status:         mapGitHubToAppStatus(issue),
-			UserID:         1, // System user or first admin
+			UserID:         adminUser.ID,
 			GitHubIssueURL: issue.HTMLURL,
 			GitHubIssueNum: issue.Number,
 		}
@@ -315,6 +388,13 @@ func runBidirectionalSync() (*SyncResult, error) {
 			result.CreatedRequests++
 		}
 	}
+
+	log.Info().
+		Int("created", result.CreatedRequests).
+		Int("updated_issues", result.UpdatedIssues).
+		Int("errors", len(result.Errors)).
+		Dur("duration", time.Since(result.SyncedAt)).
+		Msg("sync completed")
 
 	return result, nil
 }
@@ -355,7 +435,7 @@ func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
 	// Validate signature
 	secret := os.Getenv("GITHUB_WEBHOOK_SECRET")
 	if secret == "" {
-		log.Printf("GITHUB_WEBHOOK_SECRET not configured")
+		logger.Log.Error().Msg("GITHUB_WEBHOOK_SECRET not configured")
 		return c.SendStatus(500)
 	}
 
@@ -367,7 +447,7 @@ func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
 		// New format: timestamp + signature with replay protection
 		valid, _, reason := ValidateWebhookRequest(c.Body(), signature, timestamp, "", secret)
 		if !valid {
-			log.Printf("WARN: GitHub sync webhook validation failed: %s", reason)
+			logger.Log.Warn().Str("operation", "github_issue_webhook").Str("reason", reason).Msg("webhook validation failed")
 			return c.Status(401).SendString("Invalid webhook signature")
 		}
 		isValid = valid
@@ -376,11 +456,11 @@ func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
 		// This maintains backward compatibility with GitHub's current webhook format
 		isValid = github.ValidateWebhookSignature(c.Body(), signature, secret)
 		if !isValid {
-			log.Printf("WARN: GitHub sync webhook signature validation failed")
+			logger.Log.Warn().Str("operation", "github_issue_webhook").Msg("signature validation failed")
 			return c.Status(401).SendString("Invalid webhook signature")
 		}
 	} else {
-		log.Printf("WARN: GitHub sync webhook missing signature header")
+		logger.Log.Warn().Str("operation", "github_issue_webhook").Msg("missing signature header")
 		return c.Status(401).SendString("Invalid webhook signature")
 	}
 
@@ -393,7 +473,7 @@ func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
 	// Parse payload
 	var payload IssueWebhookPayload
 	if err := json.Unmarshal(c.Body(), &payload); err != nil {
-		log.Printf("Failed to parse webhook payload: %v", err)
+		logger.Log.Error().Err(err).Str("operation", "github_issue_webhook").Msg("failed to parse payload")
 		return c.Status(400).SendString("Invalid payload")
 	}
 
@@ -402,12 +482,12 @@ func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
 	case "opened":
 		// Check if this is an externally created issue we should track
 		if err := handleNewIssue(payload.Issue); err != nil {
-			log.Printf("Failed to handle new issue: %v", err)
+			logger.Log.Error().Err(err).Str("operation", "github_issue_webhook").Int("issue_number", payload.Issue.Number).Msg("failed to handle new issue")
 		}
 	case "closed", "reopened", "labeled", "unlabeled":
 		// Update existing request status
 		if err := handleIssueStateChange(payload.Issue); err != nil {
-			log.Printf("Failed to handle issue state change: %v", err)
+			logger.Log.Error().Err(err).Str("operation", "github_issue_webhook").Int("issue_number", payload.Issue.Number).Msg("failed to handle issue state change")
 		}
 	}
 
@@ -448,17 +528,33 @@ func handleNewIssue(issue IssuePayload) error {
 		reqType = models.ResourceTypeJob
 	}
 
+	// Find an admin user to own the imported request
+	var adminUser models.User
+	if err := database.DB.Where("is_admin = ?", true).First(&adminUser).Error; err != nil {
+		return fmt.Errorf("no admin user found to own imported request")
+	}
+
 	newRequest := models.PackRequest{
 		Title:          issue.Title,
 		Description:    issue.Body,
 		Type:           reqType,
 		Status:         models.RequestStatusOpen,
-		UserID:         1, // System user
+		UserID:         adminUser.ID,
 		GitHubIssueURL: issue.HTMLURL,
 		GitHubIssueNum: issue.Number,
 	}
 
-	return database.DB.Create(&newRequest).Error
+	if err := database.DB.Create(&newRequest).Error; err != nil {
+		return err
+	}
+
+	logger.Log.Info().
+		Str("operation", "github_issue_webhook").
+		Int("issue_number", issue.Number).
+		Str("type", string(reqType)).
+		Msg("created request from external issue")
+
+	return nil
 }
 
 // handleIssueStateChange processes issue state/label changes
@@ -482,6 +578,12 @@ func handleIssueStateChange(issue IssuePayload) error {
 	if request.Status != newStatus {
 		request.Status = newStatus
 		database.DB.Save(&request)
+
+		logger.Log.Info().
+			Str("operation", "github_issue_webhook").
+			Int("issue_number", issue.Number).
+			Str("new_status", string(newStatus)).
+			Msg("updated request status from webhook")
 	}
 
 	return nil

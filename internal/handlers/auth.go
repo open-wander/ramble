@@ -83,6 +83,12 @@ func AuthCallback(c *fiber.Ctx) error {
 	// Check if user exists by Provider + ProviderID
 	result := database.DB.Where("provider = ? AND provider_id = ?", gothUser.Provider, gothUser.UserID).First(&user)
 
+	encryptedToken, encryptErr := crypto.EncryptToken(gothUser.AccessToken)
+	if encryptErr != nil {
+		SetFlash(c, "error", "Failed to store access token: "+encryptErr.Error())
+		return c.Redirect("/login")
+	}
+
 	if result.Error != nil {
 		// User doesn't exist, check by email to link accounts
 		result = database.DB.Where("email = ?", gothUser.Email).First(&user)
@@ -90,7 +96,6 @@ func AuthCallback(c *fiber.Ctx) error {
 			// Link account
 			user.Provider = gothUser.Provider
 			user.ProviderID = gothUser.UserID
-			encryptedToken, _ := crypto.EncryptToken(gothUser.AccessToken)
 			user.AccessToken = encryptedToken
 			user.EmailVerified = true // OAuth users are pre-verified
 			database.DB.Save(&user)
@@ -100,8 +105,6 @@ func AuthCallback(c *fiber.Ctx) error {
 			if username == "" {
 				username = gothUser.Name
 			}
-			// Simple username collision check or suffix
-			encryptedToken, _ := crypto.EncryptToken(gothUser.AccessToken)
 			user = models.User{
 				Username:      username,
 				Email:         gothUser.Email,
@@ -119,7 +122,6 @@ func AuthCallback(c *fiber.Ctx) error {
 		}
 	} else {
 		// Update existing user token
-		encryptedToken, _ := crypto.EncryptToken(gothUser.AccessToken)
 		user.AccessToken = encryptedToken
 		database.DB.Save(&user)
 	}

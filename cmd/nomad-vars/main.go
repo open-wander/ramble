@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -45,7 +44,7 @@ type Config struct {
 
 func main() {
 	// Read config.yml
-	data, err := ioutil.ReadFile("config.yml")
+	data, err := os.ReadFile("config.yml")
 	if err != nil {
 		log.Fatalf("Failed to read config.yml: %v", err)
 	}
