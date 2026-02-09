@@ -1,0 +1,103 @@
+<div class="max-w-7xl mx-auto py-10 px-4 sm:px-6 lg:px-8">
+    <div class="mb-8">
+        <a href="/admin" class="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 flex items-center mb-4">
+            <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Back to Dashboard
+        </a>
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Error Dashboard</h1>
+        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Recent background operation failures.</p>
+    </div>
+
+    <div class="mb-6">
+        <div class="flex flex-wrap gap-2 mb-2">
+            <a href="/admin/errors"
+               class="px-3 py-1 rounded-full text-sm {{if eq .OperationType ""}}bg-indigo-600 text-white{{else}}bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600{{end}}">
+                All
+            </a>
+            <a href="/admin/errors?type=download"
+               class="px-3 py-1 rounded-full text-sm {{if eq .OperationType "download"}}bg-indigo-600 text-white{{else}}bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600{{end}}">
+                Downloads
+            </a>
+            <a href="/admin/errors?type=webhook"
+               class="px-3 py-1 rounded-full text-sm {{if eq .OperationType "webhook"}}bg-indigo-600 text-white{{else}}bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600{{end}}">
+                Webhooks
+            </a>
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{.TotalErrors}} total errors</p>
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead class="bg-gray-50 dark:bg-gray-900">
+                <tr>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Time</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Resource</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Version</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Error Message</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                {{range .Errors}}
+                <tr>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                        {{if .Timestamp}}{{.Timestamp.Format "Jan 02, 15:04"}}{{else}}<span class="text-gray-400">-</span>{{end}}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        {{if eq .Type "download"}}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
+                            download
+                        </span>
+                        {{else if eq .Type "webhook"}}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400">
+                            webhook
+                        </span>
+                        {{end}}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                        {{if .ResourceName}}
+                        <a href="/{{.ResourceName}}" class="text-indigo-600 dark:text-indigo-400 hover:underline">{{.ResourceName}}</a>
+                        {{else}}
+                        <span class="text-gray-400">-</span>
+                        {{end}}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                        {{if .Version}}{{.Version}}{{else}}<span class="text-gray-400">-</span>{{end}}
+                    </td>
+                    <td class="px-6 py-4 text-sm text-red-600 dark:text-red-400 max-w-xs truncate">
+                        {{.ErrorMessage}}
+                    </td>
+                </tr>
+                {{else}}
+                <tr>
+                    <td colspan="5" class="px-6 py-10 text-center text-gray-500 dark:text-gray-400">
+                        No errors found.
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="mt-4 flex justify-between items-center">
+        <div>
+            {{if .HasPrevPage}}
+            <a href="/admin/errors?page={{add .CurrentPage -1}}{{if .OperationType}}&type={{.OperationType}}{{end}}"
+               class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700">
+                Previous
+            </a>
+            {{end}}
+        </div>
+        <span class="text-sm text-gray-500 dark:text-gray-400">Page {{.CurrentPage}}</span>
+        <div>
+            {{if .HasNextPage}}
+            <a href="/admin/errors?page={{add .CurrentPage 1}}{{if .OperationType}}&type={{.OperationType}}{{end}}"
+               class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700">
+                Next
+            </a>
+            {{end}}
+        </div>
+    </div>
+</div>

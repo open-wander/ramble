@@ -6,6 +6,7 @@ import (
 	"rmbl/internal/models"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
@@ -657,4 +658,170 @@ func TestPostEditOrganization_Success(t *testing.T) {
 	database.DB.First(&updated, org.ID)
 	assert.Equal(t, "updatedorg", updated.Name)
 	assert.Equal(t, "Updated Description", updated.Description)
+}
+
+// GetAdminErrors Tests
+
+func TestGetAdminErrors_Success(t *testing.T) {
+	defer cleanupTestData(t)
+
+	admin := createAdminUser(t, "erroradmin")
+	user := createTestUser(t, "erroruser")
+	resource := createTestPack(t, user.ID, "errorpack")
+
+	// Create a failed download
+	version := models.ResourceVersion{
+		ResourceID:       resource.ID,
+		Version:          "1.0.0",
+		FetchStatus:      models.FetchStatusFailed,
+		FetchError:       "Test download error",
+		FetchCompletedAt: new(time.Time),
+	}
+	*version.FetchCompletedAt = time.Now()
+	database.DB.Create(&version)
+
+	// Create a webhook error
+	resource.LastWebhookError = "Test webhook error"
+	resource.LastWebhookDelivery = time.Now()
+	database.DB.Save(&resource)
+
+	app := setupTestApp()
+
+	app.Use(func(c *fiber.Ctx) error {
+		sess, _ := Store.Get(c)
+		sess.Set("user_id", admin.ID)
+		sess.Save()
+		c.Locals("UserID", admin.ID)
+		c.Locals("User", admin)
+		return c.Next()
+	})
+
+	app.Get("/admin/errors", RequireAdmin, GetAdminErrors)
+
+	req := httptest.NewRequest("GET", "/admin/errors", nil)
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+}
+
+func TestGetAdminErrors_FilterDownloads(t *testing.T) {
+	defer cleanupTestData(t)
+
+	admin := createAdminUser(t, "erroradmin2")
+	user := createTestUser(t, "erroruser2")
+	resource := createTestPack(t, user.ID, "errorpack2")
+
+	// Create a failed download
+	version := models.ResourceVersion{
+		ResourceID:       resource.ID,
+		Version:          "1.0.0",
+		FetchStatus:      models.FetchStatusFailed,
+		FetchError:       "Test download error",
+		FetchCompletedAt: new(time.Time),
+	}
+	*version.FetchCompletedAt = time.Now()
+	database.DB.Create(&version)
+
+	app := setupTestApp()
+
+	app.Use(func(c *fiber.Ctx) error {
+		sess, _ := Store.Get(c)
+		sess.Set("user_id", admin.ID)
+		sess.Save()
+		c.Locals("UserID", admin.ID)
+		c.Locals("User", admin)
+		return c.Next()
+	})
+
+	app.Get("/admin/errors", RequireAdmin, GetAdminErrors)
+
+	req := httptest.NewRequest("GET", "/admin/errors?type=download", nil)
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+}
+
+func TestGetAdminErrors_FilterWebhooks(t *testing.T) {
+	defer cleanupTestData(t)
+
+	admin := createAdminUser(t, "erroradmin3")
+	user := createTestUser(t, "erroruser3")
+	resource := createTestPack(t, user.ID, "errorpack3")
+
+	// Create a webhook error
+	resource.LastWebhookError = "Test webhook error"
+	resource.LastWebhookDelivery = time.Now()
+	database.DB.Save(&resource)
+
+	app := setupTestApp()
+
+	app.Use(func(c *fiber.Ctx) error {
+		sess, _ := Store.Get(c)
+		sess.Set("user_id", admin.ID)
+		sess.Save()
+		c.Locals("UserID", admin.ID)
+		c.Locals("User", admin)
+		return c.Next()
+	})
+
+	app.Get("/admin/errors", RequireAdmin, GetAdminErrors)
+
+	req := httptest.NewRequest("GET", "/admin/errors?type=webhook", nil)
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+}
+
+func TestGetAdminErrors_Pagination(t *testing.T) {
+	defer cleanupTestData(t)
+
+	admin := createAdminUser(t, "erroradmin4")
+
+	app := setupTestApp()
+
+	app.Use(func(c *fiber.Ctx) error {
+		sess, _ := Store.Get(c)
+		sess.Set("user_id", admin.ID)
+		sess.Save()
+		c.Locals("UserID", admin.ID)
+		c.Locals("User", admin)
+		return c.Next()
+	})
+
+	app.Get("/admin/errors", RequireAdmin, GetAdminErrors)
+
+	req := httptest.NewRequest("GET", "/admin/errors?page=2", nil)
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+}
+
+func TestGetAdminErrors_NonAdmin(t *testing.T) {
+	defer cleanupTestData(t)
+
+	regularUser := createTestUser(t, "errorregular")
+
+	app := setupTestApp()
+
+	app.Use(func(c *fiber.Ctx) error {
+		sess, _ := Store.Get(c)
+		sess.Set("user_id", regularUser.ID)
+		sess.Save()
+		c.Locals("UserID", regularUser.ID)
+		c.Locals("User", regularUser)
+		return c.Next()
+	})
+
+	app.Get("/admin/errors", RequireAdmin, GetAdminErrors)
+
+	req := httptest.NewRequest("GET", "/admin/errors", nil)
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	// Non-admin should be redirected
+	assert.Equal(t, 302, resp.StatusCode)
 }

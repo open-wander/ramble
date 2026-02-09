@@ -1,9 +1,9 @@
-name: Nightly Security Scan
+name: Weekly Security Scan
 
 on:
   schedule:
-    # Run at 2 AM UTC daily
-    - cron: '0 2 * * *'
+    # Run at 2 AM UTC every Monday
+    - cron: '0 2 * * 1'
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
@@ -30,7 +30,7 @@ jobs:
         gosec ./...
 
     - name: Upload gosec SARIF
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       if: always()
       with:
         sarif_file: gosec-results.sarif

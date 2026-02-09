@@ -11,6 +11,7 @@ import (
 	"rmbl/internal/handlers"
 	"rmbl/internal/models"
 	"rmbl/internal/services/logger"
+	resourcesvc "rmbl/internal/services/resource"
 	"rmbl/internal/services/version"
 
 	"github.com/gofiber/fiber/v2"
@@ -38,6 +39,9 @@ func Run(cfg Config) error {
 	// 1. Connect to Database
 	database.Connect()
 	handlers.InitSession()
+
+	// Initialize resource service
+	resourcesvc.Init(database.DB)
 
 	if cfg.Seed || os.Getenv("AUTO_SEED") == "true" {
 		database.SeedInitialUser(database.DB)
@@ -328,6 +332,7 @@ func Run(cfg Config) error {
 	admin.Delete("/requests/:id", handlers.DeleteRequest)
 	admin.Post("/requests/sync", handlers.PostSyncGitHubRequests)
 	admin.Get("/audit", handlers.GetAdminAudit)
+	admin.Get("/errors", handlers.GetAdminErrors)
 	// Admin membership management
 	admin.Post("/organizations/:id/members/add", handlers.PostAdminAddMember)
 	admin.Delete("/organizations/:id/members/:member_id", handlers.PostAdminRemoveMember)
@@ -335,19 +340,25 @@ func Run(cfg Config) error {
 	admin.Delete("/users/:id/memberships/:org_id", handlers.DeleteAdminUserMembership)
 
 	// Resource Routes
+
+	// CRUD Operations (resource_crud.go)
 	app.Get("/new", handlers.RequireAuth, handlers.GetNewResource)
+	app.Post("/new", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostNewResource)
+	app.Get("/resource/:id/new-version", handlers.RequireAuth, handlers.GetNewVersion)
+	app.Post("/resource/:id/version", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostNewVersion)
+	app.Get("/:username/:resourcename/edit", handlers.RequireAuth, handlers.GetEditResource)
+	app.Post("/resource/:id/edit", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostEditResource)
+	app.Delete("/resource/:id", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.DeleteResource)
+
+	// Webhook Handling (resource_webhooks.go)
 	app.Get("/new/my-repos", handlers.RequireAuth, handlers.GetMyRepos)
 	app.Get("/new/fetch-info", handlers.RequireAuth, handlers.FetchInfo)
-	app.Post("/new", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostNewResource)
-	app.Delete("/resource/:id", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.DeleteResource)
 	app.Post("/resource/:id/webhook", handlers.HandleWebhook)
 	app.Post("/resource/:id/webhook/reset", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostResetWebhookSecret)
 	app.Get("/resource/:id/fetch-readme", handlers.FetchReadme)
-	app.Get("/resource/:id/new-version", handlers.RequireAuth, handlers.GetNewVersion)
-	app.Post("/resource/:id/version", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostNewVersion)
+
+	// Social Features (resource_social.go)
 	app.Post("/resource/:id/star", handlers.RequireAuth, handlers.ToggleStar)
-	app.Get("/:username/:resourcename/edit", handlers.RequireAuth, handlers.GetEditResource)
-	app.Post("/resource/:id/edit", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostEditResource)
 
 	// Dev Routes (disabled in production)
 	if os.Getenv("ENV") != "production" {
