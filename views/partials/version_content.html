@@ -35,7 +35,22 @@
 
     <!-- README for Specific Version -->
     <div class="py-4 sm:py-5 sm:px-6">
-        <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4">README</dt>
+        <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4 flex items-center justify-between">
+            <span>README</span>
+            {{if .Resource.RepositoryURL}}
+            <button
+                class="text-xs font-normal text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300"
+                hx-get="/resource/{{.Resource.ID}}/fetch-readme"
+                hx-target="#readme-container"
+                hx-indicator="#readme-refresh-spinner"
+                _="on htmx:beforeRequest add .hidden to me then remove .hidden from #readme-refresh-spinner
+                   on htmx:afterRequest remove .hidden from me then add .hidden to #readme-refresh-spinner"
+            >
+                Refresh
+            </button>
+            <span id="readme-refresh-spinner" class="hidden text-xs font-normal text-gray-400">Refreshing...</span>
+            {{end}}
+        </dt>
         <dd class="mt-1 text-sm text-gray-900 sm:mt-0">
             <div id="readme-container" class="prose dark:prose-invert max-w-none bg-gray-50 dark:bg-gray-900/50 p-6 rounded-lg border border-gray-200 dark:border-gray-700 min-h-[200px]">
                 {{if .Version.Readme}}
@@ -45,7 +60,7 @@
                 {{else}}
                     <p class="text-gray-400 italic">No README available for this version.</p>
                     {{if .Resource.RepositoryURL}}
-                    <button 
+                    <button
                         class="mt-4 text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 text-sm font-medium"
                         hx-get="/resource/{{.Resource.ID}}/fetch-readme"
                         hx-target="#readme-container"
