@@ -46,7 +46,7 @@ jobs:
         check-latest: true
 
     - name: Install gosec
-      run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+      run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.11
 
     - name: Run gosec
       run: gosec ./...
