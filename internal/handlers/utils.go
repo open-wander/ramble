@@ -215,7 +215,7 @@ func fetchGitHubMetadata(repoURL string, token string) (*GitHubRepo, error) {
 		req.Header.Set("Authorization", "token "+token)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) //nolint:gosec // G704 -- URL constructed from validated github.com host, client is SSRF-protected
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch github metadata: %w", err)
 	}
@@ -259,7 +259,7 @@ func fetchGitHubLatestTag(repoURL string, token string) (string, error) {
 		req.Header.Set("Authorization", "token "+token)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) //nolint:gosec // G704 -- URL constructed from validated github.com host, client is SSRF-protected
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch github tags: %w", err)
 	}
@@ -310,7 +310,7 @@ func fetchGitHubJobFile(repoURL string, token string) (string, error) {
 		req.Header.Set("Authorization", "token "+token)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) //nolint:gosec // G704 -- URL constructed from validated github.com host, client is SSRF-protected
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch github contents: %w", err)
 	}
@@ -363,7 +363,7 @@ func fetchGitLabMetadata(repoURL string, token string) (*GitLabProject, error) {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) //nolint:gosec // G704 -- URL constructed from validated gitlab.com host, client is SSRF-protected
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch gitlab metadata: %w", err)
 	}
@@ -406,7 +406,7 @@ func fetchGitLabLatestTag(repoURL string, token string) (string, error) {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) //nolint:gosec // G704 -- URL constructed from validated gitlab.com host, client is SSRF-protected
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch gitlab tags: %w", err)
 	}
@@ -455,7 +455,7 @@ func fetchGitLabJobFile(repoURL string, token string) (string, error) {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) //nolint:gosec // G704 -- URL constructed from validated gitlab.com host, client is SSRF-protected
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch gitlab tree: %w", err)
 	}

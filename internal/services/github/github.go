@@ -70,7 +70,7 @@ func (c *Client) CreateIssue(token, owner, repo string, issue IssueRequest) (*Is
 	req.Header.Set("User-Agent", "RMBL-Registry")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.HTTPClient.Do(req) //nolint:gosec // G704 -- URL constructed from hardcoded github.com API base
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -133,7 +133,7 @@ func (c *Client) ListIssues(token, owner, repo, state string) ([]Issue, error) {
 	req.Header.Set("User-Agent", "RMBL-Registry")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.HTTPClient.Do(req) //nolint:gosec // G704 -- URL constructed from hardcoded github.com API base
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -170,7 +170,7 @@ func (c *Client) GetIssue(token, owner, repo string, issueNum int) (*Issue, erro
 	req.Header.Set("User-Agent", "RMBL-Registry")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.HTTPClient.Do(req) //nolint:gosec // G704 -- URL constructed from hardcoded github.com API base
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
@@ -213,7 +213,7 @@ func (c *Client) UpdateIssue(token, owner, repo string, issueNum int, update Iss
 	req.Header.Set("User-Agent", "RMBL-Registry")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := c.HTTPClient.Do(req) //nolint:gosec // G704 -- URL constructed from hardcoded github.com API base
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}

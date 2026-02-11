@@ -161,7 +161,7 @@ const AccountLockDuration = 15 * time.Minute
 func PostLogin(c *fiber.Ctx) error {
 	type LoginInput struct {
 		Email    string `form:"email"`
-		Password string `form:"password"`
+		Password string `form:"password"` //nolint:gosec // G117 -- form binding struct, not serialized to JSON
 	}
 	var input LoginInput
 	if err := c.BodyParser(&input); err != nil {
@@ -251,7 +251,7 @@ func PostSignup(c *fiber.Ctx) error {
 		Username string `form:"username"`
 		Name     string `form:"name"`
 		Email    string `form:"email"`
-		Password string `form:"password"`
+		Password string `form:"password"` //nolint:gosec // G117 -- form binding struct, not serialized to JSON
 	}
 	var input SignupInput
 	if err := c.BodyParser(&input); err != nil {
