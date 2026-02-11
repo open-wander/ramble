@@ -45,7 +45,7 @@ func SubmitJob(jobHCL string, addr string) error {
 
 	// Build nomad command with validated path
 	// G204: Subprocess uses hardcoded "nomad" executable and validated temp file path
-	cmd := exec.Command("nomad", "job", "run", tmpPath) //#nosec G204 -- executable is hardcoded, path is validated temp file
+	cmd := exec.Command("nomad", "job", "run", tmpPath) //#nosec G204,G702 -- executable is hardcoded, path is validated temp file
 
 	// Set environment
 	cmd.Env = os.Environ()
@@ -90,7 +90,7 @@ func ValidateJob(jobHCL string, addr string) error {
 
 	// Build nomad validate command with validated path
 	// G204: Subprocess uses hardcoded "nomad" executable and validated temp file path
-	cmd := exec.Command("nomad", "job", "validate", tmpPath) //#nosec G204 -- executable is hardcoded, path is validated temp file
+	cmd := exec.Command("nomad", "job", "validate", tmpPath) //#nosec G204,G702 -- executable is hardcoded, path is validated temp file
 
 	// Set environment
 	cmd.Env = os.Environ()
@@ -136,7 +136,7 @@ func PlanJob(jobHCL string, addr string) (string, error) {
 
 	// Build nomad plan command with validated path
 	// G204: Subprocess uses hardcoded "nomad" executable and validated temp file path
-	cmd := exec.Command("nomad", "job", "plan", tmpPath) //#nosec G204 -- executable is hardcoded, path is validated temp file
+	cmd := exec.Command("nomad", "job", "plan", tmpPath) //#nosec G204,G702 -- executable is hardcoded, path is validated temp file
 
 	// Set environment
 	cmd.Env = os.Environ()

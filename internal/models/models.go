@@ -14,7 +14,7 @@ type User struct {
 	AvatarURL    string
 	Provider     string // e.g., github, gitlab
 	ProviderID   string // Unique ID from the provider
-	AccessToken  string // OAuth token for API calls
+	AccessToken  string // OAuth token for API calls //nolint:gosec // G117 -- GORM model field, not exposed via JSON API
 	IsAdmin      bool   `gorm:"default:false"`
 	// Relations
 	Memberships []Membership    `gorm:"foreignKey:UserID"`
