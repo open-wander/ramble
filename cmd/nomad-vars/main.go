@@ -13,19 +13,19 @@ type Config struct {
 	Database struct {
 		DBName   string `yaml:"dbname"`
 		Username string `yaml:"username"`
-		Password string `yaml:"password"` //nolint:gosec // G117 -- config struct, not exposed via JSON
+		Password string `yaml:"password"` // #nosec G117 -- config struct, not exposed via JSON
 		Host     string `yaml:"host"`
 		Port     string `yaml:"port"`
 	} `yaml:"database"`
 	Server struct {
-		SessionSecret string `yaml:"SessionSecret"` //nolint:gosec // G117 -- config struct, not exposed via JSON
+		SessionSecret string `yaml:"SessionSecret"` // #nosec G117 -- config struct, not exposed via JSON
 		BaseURL       string `yaml:"BaseURL"`
 		AutoSeed      string `yaml:"AutoSeed"`
 	} `yaml:"server"`
 	Seed struct {
 		Username string `yaml:"InitialUserUsername"`
 		Email    string `yaml:"InitialUserEmail"`
-		Password string `yaml:"InitialUserPassword"` //nolint:gosec // G117 -- config struct, not exposed via JSON
+		Password string `yaml:"InitialUserPassword"` // #nosec G117 -- config struct, not exposed via JSON
 	} `yaml:"seed"`
 	Email struct {
 		SMTPHost     string `yaml:"smtpHost"`
