@@ -315,7 +315,7 @@ func (c *Client) get(path string) (*http.Response, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	return c.HTTPClient.Do(req) //nolint:gosec // G704 -- BaseURL is from trusted server config
+	return c.HTTPClient.Do(req) // #nosec G704 -- BaseURL is from trusted server config
 }
 
 // getJSON performs a GET request with Accept: application/json header
@@ -326,5 +326,5 @@ func (c *Client) getJSON(path string) (*http.Response, error) {
 	}
 	req.Header.Set("Accept", "application/json")
 
-	return c.HTTPClient.Do(req) //nolint:gosec // G704 -- BaseURL is from trusted server config
+	return c.HTTPClient.Do(req) // #nosec G704 -- BaseURL is from trusted server config
 }

@@ -63,7 +63,7 @@ func sendEmailWithTLS(host, port, user, password, from string, to []string, msg 
 	}
 
 	// Connect to SMTP server
-	conn, err := net.Dial("tcp", addr) //nolint:gosec // G704 -- addr is from server config, not user input
+	conn, err := net.Dial("tcp", addr) // #nosec G704 -- addr is from server config, not user input
 	if err != nil {
 		return fmt.Errorf("failed to connect to SMTP server: %w", err)
 	}
