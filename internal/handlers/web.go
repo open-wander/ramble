@@ -94,7 +94,7 @@ func Search(c *fiber.Ctx) error {
 	}
 
 	// If it's an HTMX request, render the partial
-	if c.Get("HX-Request") == "true" && c.Get("HX-Target") == "search-results" {
+	if c.Get("HX-Request") == "true" {
 		return c.Render("partials/resource_list", fiber.Map{
 			"Resources": results,
 			"NextPage":  nextPage,
