@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http/httptest"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
@@ -515,6 +516,42 @@ func TestGetUserProfile_JSON(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+}
+
+// Regression test: the resource detail handler used to set "LatestVersion" to a
+// *models.ResourceVersion struct, which collided with the layout's "LatestVersion"
+// (a CLI version string). The struct was rendered as raw text below the footer.
+func TestGetResource_NoStructLeakInBody(t *testing.T) {
+	defer cleanupTestData(t)
+
+	user := createTestUser(t, "structleakuser")
+	resource := createTestPack(t, user.ID, "structleak-pack")
+
+	// Update the version with a known fetch status so the struct has populated fields
+	database.DB.Model(&models.ResourceVersion{}).
+		Where("resource_id = ?", resource.ID).
+		Update("fetch_status", "completed")
+
+	app := setupTestApp()
+	app.Get("/:username/:resourcename", GetResource)
+
+	req := httptest.NewRequest("GET", "/structleakuser/structleak-pack", nil)
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	assert.NoError(t, err)
+
+	bodyStr := string(body)
+	// A Go struct printed with %v contains "{" and field values separated by spaces.
+	// The ResourceVersion struct when printed looks like: {5 2026-01-07 19:22:06...}
+	// Check that no ResourceVersion struct representation leaked into the HTML.
+	assert.NotContains(t, bodyStr, "ResourceVersion", "struct type name should not appear in rendered HTML")
+	// The footer should not contain "fetch_status" or raw time structs
+	assert.NotRegexp(t, `\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ \+0000 UTC`, bodyStr,
+		"raw Go time.Time values should not appear in rendered HTML")
 }
 
 func TestGetResource_JSON(t *testing.T) {
