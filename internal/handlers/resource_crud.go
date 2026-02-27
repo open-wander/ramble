@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 )
 
 func GetNewResource(c *fiber.Ctx) error {
@@ -292,6 +293,68 @@ func PostEditResource(c *fiber.Ctx) error {
 // @Success 200 {string} string "OK"
 // @Failure 403 {string} string "Unauthorized"
 // @Router /resource/{id} [delete]
+func PostRetryFetch(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	sess, err := Store.Get(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
+	}
+	currentUserID := sess.Get("user_id").(uint)
+
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		return c.Status(404).SendString("Resource not found")
+	}
+
+	var res models.NomadResource
+	if err := database.DB.Preload("Versions", func(db *gorm.DB) *gorm.DB {
+		return db.Order("created_at DESC")
+	}).First(&res, uint(id)).Error; err != nil {
+		return c.Status(404).SendString("Resource not found")
+	}
+
+	// Check ownership: user is resource owner, org member, or admin
+	var currentUser models.User
+	database.DB.First(&currentUser, currentUserID)
+
+	isAllowed := currentUser.IsAdmin
+	if !isAllowed {
+		if res.OrganizationID != nil {
+			var m models.Membership
+			if err := database.DB.Where("user_id = ? AND organization_id = ?", currentUserID, *res.OrganizationID).First(&m).Error; err == nil {
+				isAllowed = true
+			}
+		} else {
+			isAllowed = currentUserID == res.UserID
+		}
+	}
+	if !isAllowed {
+		return c.Status(403).SendString("You don't have permission to retry this fetch")
+	}
+
+	if len(res.Versions) == 0 {
+		return c.Status(400).SendString("No versions found")
+	}
+
+	latest := res.Versions[0]
+	if latest.FetchStatus != models.FetchStatusFailed {
+		return c.Status(400).SendString("Latest version is not in failed state")
+	}
+
+	// Reset fetch status and clear error
+	database.DB.Model(&latest).Updates(map[string]interface{}{
+		"fetch_status": models.FetchStatusPending,
+		"fetch_error":  "",
+	})
+
+	go fetchVersionContent(context.Background(), res.ID, latest.Version, res.RepositoryURL, string(res.Type), res.Name, res.FilePath)
+
+	AuditLog(c, "resource.retry_fetch", "resource", res.ID, res.Name, nil)
+	SetFlash(c, "success", "Fetch retry started for version "+latest.Version)
+	c.Set("HX-Refresh", "true")
+	return c.SendStatus(200)
+}
+
 func DeleteResource(c *fiber.Ctx) error {
 	id := c.Params("id")
 	sess, _ := Store.Get(c)
