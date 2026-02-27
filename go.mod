@@ -5,7 +5,7 @@ go 1.25.7
 require (
 	code.dny.dev/ssrf v0.2.0
 	github.com/cenkalti/backoff/v4 v4.3.0
-	github.com/gofiber/fiber/v2 v2.52.11
+	github.com/gofiber/fiber/v2 v2.52.12
 	github.com/gofiber/swagger v1.1.1
 	github.com/gofiber/template/html/v2 v2.1.3
 	github.com/hashicorp/hcl/v2 v2.24.0
