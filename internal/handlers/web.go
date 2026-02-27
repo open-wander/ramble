@@ -226,7 +226,7 @@ func GetResource(c *fiber.Ctx) error {
 		"StarCount":              len(resource.StarredBy),
 		"DisplayName":            displayName,
 		"Host":                   c.Hostname(),
-		"LatestVersion":          latestVersion,
+		"ResourceLatestVersion":  latestVersion,
 		"LatestVersionVariables": latestVariables,
 		// SEO fields
 		"SEOTitle":       seoData.Title,
