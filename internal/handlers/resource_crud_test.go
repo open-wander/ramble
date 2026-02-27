@@ -891,6 +891,113 @@ func TestGetRawResource_InvalidFilePath(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 }
 
+// PostRetryFetch Tests
+
+func TestPostRetryFetch_NotOwner(t *testing.T) {
+	defer cleanupTestData(t)
+
+	owner := createTestUser(t, "retryowner")
+	otherUser := createTestUser(t, "retryother")
+	resource := createTestPack(t, owner.ID, "retry-pack")
+
+	// Set latest version to failed state
+	var version models.ResourceVersion
+	database.DB.Where("resource_id = ?", resource.ID).First(&version)
+	database.DB.Model(&version).Updates(map[string]interface{}{
+		"fetch_status": models.FetchStatusFailed,
+		"fetch_error":  "test error",
+	})
+
+	app := fiber.New()
+	InitSession()
+
+	app.Use(func(c *fiber.Ctx) error {
+		sess, _ := Store.Get(c)
+		sess.Set("user_id", otherUser.ID)
+		sess.Save()
+		c.Locals("UserID", otherUser.ID)
+		c.Locals("User", otherUser)
+		return c.Next()
+	})
+
+	app.Post("/resource/:id/retry-fetch", PostRetryFetch)
+
+	req := httptest.NewRequest("POST", "/resource/"+toString(resource.ID)+"/retry-fetch", nil)
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
+}
+
+func TestPostRetryFetch_Owner(t *testing.T) {
+	defer cleanupTestData(t)
+
+	user := createTestUser(t, "retryuser")
+	resource := createTestPack(t, user.ID, "retry-success-pack")
+
+	// Set latest version to failed state
+	var version models.ResourceVersion
+	database.DB.Where("resource_id = ?", resource.ID).First(&version)
+	database.DB.Model(&version).Updates(map[string]interface{}{
+		"fetch_status": models.FetchStatusFailed,
+		"fetch_error":  "connection timeout",
+	})
+
+	app := fiber.New()
+	InitSession()
+
+	app.Use(func(c *fiber.Ctx) error {
+		sess, _ := Store.Get(c)
+		sess.Set("user_id", user.ID)
+		sess.Save()
+		c.Locals("UserID", user.ID)
+		c.Locals("User", user)
+		return c.Next()
+	})
+
+	app.Post("/resource/:id/retry-fetch", PostRetryFetch)
+
+	req := httptest.NewRequest("POST", "/resource/"+toString(resource.ID)+"/retry-fetch", nil)
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	// Verify fetch status was reset (may already be "fetching" due to background goroutine)
+	var updated models.ResourceVersion
+	database.DB.Where("resource_id = ?", resource.ID).First(&updated)
+	assert.NotEqual(t, models.FetchStatusFailed, updated.FetchStatus)
+	assert.Empty(t, updated.FetchError)
+}
+
+func TestPostRetryFetch_NotFailed(t *testing.T) {
+	defer cleanupTestData(t)
+
+	user := createTestUser(t, "retrynotfailed")
+	resource := createTestPack(t, user.ID, "retry-notfailed-pack")
+
+	// Version is in default state (pending), not failed
+	app := fiber.New()
+	InitSession()
+
+	app.Use(func(c *fiber.Ctx) error {
+		sess, _ := Store.Get(c)
+		sess.Set("user_id", user.ID)
+		sess.Save()
+		c.Locals("UserID", user.ID)
+		c.Locals("User", user)
+		return c.Next()
+	})
+
+	app.Post("/resource/:id/retry-fetch", PostRetryFetch)
+
+	req := httptest.NewRequest("POST", "/resource/"+toString(resource.ID)+"/retry-fetch", nil)
+	resp, err := app.Test(req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 400, resp.StatusCode)
+}
+
 func TestDeleteResource_ResourceNotFound(t *testing.T) {
 	defer cleanupTestData(t)
 

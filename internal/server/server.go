@@ -349,6 +349,7 @@ func Run(cfg Config) error {
 	app.Get("/:username/:resourcename/edit", handlers.RequireAuth, handlers.GetEditResource)
 	app.Post("/resource/:id/edit", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostEditResource)
 	app.Delete("/resource/:id", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.DeleteResource)
+	app.Post("/resource/:id/retry-fetch", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostRetryFetch)
 
 	// Webhook Handling (resource_webhooks.go)
 	app.Get("/new/my-repos", handlers.RequireAuth, handlers.GetMyRepos)

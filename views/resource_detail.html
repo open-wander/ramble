@@ -153,6 +153,13 @@
                         {{if .ResourceLatestVersion.FetchError}}
                             <p class="mt-2 text-xs text-red-600 dark:text-red-400">{{.ResourceLatestVersion.FetchError}}</p>
                         {{end}}
+                        {{if and (eq .ResourceLatestVersion.FetchStatus "failed") (or .IsOwner (and .CurrentUser .CurrentUser.IsAdmin))}}
+                            <button
+                                hx-post="/resource/{{.Resource.ID}}/retry-fetch"
+                                hx-confirm="Retry fetching content for this version?"
+                                class="mt-2 text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                            >Retry Fetch</button>
+                        {{end}}
                     </dd>
                 </div>
                 {{end}}
