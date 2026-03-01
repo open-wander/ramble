@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"os"
 )
@@ -52,8 +53,32 @@ func SendVerificationEmail(toEmail string, verificationLink string) error {
 	return sendEmailWithTLS(host, port, user, password, from, []string{toEmail}, msg)
 }
 
+// validateEmail checks that an email address is well-formed and safe for SMTP use.
+func validateEmail(addr string) (string, error) {
+	parsed, err := mail.ParseAddress(addr)
+	if err != nil {
+		return "", fmt.Errorf("invalid email address %q: %w", addr, err)
+	}
+	return parsed.Address, nil
+}
+
 // sendEmailWithTLS sends email using STARTTLS for secure transmission
 func sendEmailWithTLS(host, port, user, password, from string, to []string, msg []byte) error {
+	// Validate email addresses to prevent SMTP header injection
+	sanitizedFrom, err := validateEmail(from)
+	if err != nil {
+		return fmt.Errorf("invalid sender address: %w", err)
+	}
+	from = sanitizedFrom
+
+	for i, recipient := range to {
+		sanitized, err := validateEmail(recipient)
+		if err != nil {
+			return fmt.Errorf("invalid recipient address: %w", err)
+		}
+		to[i] = sanitized
+	}
+
 	addr := net.JoinHostPort(host, port)
 
 	// TLS configuration with minimum TLS 1.2
