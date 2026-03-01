@@ -112,8 +112,8 @@ func sendEmailWithTLS(host, port, user, password, from string, to []string, msg 
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 
-	// Set sender
-	if err = client.Mail(from); err != nil {
+	// Set sender (from is validated by validateEmail above)
+	if err = client.Mail(from); err != nil { // #nosec G707 -- from is validated via mail.ParseAddress above
 		return fmt.Errorf("failed to set sender: %w", err)
 	}
 
