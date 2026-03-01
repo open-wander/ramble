@@ -38,7 +38,7 @@
     <link href="/public/css/style.css" rel="stylesheet">
     
     <!-- HTMX -->
-    <script src="https://unpkg.com/htmx.org@1.9.10/dist/htmx.min.js"></script>
+    <script src="/public/assets/htmx@1.9.10.min.js"></script>
     
     <!-- CSRF Config for HTMX -->
     <meta name="csrf-token" content="{{.CSRFToken}}">
@@ -49,7 +49,7 @@
     </script>
     
     <!-- Hyperscript (Optional, good for UI logic) -->
-    <script src="https://unpkg.com/hyperscript.org@0.9.12/dist/_hyperscript.min.js"></script>
+    <script src="/public/assets/hyperscript@0.9.12.min.js"></script>
 
     <style>
         /* Custom Styles if needed */
@@ -82,13 +82,13 @@
     </script>
 
     <!-- Markdown & Syntax Highlighting -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="/assets/dompurify@3.2.4.min.js"></script>
+    <link rel="stylesheet" href="/public/assets/hljs-github-dark@11.9.0.min.css">
+    <script src="/public/assets/hljs@11.9.0.min.js"></script>
+    <script src="/public/assets/hljs-yaml@11.9.0.min.js"></script>
+    <script src="/public/assets/hljs-json@11.9.0.min.js"></script>
+    <script src="/public/assets/hljs-bash@11.9.0.min.js"></script>
+    <script src="/public/assets/marked@15.0.7.min.js"></script>
+    <script src="/public/assets/dompurify@3.2.4.min.js"></script>
     <script>
         function renderMarkdown(text) {
             return DOMPurify.sanitize(marked.parse(text));
