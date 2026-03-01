@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"html"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"strconv"
@@ -631,7 +632,7 @@ func FetchReadme(c *fiber.Ctx) error {
 		return c.SendString("<p class='text-red-500'>Failed to fetch README. Please check the repository URL.</p>")
 	}
 
-	return c.SendString("<div id='readme-content' _='on load call renderMarkdown(my.textContent) then set my.innerHTML to it then call hljs.highlightAll()'>" + readme + "</div>")
+	return c.SendString("<div id='readme-content' _='on load call renderMarkdown(my.textContent) then set my.innerHTML to it then call hljs.highlightAll()'>" + html.EscapeString(readme) + "</div>")
 }
 
 func GetPopularTags() []models.Tag {
