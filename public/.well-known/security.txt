@@ -1,0 +1,6 @@
+Contact: mailto:security@openwander.org
+Contact: https://github.com/openwander/ramble/security/advisories
+Expires: 2027-03-03T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://ramble.openwander.org/.well-known/security.txt
+Policy: https://github.com/openwander/ramble/security/policy

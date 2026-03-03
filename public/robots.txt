@@ -1,22 +1,33 @@
 User-agent: *
 Allow: /
+Allow: /v1/
 
-# Sitemap
-Sitemap: https://rmbl.openwander.org/sitemap.xml
-
-# Disallow admin and auth pages
-Disallow: /admin/
+# Auth pages
 Disallow: /login
 Disallow: /signup
 Disallow: /logout
 Disallow: /forgot-password
 Disallow: /reset-password
 Disallow: /verify-email
+Disallow: /resend-verification
 Disallow: /auth/
 
-# API endpoints (content-negotiated via Accept header)
-# /v1/ routes for global pack registry
-Allow: /v1/
+# Admin and management
+Disallow: /admin/
+Disallow: /orgs/
+Disallow: /new
+
+# Internal resource operations
+Disallow: /resource/
+
+# Dev and webhook endpoints
+Disallow: /api/dev/
+Disallow: /webhooks/
+
+# API docs
+Disallow: /swagger/
 
 # Crawl delay (be nice to smaller servers)
 Crawl-delay: 1
+
+Sitemap: https://ramble.openwander.org/sitemap.xml

@@ -29,6 +29,18 @@ func GenerateSitemap(c *fiber.Ctx) error {
 	xml.WriteString(sitemapURL(baseURL+"/registries", "", "weekly", "0.8"))
 	xml.WriteString(sitemapURL(baseURL+"/packs", "", "weekly", "0.8"))
 	xml.WriteString(sitemapURL(baseURL+"/jobs", "", "weekly", "0.8"))
+	xml.WriteString(sitemapURL(baseURL+"/requests", "", "weekly", "0.7"))
+
+	// Documentation subpages
+	xml.WriteString(sitemapURL(baseURL+"/docs/getting-started", "", "monthly", "0.6"))
+	xml.WriteString(sitemapURL(baseURL+"/docs/api", "", "monthly", "0.6"))
+	xml.WriteString(sitemapURL(baseURL+"/docs/web-interface", "", "monthly", "0.6"))
+	xml.WriteString(sitemapURL(baseURL+"/docs/deployment", "", "monthly", "0.6"))
+	xml.WriteString(sitemapURL(baseURL+"/docs/cli/overview", "", "monthly", "0.6"))
+	xml.WriteString(sitemapURL(baseURL+"/docs/cli/pack", "", "monthly", "0.6"))
+	xml.WriteString(sitemapURL(baseURL+"/docs/cli/job", "", "monthly", "0.6"))
+	xml.WriteString(sitemapURL(baseURL+"/docs/cli/registry", "", "monthly", "0.6"))
+	xml.WriteString(sitemapURL(baseURL+"/docs/cli/cache", "", "monthly", "0.6"))
 
 	// All resources
 	var resources []models.NomadResource
