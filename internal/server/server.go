@@ -221,6 +221,7 @@ func Run(cfg Config) error {
 	app.Static("/public", "./public")
 	app.Static("/favicon.ico", "./public/favicon.ico")
 	app.Static("/robots.txt", "./public/robots.txt")
+	app.Static("/.well-known/security.txt", "./public/.well-known/security.txt")
 
 	// SEO Routes
 	app.Get("/sitemap.xml", handlers.GenerateSitemap)
