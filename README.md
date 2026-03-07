@@ -35,6 +35,13 @@ A modernized registry for HashiCorp Nomad job files and Nomad Packs, with a buil
 
 ## Installation
 
+### Homebrew (macOS & Linux)
+
+```bash
+brew tap open-wander/tap
+brew install ramble
+```
+
 ### Download Binary
 
 ```bash
