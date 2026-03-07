@@ -4,7 +4,7 @@ The Ramble CLI lets you discover, render, and run Nomad packs directly from the 
 
 ## Installation
 
-See [Getting Started](../getting-started.md) for installation instructions.
+See [Getting Started](/docs/getting-started) for installation instructions.
 
 ## Configuration
 
@@ -59,7 +59,7 @@ The CLI respects standard Nomad environment variables:
 
 ## Command Categories
 
-- [Pack Commands](pack.md) - Discover, render, and run packs
-- [Job Commands](job.md) - Run and validate job files
-- [Registry Commands](registry.md) - Manage registries
-- [Cache Commands](cache.md) - Manage local cache
+- [Pack Commands](/docs/cli/pack) - Discover, render, and run packs
+- [Job Commands](/docs/cli/job) - Run and validate job files
+- [Registry Commands](/docs/cli/registry) - Manage registries
+- [Cache Commands](/docs/cli/cache) - Manage local cache

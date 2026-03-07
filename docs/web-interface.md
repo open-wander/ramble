@@ -134,7 +134,7 @@ The Ramble CLI lets you discover, render, and run packs directly from the regist
 
 ### Installation
 
-See the [Getting Started](getting-started.md) guide for installation instructions.
+See the [Getting Started](/docs/getting-started) guide for installation instructions.
 
 ### Listing Packs
 
