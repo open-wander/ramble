@@ -1,6 +1,6 @@
 module rmbl
 
-go 1.25.7
+go 1.26.1
 
 require (
 	code.dny.dev/ssrf v0.2.0
