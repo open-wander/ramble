@@ -12,8 +12,6 @@ import (
 	"rmbl/internal/models"
 	"rmbl/internal/services/logger"
 	resourcesvc "rmbl/internal/services/resource"
-	"rmbl/internal/services/version"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/csrf"
 	"github.com/gofiber/fiber/v2/middleware/helmet"
@@ -27,8 +25,9 @@ import (
 
 // Config holds server configuration options
 type Config struct {
-	Port string
-	Seed bool
+	Port    string
+	Seed    bool
+	Version string
 }
 
 // Run starts the Ramble web server
@@ -213,7 +212,7 @@ func Run(cfg Config) error {
 		}
 
 		c.Locals("CSRFToken", c.Locals("csrf"))
-		c.Locals("LatestVersion", version.GetLatestVersion())
+		c.Locals("LatestVersion", cfg.Version)
 		return c.Next()
 	})
 

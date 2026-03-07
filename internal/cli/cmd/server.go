@@ -27,8 +27,9 @@ Environment variables:
   ENV             Set to "production" for production mode`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return server.Run(server.Config{
-			Port: serverPort,
-			Seed: serverSeed,
+			Port:    serverPort,
+			Seed:    serverSeed,
+			Version: Version,
 		})
 	},
 }
