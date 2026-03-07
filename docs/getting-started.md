@@ -125,6 +125,6 @@ docker run -p 3000:3000 \
 
 ## Next Steps
 
-- [Web Interface Guide](web-interface.md) - Learn how to use the registry website
-- [CLI Commands](cli/overview.md) - Complete CLI reference
-- [API Reference](api.md) - REST API documentation
+- [Web Interface Guide](/docs/web-interface) - Learn how to use the registry website
+- [CLI Commands](/docs/cli/overview) - Complete CLI reference
+- [API Reference](/docs/api) - REST API documentation

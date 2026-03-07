@@ -4,10 +4,10 @@ Ramble is a registry for HashiCorp Nomad job files and Nomad Packs, with a built
 
 ## Quick Links
 
-- [Getting Started](getting-started.md) - Installation and first steps
-- [Web Interface](web-interface.md) - Using the registry website
-- [CLI Overview](cli/overview.md) - Command-line tool usage
-- [API Reference](api.md) - REST API documentation
+- [Getting Started](/docs/getting-started) - Installation and first steps
+- [Web Interface](/docs/web-interface) - Using the registry website
+- [CLI Overview](/docs/cli/overview) - Command-line tool usage
+- [API Reference](/docs/api) - REST API documentation
 
 ## Features
 
