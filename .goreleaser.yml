@@ -60,6 +60,18 @@ changelog:
       - Merge pull request
       - Merge branch
 
+brews:
+  - repository:
+      owner: open-wander
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://ramble.openwander.org"
+    description: "CLI for deploying Nomad packs and jobs"
+    license: "MPL-2.0"
+    test: |
+      assert_match version.to_s, shell_output("#{bin}/ramble --version")
+
 release:
   github:
     owner: open-wander
