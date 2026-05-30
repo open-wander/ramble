@@ -261,3 +261,101 @@ func TestProcessTagEvent_ExistingVersion(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, created) // Should not create duplicate
 }
+
+// TestRecordFetchFailed_SizeLimit verifies that when a required remote file
+// exceeds the size limit the fetch status is recorded as FAILED and no success
+// content is stored.  This satisfies FR-4 (US-002): oversized downloads must
+// not produce a completed fetch record.
+func TestRecordFetchFailed_SizeLimit(t *testing.T) {
+	service := NewResourceService(database.DB)
+
+	user := createTestUser(t, "sizelimituser")
+	defer database.DB.Delete(&user)
+
+	// Create resource and a version that will simulate a failed oversized fetch.
+	input := CreateInput{
+		Name:    "size-limit-test",
+		Type:    "pack",
+		Version: "v1.0.0",
+	}
+	res, err := service.CreateResource(input, user.ID, nil)
+	require.NoError(t, err)
+	defer database.DB.Delete(&res)
+
+	// Simulate the error message produced by handlers.readLimited when
+	// MaxRemoteFileBytes is exceeded.
+	sizeErrMsg := "remote file blocked: exceeds maximum allowed size of 1048576 bytes"
+
+	// RecordFetchFailed is what the fetch pipeline calls when downloadFile
+	// returns a size-limit error for a REQUIRED file (job or metadata.hcl).
+	err = service.RecordFetchFailed(res.ID, "v1.0.0", sizeErrMsg)
+	require.NoError(t, err)
+
+	// Reload the version from the DB.
+	var version models.ResourceVersion
+	err = database.DB.
+		Where("resource_id = ? AND version = ?", res.ID, "v1.0.0").
+		First(&version).Error
+	require.NoError(t, err)
+
+	// FR-4: fetch status must be FAILED.
+	assert.Equal(t, models.FetchStatusFailed, version.FetchStatus,
+		"oversized fetch must be recorded as FAILED")
+
+	// The error field must capture the size-limit message.
+	assert.Contains(t, version.FetchError, "exceeds maximum allowed size",
+		"fetch_error must describe the size violation")
+
+	// No partial content must be stored as a successful fetch.
+	assert.Empty(t, version.Content,
+		"content must remain empty when the fetch is marked FAILED")
+	assert.Empty(t, version.Readme,
+		"readme must remain empty when the fetch is marked FAILED")
+
+	// FetchCompletedAt must be set (not nil) so the UI can show a timestamp.
+	assert.NotNil(t, version.FetchCompletedAt,
+		"fetch_completed_at must be set on failure")
+}
+
+// TestRecordFetchFailed_DoesNotOverwriteContent verifies that RecordFetchFailed
+// updates only the status/error/timestamp columns and does not wipe existing
+// content if it were somehow already written (defensive check).
+func TestRecordFetchFailed_DoesNotOverwriteContent(t *testing.T) {
+	service := NewResourceService(database.DB)
+
+	user := createTestUser(t, "nooverwriteuser")
+	defer database.DB.Delete(&user)
+
+	input := CreateInput{
+		Name:    "no-overwrite-test",
+		Type:    "job",
+		Version: "v1.0.0",
+	}
+	res, err := service.CreateResource(input, user.ID, nil)
+	require.NoError(t, err)
+	defer database.DB.Delete(&res)
+
+	// Pre-populate content (simulating a partial fetch that stored something).
+	database.DB.Model(&models.ResourceVersion{}).
+		Where("resource_id = ? AND version = ?", res.ID, "v1.0.0").
+		Update("content", "pre-existing content")
+
+	// Record failure for the oversized second attempt.
+	err = service.RecordFetchFailed(res.ID, "v1.0.0", "remote file blocked: exceeds maximum allowed size of 1048576 bytes")
+	require.NoError(t, err)
+
+	var version models.ResourceVersion
+	err = database.DB.
+		Where("resource_id = ? AND version = ?", res.ID, "v1.0.0").
+		First(&version).Error
+	require.NoError(t, err)
+
+	// Status must be FAILED.
+	assert.Equal(t, models.FetchStatusFailed, version.FetchStatus)
+
+	// RecordFetchFailed does not clear content — the invariant is that
+	// downloadFile returns "" on size error so content is never written
+	// from an oversized body. The DB field reflects what was stored before.
+	assert.Equal(t, "pre-existing content", version.Content,
+		"RecordFetchFailed must not clear pre-existing content columns")
+}

@@ -103,6 +103,29 @@ func isAllowedContentType(contentType string) bool {
 	return false
 }
 
+// MaxRemoteFileBytes is the maximum number of bytes accepted from any remote
+// file fetch (README, LICENSE, metadata, variables, job files). Downloads
+// exceeding this limit are rejected with an error; no partial content is
+// returned or stored.
+const MaxRemoteFileBytes = 1 << 20 // 1 MiB
+
+// readLimited reads up to MaxRemoteFileBytes from r. It uses io.LimitReader
+// with a capacity of MaxRemoteFileBytes+1 so that a body of exactly
+// MaxRemoteFileBytes is accepted (len == Max) while a body of MaxRemoteFileBytes+1
+// bytes triggers the explicit length check and is rejected (len == Max+1).
+// The caller is responsible for closing the underlying reader.
+func readLimited(r io.Reader) (string, error) {
+	limited := io.LimitReader(r, MaxRemoteFileBytes+1)
+	body, err := io.ReadAll(limited)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+	if len(body) > MaxRemoteFileBytes {
+		return "", fmt.Errorf("remote file blocked: exceeds maximum allowed size of %d bytes", MaxRemoteFileBytes)
+	}
+	return string(body), nil
+}
+
 func downloadFile(repoURL string, fileName string) (string, error) {
 	if repoURL == "" || fileName == "" {
 		return "", nil
@@ -133,11 +156,11 @@ func downloadFile(repoURL string, fileName string) (string, error) {
 			}
 			defer resp.Body.Close()
 			if resp.StatusCode == 200 {
-				body, err := io.ReadAll(resp.Body)
+				content, err := readLimited(resp.Body)
 				if err != nil {
-					continue
+					return "", err
 				}
-				return string(body), nil
+				return content, nil
 			}
 		}
 	}
@@ -160,11 +183,11 @@ func downloadFile(repoURL string, fileName string) (string, error) {
 			}
 			defer resp.Body.Close()
 			if resp.StatusCode == 200 {
-				body, err := io.ReadAll(resp.Body)
+				content, err := readLimited(resp.Body)
 				if err != nil {
-					continue
+					return "", err
 				}
-				return string(body), nil
+				return content, nil
 			}
 		}
 	}
