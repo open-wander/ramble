@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 	"rmbl/internal/models"
@@ -339,6 +340,28 @@ func (s *ResourceService) GenerateWebhookSecret() (string, error) {
 		return "", fmt.Errorf("failed to generate webhook secret: %w", err)
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// RecordFetchFailed marks a resource version fetch as FAILED with the supplied
+// error message. It never stores content alongside the failure: the caller is
+// responsible for not writing partial content on error. This helper centralises
+// the DB update so that all fetch-failure paths (background job, webhook
+// handler, retry) share the same invariant:
+//
+//	FetchStatus == failed, FetchError set, FetchCompletedAt set.
+func (s *ResourceService) RecordFetchFailed(resourceID uint, version, errMsg string) error {
+	now := time.Now()
+	result := s.db.Model(&models.ResourceVersion{}).
+		Where("resource_id = ? AND version = ?", resourceID, version).
+		Updates(map[string]interface{}{
+			"fetch_status":       models.FetchStatusFailed,
+			"fetch_error":        errMsg,
+			"fetch_completed_at": now,
+		})
+	if result.Error != nil {
+		return fmt.Errorf("failed to record fetch failure: %w", result.Error)
+	}
+	return nil
 }
 
 // ResetWebhookSecret resets the webhook secret for a resource
