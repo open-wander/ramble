@@ -49,8 +49,8 @@ jobs:
       - name: Bump version
         id: bump
         run: |
-          # Read current version
-          CURRENT_VERSION=$(cat VERSION | tr -d '[:space:]')
+          # The latest git tag is the source of truth for the current version.
+          CURRENT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           echo "old_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
           # Remove 'v' prefix for parsing
@@ -81,14 +81,10 @@ jobs:
           echo "new_version_num=$NEW_VERSION_NUM" >> $GITHUB_OUTPUT
           echo "New version: $NEW_VERSION (docker tag: $NEW_VERSION_NUM)"
 
-          # Update VERSION file
-          echo "$NEW_VERSION" > VERSION
-
-          # Commit and tag
-          git add VERSION
-          git commit -m "Bump version to $NEW_VERSION"
+          # Create and push only the tag. Branch protection governs branch refs
+          # (refs/heads/main), not tags, so this never touches the protected branch.
           git tag -a "$NEW_VERSION" -m "Release $NEW_VERSION"
-          git push origin main --follow-tags
+          git push origin "$NEW_VERSION"
 
   build-and-push:
     needs: bump-version
@@ -97,6 +93,12 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ needs.bump-version.outputs.new_version }}
+
+      - name: Compute build metadata
+        id: meta
+        run: |
+          echo "commit=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -118,6 +120,10 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            VERSION=${{ needs.bump-version.outputs.new_version }}
+            COMMIT=${{ steps.meta.outputs.commit }}
+            BUILD_DATE=${{ steps.meta.outputs.date }}
           tags: |
             ghcr.io/${{ github.repository }}:${{ needs.bump-version.outputs.new_version_num }}
             ghcr.io/${{ github.repository }}:latest
