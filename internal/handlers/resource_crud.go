@@ -73,6 +73,22 @@ func PostNewResource(c *fiber.Ctx) error {
 		orgID = &val
 	}
 
+	// Authorization: when an org is specified, verify the org exists and that the
+	// authenticated user is a member (role 'member' or 'owner').
+	if orgID != nil {
+		var org models.Organization
+		if err := database.DB.First(&org, *orgID).Error; err != nil {
+			return fiber.NewError(fiber.StatusForbidden, "organization not found")
+		}
+		var membership models.Membership
+		if err := database.DB.Where(
+			"user_id = ? AND organization_id = ? AND role IN ('member','owner')",
+			userID, *orgID,
+		).First(&membership).Error; err != nil {
+			return fiber.NewError(fiber.StatusForbidden, "you must be a member of this organization to create resources in it")
+		}
+	}
+
 	// Download and detect license if not provided
 	license := input.License
 	if license == "" {
