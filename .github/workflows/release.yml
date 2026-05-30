@@ -36,7 +36,7 @@ jobs:
       new_version_num: ${{ steps.bump.outputs.new_version_num }}
       old_version: ${{ steps.bump.outputs.old_version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -94,7 +94,7 @@ jobs:
     needs: bump-version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.bump-version.outputs.new_version }}
 
@@ -136,7 +136,7 @@ jobs:
     if: inputs.deploy_compose
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.bump-version.outputs.new_version }}
 
@@ -182,7 +182,7 @@ jobs:
     if: inputs.deploy_nomad
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.bump-version.outputs.new_version }}
 
@@ -205,13 +205,13 @@ jobs:
     needs: [bump-version, build-and-push]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.bump-version.outputs.new_version }}
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.26.x'
           check-latest: true
