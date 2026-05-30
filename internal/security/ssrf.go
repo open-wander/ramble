@@ -140,27 +140,34 @@ func NewProtectedClient(cfg SSRFConfig) (*http.Client, error) {
 	return client, nil
 }
 
-// isHostAllowed checks if a hostname is in the allowlist
-// Supports exact matches and subdomain matching (e.g., "github.com" allows "api.github.com")
+// isHostAllowed checks if a hostname is in the allowlist.
+// A candidate host H matches an allowed entry A iff:
+//   - H == A  (exact match), or
+//   - H ends with "."+A  (H is a subdomain of A)
+//
+// Parent domains are never permitted: if "raw.githubusercontent.com" is
+// allowed, "githubusercontent.com" and "com" are still rejected.
 func isHostAllowed(host string, allowedHosts []string) bool {
-	host = strings.ToLower(host)
+	// Normalise: lowercase and strip a single trailing dot (FQDN form).
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+
+	if host == "" {
+		return false
+	}
 
 	for _, allowed := range allowedHosts {
-		allowed = strings.ToLower(allowed)
+		allowed = strings.ToLower(strings.TrimSuffix(allowed, "."))
+		if allowed == "" {
+			continue
+		}
 
-		// Exact match
+		// Exact match.
 		if host == allowed {
 			return true
 		}
 
-		// Subdomain match (host ends with .allowed)
+		// Subdomain match: host must end with ".<allowed>".
 		if strings.HasSuffix(host, "."+allowed) {
-			return true
-		}
-
-		// Check if allowed is a subdomain pattern
-		// e.g., if allowed is "raw.githubusercontent.com" and we're checking "github.com"
-		if strings.HasSuffix(allowed, "."+host) {
 			return true
 		}
 	}
