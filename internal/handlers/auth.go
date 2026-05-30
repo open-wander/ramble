@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -20,6 +21,7 @@ import (
 	"github.com/markbates/goth/providers/gitlab"
 	"github.com/shareed2k/goth_fiber"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 var Store *session.Store
@@ -72,6 +74,91 @@ func BeginAuth(c *fiber.Ctx) error {
 	return goth_fiber.BeginAuthHandler(c)
 }
 
+// errOAuthEmailCollision is returned by processOAuthUser when the OAuth
+// provider's email already belongs to a local account that has no provider
+// linkage. Callers should surface a clear error to the user rather than
+// silently linking or creating a duplicate.
+var errOAuthEmailCollision = errors.New("existing account")
+
+// processOAuthUser resolves a goth.User against the database and returns the
+// models.User that should be logged in.
+//
+// Rules (hardened against account-takeover via unverified OAuth email):
+//  1. If a user row already has (provider, providerID) matching gothUser, log
+//     in as that user (token refreshed). No further lookups.
+//  2. If no row matches by (provider, providerID), check for an email
+//     collision with an existing account that has NO provider linkage yet.
+//     Reject with errOAuthEmailCollision — we cannot trust the OAuth email as
+//     a verified identity for GitHub/GitLab (goth v1.82.0 exposes no
+//     verified-email flag for either provider).
+//  3. Otherwise create a brand-new user with Provider/ProviderID set.
+//
+// EmailVerified on new OAuth accounts is left as false (default). The email
+// field is populated from the OAuth provider but cannot be trusted as
+// verified for GitHub/GitLab. A future task may add a separate verification
+// step for OAuth-created accounts.
+func processOAuthUser(gothUser goth.User) (models.User, error) {
+	// Encrypt token; use empty string on failure so the rest can proceed.
+	encryptedToken, _ := crypto.EncryptToken(gothUser.AccessToken)
+
+	// Step 1: look up by provider + providerID (the safe, stable identifier).
+	var user models.User
+	result := database.DB.Where("provider = ? AND provider_id = ?", gothUser.Provider, gothUser.UserID).First(&user)
+	if result.Error == nil {
+		// Already linked — refresh the access token and return.
+		user.AccessToken = encryptedToken
+		database.DB.Save(&user)
+		return user, nil
+	}
+
+	if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		// Real DB error — do not fall through into account creation.
+		return models.User{}, fmt.Errorf("database error looking up oauth user: %w", result.Error)
+	}
+
+	// Step 2: check for an email collision with an unlinked local account.
+	if gothUser.Email != "" {
+		var collision models.User
+		collResult := database.DB.Where("email = ? AND (provider IS NULL OR provider = '')", gothUser.Email).First(&collision)
+		if collResult.Error == nil {
+			// An existing local account owns this email. Reject silently linking
+			// without verified proof of ownership.
+			return models.User{}, fmt.Errorf(
+				"%w with this email already exists. Please log in with your existing account, then link %s from your account settings",
+				errOAuthEmailCollision,
+				gothUser.Provider,
+			)
+		}
+		if !errors.Is(collResult.Error, gorm.ErrRecordNotFound) {
+			return models.User{}, fmt.Errorf("database error checking email collision: %w", collResult.Error)
+		}
+	}
+
+	// Step 3: create a brand-new user.
+	username := gothUser.NickName
+	if username == "" {
+		username = gothUser.Name
+	}
+
+	newUser := models.User{
+		Username:    username,
+		Email:       gothUser.Email,
+		Name:        gothUser.Name,
+		AvatarURL:   gothUser.AvatarURL,
+		Provider:    gothUser.Provider,
+		ProviderID:  gothUser.UserID,
+		AccessToken: encryptedToken,
+		// EmailVerified intentionally left false: GitHub and GitLab do not
+		// expose a verified-email flag in goth v1.82.0, so we cannot assert
+		// that the email address is confirmed. A future link-from-settings
+		// flow will handle verified linkage.
+	}
+	if err := database.DB.Create(&newUser).Error; err != nil {
+		return models.User{}, fmt.Errorf("failed to create oauth user: %w", err)
+	}
+	return newUser, nil
+}
+
 func AuthCallback(c *fiber.Ctx) error {
 	gothUser, err := goth_fiber.CompleteUserAuth(c)
 	if err != nil {
@@ -79,51 +166,14 @@ func AuthCallback(c *fiber.Ctx) error {
 		return c.Redirect("/login")
 	}
 
-	var user models.User
-	// Check if user exists by Provider + ProviderID
-	result := database.DB.Where("provider = ? AND provider_id = ?", gothUser.Provider, gothUser.UserID).First(&user)
-
-	encryptedToken, encryptErr := crypto.EncryptToken(gothUser.AccessToken)
-	if encryptErr != nil {
-		SetFlash(c, "error", "Failed to store access token: "+encryptErr.Error())
-		return c.Redirect("/login")
-	}
-
-	if result.Error != nil {
-		// User doesn't exist, check by email to link accounts
-		result = database.DB.Where("email = ?", gothUser.Email).First(&user)
-		if result.Error == nil {
-			// Link account
-			user.Provider = gothUser.Provider
-			user.ProviderID = gothUser.UserID
-			user.AccessToken = encryptedToken
-			user.EmailVerified = true // OAuth users are pre-verified
-			database.DB.Save(&user)
-		} else {
-			// Create new user
-			username := gothUser.NickName
-			if username == "" {
-				username = gothUser.Name
-			}
-			user = models.User{
-				Username:      username,
-				Email:         gothUser.Email,
-				Name:          gothUser.Name,
-				AvatarURL:     gothUser.AvatarURL,
-				Provider:      gothUser.Provider,
-				ProviderID:    gothUser.UserID,
-				AccessToken:   encryptedToken,
-				EmailVerified: true, // OAuth users are pre-verified
-			}
-			if err := database.DB.Create(&user).Error; err != nil {
-				SetFlash(c, "error", "Failed to create user account.")
-				return c.Redirect("/signup")
-			}
+	user, err := processOAuthUser(gothUser)
+	if err != nil {
+		if errors.Is(err, errOAuthEmailCollision) {
+			SetFlash(c, "error", "An account with this email already exists. Please log in with your existing account, then link "+gothUser.Provider+" from your account settings.")
+			return c.Redirect("/login")
 		}
-	} else {
-		// Update existing user token
-		user.AccessToken = encryptedToken
-		database.DB.Save(&user)
+		SetFlash(c, "error", "Failed to process OAuth login.")
+		return c.Redirect("/login")
 	}
 
 	// Set Session
