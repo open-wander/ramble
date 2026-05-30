@@ -39,8 +39,10 @@ update:
 	go get -u ./...
 	go mod tidy
 
-# Versioning
-VERSION := $(shell cat VERSION)
+# Versioning - the latest git tag is the source of truth
+VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
+COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 IMAGE_NAME := ghcr.io/open-wander/ramble
 
 # Run security checks
@@ -67,7 +69,11 @@ css-watch:
 
 # Docker Build (ARM64)
 docker-build:
-	docker build --platform linux/arm64 -t $(IMAGE_NAME):$(VERSION) -t $(IMAGE_NAME):latest .
+	docker build --platform linux/arm64 \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		-t $(IMAGE_NAME):$(VERSION) -t $(IMAGE_NAME):latest .
 	sed -i '' 's|image = "$(IMAGE_NAME):.*"|image = "$(IMAGE_NAME):$(VERSION)"|' ramble.nomad.hcl
 
 # Docker Push
@@ -102,9 +108,9 @@ release-major:
 # Interactive release - prompts for bump type
 release:
 	@echo "Select version bump type:"
-	@echo "  1) patch ($(shell cat VERSION) -> next patch)"
-	@echo "  2) minor ($(shell cat VERSION) -> next minor)"
-	@echo "  3) major ($(shell cat VERSION) -> next major)"
+	@echo "  1) patch ($(VERSION) -> next patch)"
+	@echo "  2) minor ($(VERSION) -> next minor)"
+	@echo "  3) major ($(VERSION) -> next major)"
 	@read -p "Enter choice [1-3]: " choice; \
 	case $$choice in \
 		1) $(MAKE) release-patch ;; \

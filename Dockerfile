@@ -4,6 +4,11 @@ FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS builder
 ARG TARGETARCH
 ARG BUILDARCH
 
+# Version metadata injected via ldflags (set by the release workflow).
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILD_DATE=unknown
+
 WORKDIR /app
 
 COPY go.mod go.sum ./
@@ -31,7 +36,9 @@ RUN /go/bin/swag init -g main.go --output api-docs --dir ./cmd/ramble,./internal
 # Build CSS
 RUN ./tailwindcss -i ./public/css/input.css -o ./public/css/style.css --minify
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -o ramble ./cmd/ramble
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build \
+    -ldflags "-s -w -X rmbl/internal/cli/cmd.Version=${VERSION} -X rmbl/internal/cli/cmd.Commit=${COMMIT} -X rmbl/internal/cli/cmd.BuildDate=${BUILD_DATE}" \
+    -o ramble ./cmd/ramble
 
 # Stage 2: Final Image
 FROM alpine:latest
