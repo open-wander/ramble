@@ -36,13 +36,18 @@ func setupTestApp() *fiber.App {
 
 	// Setup View Engine
 	engine := html.New("../../views", ".html")
-	
+
 	// Add required functions
 	engine.AddFunc("dict", func(values ...interface{}) (map[string]interface{}, error) {
-		if len(values)%2 != 0 { return nil, fmt.Errorf("invalid dict call") }
+		if len(values)%2 != 0 {
+			return nil, fmt.Errorf("invalid dict call")
+		}
 		dict := make(map[string]interface{}, len(values)/2)
 		for i := 0; i < len(values); i += 2 {
-			key, ok := values[i].(string); if !ok { return nil, fmt.Errorf("dict keys must be strings") }
+			key, ok := values[i].(string)
+			if !ok {
+				return nil, fmt.Errorf("dict keys must be strings")
+			}
 			dict[key] = values[i+1]
 		}
 		return dict, nil
@@ -54,7 +59,7 @@ func setupTestApp() *fiber.App {
 	app := fiber.New(fiber.Config{
 		Views: engine,
 	})
-	
+
 	// Mock Locals middleware
 	app.Use(func(c *fiber.Ctx) error {
 		c.Locals("CSRFToken", "test-token")
@@ -92,8 +97,8 @@ func TestSignupAndLogin(t *testing.T) {
 	app.Post("/login", PostLogin)
 
 	// 1. Test Signup (using strong password meeting all requirements)
-	username := fmt.Sprintf("user%d",  os.Getpid()) // Unique username per run if needed
-	strongPassword := "SecurePass123!"  // Meets all requirements: 12+ chars, upper, lower, number, special
+	username := fmt.Sprintf("user%d", os.Getpid()) // Unique username per run if needed
+	strongPassword := "SecurePass123!"             // Meets all requirements: 12+ chars, upper, lower, number, special
 	payload := strings.NewReader(fmt.Sprintf("username=%s&name=Test+User&email=%s@example.com&password=%s", username, username, strongPassword))
 	req := httptest.NewRequest("POST", "/signup", payload)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
