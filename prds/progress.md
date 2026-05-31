@@ -69,3 +69,15 @@ PATTERN: authorization - authorization-before-persist; assert row-count==0 on ne
 PATTERN: security-limits - io.LimitReader(r, max+1) + len(body)>max for bounded remote reads.
 PATTERN: security-ssrf - host allowlist match only `h==a || HasSuffix(h, "."+a)`; never reverse-suffix.
 PATTERN: oauth-security - match OAuth on (provider, provider_id); never link by unverified email.
+
+## 2026-05-31 — norman verify (US-001/002/003/005)
+
+Ran independent Opus verifiers per completed story. Tests green across
+internal/handlers, internal/services/resource, internal/security (incl. -tags security).
+- US-001 PASS, US-003 PASS, US-005 PASS.
+- US-002 PARTIAL: behaviour incl. FR-4 satisfied via background.go, but RecordFetchFailed
+  (service.go:352) is dead code and its tests give false confidence -> tracked as 4.1.
+- US-004 (1.2) not implemented yet.
+- 3.2 resolved: 3.1 already leaves EmailVerified=false for new OAuth accounts.
+Also committed previously-missed SSRF test file (internal/security/ssrf_test.go) as fff20f6.
+Report: prds/verification.md.
