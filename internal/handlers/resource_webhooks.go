@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"rmbl/internal/crypto"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
@@ -385,8 +386,11 @@ func PostResetWebhookSecret(c *fiber.Ctx) error {
 
 	// Reset webhook secret via service
 	if err := resource.Service.ResetWebhookSecret(resourceID, currentUserID); err != nil {
-		if err.Error() == "unauthorized" {
+		if errors.Is(err, resource.ErrUnauthorized) {
 			return c.Status(403).SendString("Unauthorized")
+		}
+		if errors.Is(err, resource.ErrResourceNotFound) {
+			return c.Status(404).SendString("Resource not found")
 		}
 		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
 	}
