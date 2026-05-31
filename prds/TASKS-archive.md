@@ -29,3 +29,13 @@ PRD: [done/prd-security-bugfix.md](done/prd-security-bugfix.md).
 | # | Task | PRD | Status | Notes |
 |---|------|-----|--------|-------|
 | 4.1 | Resolve `RecordFetchFailed` dead code (US-002 verify gap) | [prd-security-bugfix.md](done/prd-security-bugfix.md) | DONE (2026-05-31) | Wired `fetchVersionContent` (panic-recovery + error branch) through `RecordFetchFailed` as single source of truth; helper now live, existing tests cover real path; review PASS |
+
+## Phase 5: Review Follow-ups — 5 tasks completed 2026-05-31
+
+| # | Task | PRD | Status | Notes |
+|---|------|-----|--------|-------|
+| 5.1 | Cap `fetch_error` length in `RecordFetchFailed` | [prd-security-bugfix.md](done/prd-security-bugfix.md) | DONE (2026-05-31) | 1000-rune UTF-8-safe cap with truncation marker; commit d1e3e87 |
+| 5.2 | Replace `err.Error()` string-compare auth in `ToggleStar` with typed sentinel | [prd-security-bugfix.md](done/prd-security-bugfix.md) | DONE (2026-05-31) | service `ToggleStar` returns `ErrResourceNotFound`; handler uses `errors.Is`; needed the two-file fix flagged when run isolated; commit d1e3e87 |
+| 5.3 | Size-cap GitHub/GitLab JSON API responses | [prd-security-bugfix.md](done/prd-security-bugfix.md) | DONE (2026-05-31) | `io.LimitReader(resp.Body, 10 MiB)` on all 6 API decoders; commit d195d9c |
+| 5.4 | Clearer message for cross-provider same-email OAuth signup | [prd-security-bugfix.md](done/prd-security-bugfix.md) | DONE (2026-05-31) | Broadened collision probe to any existing email; provider+id login still runs first; commit d2d3da3 |
+| 5.5 | gofmt-clean tree-wide (Go 1.26) | [prd-security-bugfix.md](done/prd-security-bugfix.md) | DONE (2026-05-31) | `gofmt -w internal/ cmd/`, 23 files; commit b3f8b1d. NOTE: interface{}->any / modernize hints are staticcheck-level, not gofmt — separate pass if wanted |
