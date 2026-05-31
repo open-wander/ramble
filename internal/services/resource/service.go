@@ -18,7 +18,7 @@ var tagRegex = regexp.MustCompile(`^[a-z0-9-]+$`)
 
 // Sentinel errors for authorization checks.
 var (
-	ErrUnauthorized    = errors.New("unauthorized")
+	ErrUnauthorized     = errors.New("unauthorized")
 	ErrResourceNotFound = errors.New("resource not found")
 )
 
@@ -157,17 +157,17 @@ func (s *ResourceService) CreateResource(input CreateInput, userID uint, orgID *
 
 	// Create resource
 	resource := models.NomadResource{
-		Name:          input.Name,
-		Type:          models.ResourceType(input.Type),
-		Description:   input.Description,
-		License:       license,
-		RepositoryURL: input.RepositoryURL,
-		FilePath:      input.FilePath,
-		WebhookSecret: secret,
-		UserID:        userID,
+		Name:           input.Name,
+		Type:           models.ResourceType(input.Type),
+		Description:    input.Description,
+		License:        license,
+		RepositoryURL:  input.RepositoryURL,
+		FilePath:       input.FilePath,
+		WebhookSecret:  secret,
+		UserID:         userID,
 		OrganizationID: orgID,
-		Tags:          tags,
-		Versions:      []models.ResourceVersion{{Version: input.Version}},
+		Tags:           tags,
+		Versions:       []models.ResourceVersion{{Version: input.Version}},
 	}
 
 	if err := s.db.Create(&resource).Error; err != nil {

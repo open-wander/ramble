@@ -58,7 +58,7 @@ func Search(c *fiber.Ctx) error {
 	pageSize := 12
 
 	var results []models.NomadResource
-	
+
 	dbQuery := database.DB.Model(&models.NomadResource{}).Preload("User").Preload("Tags")
 
 	if query != "" {
@@ -73,7 +73,7 @@ func Search(c *fiber.Ctx) error {
 			Joins("JOIN tags ON tags.id = resource_tags.tag_id").
 			Where("tags.name = ?", tag)
 	}
-	
+
 	// Apply Sorting
 	switch sort {
 	case "stars":
@@ -85,7 +85,7 @@ func Search(c *fiber.Ctx) error {
 	default:
 		dbQuery = dbQuery.Order("updated_at desc")
 	}
-	
+
 	offset := (page - 1) * pageSize
 	dbQuery.Limit(pageSize).Offset(offset).Find(&results)
 
@@ -170,7 +170,7 @@ func GetResource(c *fiber.Ctx) error {
 	var isStarred bool
 	if isLoggedIn {
 		currentUserID := c.Locals("UserID").(uint)
-		
+
 		// If it's a personal repo, current user must be owner
 		// If it's an org repo, current user must be member of that org
 		if orgID != nil {
@@ -346,13 +346,9 @@ func GetUserProfile(c *fiber.Ctx) error {
 
 	isLoggedIn := c.Locals("UserID") != nil
 
-
-
 	var profileUser *models.User
 
 	var profileOrg *models.Organization
-
-
 
 	var user models.User
 
@@ -376,17 +372,11 @@ func GetUserProfile(c *fiber.Ctx) error {
 
 	}
 
-
-
 	var results []models.NomadResource
 
 	dbQuery := database.DB.Model(&models.NomadResource{}).
-
 		Preload("User").
-
 		Preload("Tags")
-
-
 
 	if profileUser != nil {
 
@@ -398,8 +388,6 @@ func GetUserProfile(c *fiber.Ctx) error {
 
 	}
 
-
-
 	if query != "" {
 
 		searchParam := "%" + escapeLikeString(query) + "%"
@@ -408,55 +396,29 @@ func GetUserProfile(c *fiber.Ctx) error {
 
 	}
 
+	// Apply Sorting
 
+	switch sort {
 
-		// Apply Sorting
+	case "stars":
 
+		dbQuery = dbQuery.Order("star_count desc, updated_at desc")
 
+	case "downloads":
 
-		switch sort {
+		dbQuery = dbQuery.Order("download_count desc, updated_at desc")
 
+	case "alpha":
 
+		dbQuery = dbQuery.Order("name asc")
 
-		case "stars":
+	default:
 
+		dbQuery = dbQuery.Order("updated_at desc")
 
-
-			dbQuery = dbQuery.Order("star_count desc, updated_at desc")
-
-
-
-		case "downloads":
-
-
-
-			dbQuery = dbQuery.Order("download_count desc, updated_at desc")
-
-
-
-		case "alpha":
-
-
-
-			dbQuery = dbQuery.Order("name asc")
-
-
-
-		default:
-
-
-
-			dbQuery = dbQuery.Order("updated_at desc")
-
-
-
-		}
-
-
+	}
 
 	dbQuery.Limit(pageSize).Offset(offset).Find(&results)
-
-
 
 	nextPage := 0
 
@@ -489,17 +451,14 @@ func GetUserProfile(c *fiber.Ctx) error {
 
 			"Resources": results,
 
-			"NextPage":  nextPage,
+			"NextPage": nextPage,
 
-			"Query":     query,
+			"Query": query,
 
-			"Sort":      sort,
-
+			"Sort": sort,
 		})
 
 	}
-
-
 
 	title := namespace + "'s Resources"
 
@@ -526,8 +485,6 @@ func GetUserProfile(c *fiber.Ctx) error {
 		isOwner = c.Locals("UserID").(uint) == profileUser.ID
 
 	}
-
-
 
 	return c.Render("profile", MergeContext(BaseContext(c), fiber.Map{
 		"ProfileUser": profileUser,

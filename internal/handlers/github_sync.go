@@ -566,9 +566,9 @@ func handleIssueStateChange(issue IssuePayload) error {
 
 	// Convert payload to github.Issue for mapping
 	ghIssue := &github.Issue{
-		Number:  issue.Number,
-		State:   issue.State,
-		Labels:  make([]github.Label, len(issue.Labels)),
+		Number: issue.Number,
+		State:  issue.State,
+		Labels: make([]github.Label, len(issue.Labels)),
 	}
 	for i, l := range issue.Labels {
 		ghIssue.Labels[i] = github.Label{Name: l.Name}

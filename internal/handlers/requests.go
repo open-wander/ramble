@@ -108,12 +108,12 @@ func GetRequests(c *fiber.Ctx) error {
 
 	if c.Get("HX-Request") == "true" {
 		return c.Render("partials/request_list", fiber.Map{
-			"Requests":  requests,
-			"VotedMap":  votedMap,
-			"NextPage":  nextPage,
-			"Status":    status,
-			"Type":      reqType,
-			"Sort":      sort,
+			"Requests": requests,
+			"VotedMap": votedMap,
+			"NextPage": nextPage,
+			"Status":   status,
+			"Type":     reqType,
+			"Sort":     sort,
 		})
 	}
 
