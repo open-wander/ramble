@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"gorm.io/gorm"
 	"rmbl/internal/models"
@@ -26,6 +27,25 @@ const (
 	RoleOwner  = "owner"
 	RoleMember = "member"
 )
+
+// maxFetchErrorLen is the maximum number of runes stored in the fetch_error
+// column. The column type is text (unbounded), so we cap here to prevent
+// runaway driver errors or panic strings from bloating the database.
+const maxFetchErrorLen = 1000
+
+// truncateFetchError caps msg to maxFetchErrorLen runes. When truncation
+// occurs a short marker is appended; the total length is guaranteed to be
+// <= maxFetchErrorLen runes and the result is always valid UTF-8.
+func truncateFetchError(msg string) string {
+	const marker = " ...(truncated)"
+	if utf8.RuneCountInString(msg) <= maxFetchErrorLen {
+		return msg
+	}
+	// Leave room for the marker.
+	keep := maxFetchErrorLen - utf8.RuneCountInString(marker)
+	runes := []rune(msg)
+	return string(runes[:keep]) + marker
+}
 
 // ResourceServicer defines business logic operations for resources
 type ResourceServicer interface {
@@ -400,7 +420,7 @@ func (s *ResourceService) RecordFetchFailed(resourceID uint, version, errMsg str
 		Where("resource_id = ? AND version = ?", resourceID, version).
 		Updates(map[string]interface{}{
 			"fetch_status":       models.FetchStatusFailed,
-			"fetch_error":        errMsg,
+			"fetch_error":        truncateFetchError(errMsg),
 			"fetch_completed_at": now,
 		})
 	if result.Error != nil {

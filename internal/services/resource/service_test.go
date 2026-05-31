@@ -1,8 +1,11 @@
 package resource
 
 import (
+	"fmt"
 	"os"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -450,6 +453,85 @@ func TestAuthorizeResourceAction(t *testing.T) {
 				require.Error(t, err)
 				assert.ErrorIs(t, err, tt.wantErr, "expected error %v, got %v", tt.wantErr, err)
 			}
+		})
+	}
+}
+
+// TestRecordFetchFailed_ErrorTruncation verifies that RecordFetchFailed caps the
+// stored error message at maxFetchErrorLen runes, never splits a multibyte rune,
+// and stores short messages verbatim.
+func TestRecordFetchFailed_ErrorTruncation(t *testing.T) {
+	service := NewResourceService(database.DB)
+
+	// A multibyte rune (3 bytes each in UTF-8) placed exactly at the cut point
+	// to prove no mid-rune split occurs.  We build a string that is
+	// maxFetchErrorLen+1 runes long with a 3-byte rune near the boundary.
+	longASCII := strings.Repeat("a", maxFetchErrorLen-2) // 998 ASCII runes
+	// Place a 3-byte rune (U+4E16, "world" in CJK) at position 999, then one
+	// more ASCII char to push the total past the cap.
+	longWithMultibyte := longASCII + "世z" // 1000 runes total — NOT over the cap
+	// Add one more character so it IS over the cap.
+	overCapMsg := longWithMultibyte + "!" // 1001 runes — must be truncated
+
+	tests := []struct {
+		name        string
+		errMsg      string
+		wantExact   string // non-empty: stored value must equal this exactly
+		wantMaxRunes bool   // if true: stored value must be <= maxFetchErrorLen runes
+		wantValidUTF8 bool  // if true: stored value must be valid UTF-8
+	}{
+		{
+			name:      "short message stored verbatim",
+			errMsg:    "fetch failed: connection refused",
+			wantExact: "fetch failed: connection refused",
+		},
+		{
+			name:          "long message is truncated to cap with multibyte rune safety",
+			errMsg:        overCapMsg,
+			wantMaxRunes:  true,
+			wantValidUTF8: true,
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			user := createTestUser(t, fmt.Sprintf("truncuser%d", i))
+			defer database.DB.Delete(&user)
+
+			input := CreateInput{
+				Name:    fmt.Sprintf("trunc-test-%d", i),
+				Type:    "pack",
+				Version: "v1.0.0",
+			}
+			res, err := service.CreateResource(input, user.ID, nil)
+			require.NoError(t, err)
+			defer database.DB.Delete(&res)
+
+			err = service.RecordFetchFailed(res.ID, "v1.0.0", tt.errMsg)
+			require.NoError(t, err)
+
+			var version models.ResourceVersion
+			err = database.DB.
+				Where("resource_id = ? AND version = ?", res.ID, "v1.0.0").
+				First(&version).Error
+			require.NoError(t, err)
+
+			stored := version.FetchError
+
+			if tt.wantExact != "" {
+				assert.Equal(t, tt.wantExact, stored, "short message must be stored verbatim")
+			}
+			if tt.wantMaxRunes {
+				runeCount := utf8.RuneCountInString(stored)
+				assert.LessOrEqual(t, runeCount, maxFetchErrorLen,
+					"stored error must not exceed maxFetchErrorLen runes; got %d", runeCount)
+			}
+			if tt.wantValidUTF8 {
+				assert.True(t, utf8.ValidString(stored),
+					"stored error must be valid UTF-8")
+			}
+			// The fetch must still be recorded as FAILED regardless of truncation.
+			assert.Equal(t, models.FetchStatusFailed, version.FetchStatus)
 		})
 	}
 }
