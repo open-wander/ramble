@@ -81,3 +81,25 @@ internal/handlers, internal/services/resource, internal/security (incl. -tags se
 - 3.2 resolved: 3.1 already leaves EmailVerified=false for new OAuth accounts.
 Also committed previously-missed SSRF test file (internal/security/ssrf_test.go) as fff20f6.
 Report: prds/verification.md.
+
+## 2026-05-31 — Completed 1.2 (US-004) and 4.1; PRD done
+
+- 1.2 (US-004) DONE — internal/services/resource/service.go: new
+  AuthorizeResourceAction(resourceID, userID, requireOwner) with org-before-personal
+  branching + ErrUnauthorized/ErrResourceNotFound sentinels + RoleOwner/RoleMember.
+  Rewired edit/version/retry/reset-webhook (member-allowed) and delete (owner-only);
+  PostNewVersion was previously UNAUTHENTICATED, now gated. Handlers use errors.Is.
+  Tests: resource_authz_test.go (24) + TestAuthorizeResourceAction (10). Review PASS
+  (minor: GetEditResource render path not centralized but at-least-as-strict).
+- 4.1 DONE — background.go fetchVersionContent (panic-recovery + error branch) now
+  call resource.NewService(database.DB).RecordFetchFailed; helper is live (single
+  source of truth, 1000-char error truncation preserved), existing tests cover real
+  path. Review PASS.
+
+All 6 tasks complete. `go build ./...` clean; `go test ./...` all packages ok.
+PRD moved active/ -> done/. All phases collapsed into TASKS-archive.md.
+
+PATTERN: authorization - central AuthorizeResourceAction with org-before-personal
+branching + sentinel errors + errors.Is in handlers; assert no side effect on deny.
+PATTERN: refactoring - consolidate duplicated inline DB status-writes into one service
+method to kill dead code and guarantee field-write parity.
