@@ -87,10 +87,12 @@ var errOAuthEmailCollision = errors.New("existing account")
 //  1. If a user row already has (provider, providerID) matching gothUser, log
 //     in as that user (token refreshed). No further lookups.
 //  2. If no row matches by (provider, providerID), check for an email
-//     collision with an existing account that has NO provider linkage yet.
-//     Reject with errOAuthEmailCollision — we cannot trust the OAuth email as
-//     a verified identity for GitHub/GitLab (goth v1.82.0 exposes no
-//     verified-email flag for either provider).
+//     collision with ANY existing account (local or already linked to a
+//     different provider). Reject with errOAuthEmailCollision — we cannot
+//     trust the OAuth email as a verified identity for GitHub/GitLab (goth
+//     v1.82.0 exposes no verified-email flag for either provider). This also
+//     prevents a generic 500 that would otherwise surface from the email
+//     uniqueIndex on Create.
 //  3. Otherwise create a brand-new user with Provider/ProviderID set.
 //
 // EmailVerified on new OAuth accounts is left as false (default). The email
@@ -116,10 +118,16 @@ func processOAuthUser(gothUser goth.User) (models.User, error) {
 		return models.User{}, fmt.Errorf("database error looking up oauth user: %w", result.Error)
 	}
 
-	// Step 2: check for an email collision with an unlinked local account.
+	// Step 2: check for an email collision with ANY existing account.
+	// At this point we already know there is no (provider, providerID) match,
+	// so any account sharing this email — whether local-only or already linked
+	// to a different provider — is a collision we must refuse. The email column
+	// has a uniqueIndex, so a Create would fail with a generic DB error anyway;
+	// this converts that ugly 500 into the existing clear errOAuthEmailCollision
+	// flash + /login redirect.
 	if gothUser.Email != "" {
 		var collision models.User
-		collResult := database.DB.Where("email = ? AND (provider IS NULL OR provider = '')", gothUser.Email).First(&collision)
+		collResult := database.DB.Where("email = ?", gothUser.Email).First(&collision)
 		if collResult.Error == nil {
 			// An existing local account owns this email. Reject silently linking
 			// without verified proof of ownership.

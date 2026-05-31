@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"testing"
@@ -88,6 +89,52 @@ func TestOAuthCallback_BrandNewUser(t *testing.T) {
 	require.NoError(t, database.DB.First(&dbUser, result.ID).Error)
 	assert.Equal(t, "github", dbUser.Provider)
 	assert.Equal(t, "gh-new-999", dbUser.ProviderID)
+}
+
+// TestOAuthCallback_CrossProviderCollisionRejected verifies that when an account
+// already linked to a DIFFERENT provider (e.g. github) exists with the same email,
+// a login attempt via a second provider (e.g. gitlab) returns errOAuthEmailCollision,
+// leaves the existing row untouched, and does NOT create a new row.
+func TestOAuthCallback_CrossProviderCollisionRejected(t *testing.T) {
+	defer cleanupTestData(t)
+
+	// Seed an existing account already linked to github.
+	existing := models.User{
+		Username:      "ghuser-xprov",
+		Email:         "xprov@test.com",
+		Name:          "GH User",
+		Provider:      "github",
+		ProviderID:    "gh-1",
+		EmailVerified: true,
+	}
+	require.NoError(t, database.DB.Create(&existing).Error)
+
+	// Attempt login via gitlab with the same email but a different provider+ID.
+	gothUser := goth.User{
+		Provider:    "gitlab",
+		UserID:      "gl-9",
+		Email:       "xprov@test.com",
+		Name:        "GL User",
+		NickName:    "gluser",
+		AccessToken: "tok",
+	}
+
+	_, err := processOAuthUser(gothUser)
+
+	// Must return the collision error — not a generic DB error and not nil.
+	require.Error(t, err, "cross-provider email collision should produce an error")
+	assert.True(t, errors.Is(err, errOAuthEmailCollision), "error must wrap errOAuthEmailCollision, got: %v", err)
+
+	// The existing github row must be completely unchanged.
+	var reloaded models.User
+	require.NoError(t, database.DB.First(&reloaded, existing.ID).Error)
+	assert.Equal(t, "github", reloaded.Provider, "Provider must remain github after collision rejection")
+	assert.Equal(t, "gh-1", reloaded.ProviderID, "ProviderID must remain gh-1 after collision rejection")
+
+	// No new row should have been created — still exactly one row with this email.
+	var count int64
+	database.DB.Model(&models.User{}).Where("email = ?", "xprov@test.com").Count(&count)
+	assert.Equal(t, int64(1), count, "exactly one row with this email should exist after rejection")
 }
 
 // TestOAuthCallback_EmailCollisionRejected verifies that when a local account
