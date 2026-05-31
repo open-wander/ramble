@@ -125,3 +125,14 @@ its earlier 11 commits sign-off-rebased; the new commits were created with `git 
 
 PATTERN: norman-parallelism - do not run workers in parallel when a "handler-only" change
 actually requires a matching service-layer change in a file another worker owns; sequence them.
+
+## 2026-05-31 — Correction: 5.2 was not actually applied in first pass
+
+The first Phase 5 pass committed dad17f9 with a message claiming the ToggleStar
+typed-error conversion, but the Edit attempts had failed (wrong match strings) so 5.2
+was never applied — the Opus batch review correctly REJECTED it. Re-applied properly in
+commit 8b9b8aa: ToggleStar returns ErrResourceNotFound, handler uses errors.Is, and the
+API-limit test was de-cruft'd (removed dead 10 MiB padding alloc + unused table, added a
+real small-body assertion). build + full test green; gofmt-clean; DCO signed.
+LESSON: never trust a worker's DONE/commit-message claim over the actual diff — the
+adversarial code review is what caught this. Verify edits landed before committing.
