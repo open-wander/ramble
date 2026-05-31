@@ -21,7 +21,7 @@ import (
 // @Router /packs [get]
 func GetPacks(c *fiber.Ctx) error {
 	var results []models.NomadResource
-	
+
 	query := c.Query("q")
 	tag := c.Query("tag")
 	sort := c.Query("sort", "latest")
@@ -89,7 +89,7 @@ func GetPacks(c *fiber.Ctx) error {
 // @Router /jobs [get]
 func GetJobs(c *fiber.Ctx) error {
 	var results []models.NomadResource
-	
+
 	query := c.Query("q")
 	tag := c.Query("tag")
 	sort := c.Query("sort", "latest")
@@ -143,4 +143,3 @@ func GetJobs(c *fiber.Ctx) error {
 		"PopularTags": GetPopularTags(),
 	}), "layouts/main")
 }
-	

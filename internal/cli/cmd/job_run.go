@@ -14,9 +14,9 @@ import (
 )
 
 var (
-	jobRunNomadAddr  string
-	jobRunRegistry   string
-	jobRunDryRun     bool
+	jobRunNomadAddr string
+	jobRunRegistry  string
+	jobRunDryRun    bool
 )
 
 var jobRunCmd = &cobra.Command{

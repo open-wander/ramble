@@ -15,11 +15,11 @@ import (
 )
 
 var (
-	runRegistry string
-	runVars     []string
-	runVarFile  string
-	runDryRun   bool
-	runOutput   string
+	runRegistry  string
+	runVars      []string
+	runVarFile   string
+	runDryRun    bool
+	runOutput    string
 	runNomadAddr string
 )
 

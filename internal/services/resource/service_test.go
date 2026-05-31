@@ -356,91 +356,91 @@ func TestAuthorizeResourceAction(t *testing.T) {
 	defer database.DB.Delete(personalRes)
 
 	tests := []struct {
-		name        string
-		resourceID  uint
-		userID      uint
+		name         string
+		resourceID   uint
+		userID       uint
 		requireOwner bool
-		wantErr     error
+		wantErr      error
 	}{
 		// Org resource: member + requireOwner=false -> allowed
 		{
-			name:        "org member edit allowed",
-			resourceID:  orgRes.ID,
-			userID:      member.ID,
+			name:         "org member edit allowed",
+			resourceID:   orgRes.ID,
+			userID:       member.ID,
 			requireOwner: false,
-			wantErr:     nil,
+			wantErr:      nil,
 		},
 		// Org resource: org owner + requireOwner=false -> allowed
 		{
-			name:        "org owner edit allowed",
-			resourceID:  orgRes.ID,
-			userID:      owner.ID,
+			name:         "org owner edit allowed",
+			resourceID:   orgRes.ID,
+			userID:       owner.ID,
 			requireOwner: false,
-			wantErr:     nil,
+			wantErr:      nil,
 		},
 		// Org resource: org owner + requireOwner=true -> allowed
 		{
-			name:        "org owner delete allowed",
-			resourceID:  orgRes.ID,
-			userID:      owner.ID,
+			name:         "org owner delete allowed",
+			resourceID:   orgRes.ID,
+			userID:       owner.ID,
 			requireOwner: true,
-			wantErr:     nil,
+			wantErr:      nil,
 		},
 		// Org resource: member + requireOwner=true -> ErrUnauthorized
 		{
-			name:        "org member delete blocked",
-			resourceID:  orgRes.ID,
-			userID:      member.ID,
+			name:         "org member delete blocked",
+			resourceID:   orgRes.ID,
+			userID:       member.ID,
 			requireOwner: true,
-			wantErr:     ErrUnauthorized,
+			wantErr:      ErrUnauthorized,
 		},
 		// Org resource: non-member + requireOwner=false -> ErrUnauthorized
 		{
-			name:        "org non-member edit blocked",
-			resourceID:  orgRes.ID,
-			userID:      nonMember.ID,
+			name:         "org non-member edit blocked",
+			resourceID:   orgRes.ID,
+			userID:       nonMember.ID,
 			requireOwner: false,
-			wantErr:     ErrUnauthorized,
+			wantErr:      ErrUnauthorized,
 		},
 		// Org resource: creator who is NOT a member -> ErrUnauthorized (org branch wins)
 		{
-			name:        "org resource creator-not-member blocked",
-			resourceID:  orgRes.ID,
-			userID:      creator.ID,
+			name:         "org resource creator-not-member blocked",
+			resourceID:   orgRes.ID,
+			userID:       creator.ID,
 			requireOwner: false,
-			wantErr:     ErrUnauthorized,
+			wantErr:      ErrUnauthorized,
 		},
 		// Personal resource: owning user + requireOwner=false -> allowed
 		{
-			name:        "personal owner edit allowed",
-			resourceID:  personalRes.ID,
-			userID:      owner.ID,
+			name:         "personal owner edit allowed",
+			resourceID:   personalRes.ID,
+			userID:       owner.ID,
 			requireOwner: false,
-			wantErr:     nil,
+			wantErr:      nil,
 		},
 		// Personal resource: owning user + requireOwner=true -> allowed (owner always has full control)
 		{
-			name:        "personal owner delete allowed",
-			resourceID:  personalRes.ID,
-			userID:      owner.ID,
+			name:         "personal owner delete allowed",
+			resourceID:   personalRes.ID,
+			userID:       owner.ID,
 			requireOwner: true,
-			wantErr:     nil,
+			wantErr:      nil,
 		},
 		// Personal resource: other user -> ErrUnauthorized
 		{
-			name:        "personal non-owner blocked",
-			resourceID:  personalRes.ID,
-			userID:      member.ID,
+			name:         "personal non-owner blocked",
+			resourceID:   personalRes.ID,
+			userID:       member.ID,
 			requireOwner: false,
-			wantErr:     ErrUnauthorized,
+			wantErr:      ErrUnauthorized,
 		},
 		// Non-existent resource -> ErrResourceNotFound
 		{
-			name:        "nonexistent resource",
-			resourceID:  999999999,
-			userID:      owner.ID,
+			name:         "nonexistent resource",
+			resourceID:   999999999,
+			userID:       owner.ID,
 			requireOwner: false,
-			wantErr:     ErrResourceNotFound,
+			wantErr:      ErrResourceNotFound,
 		},
 	}
 
@@ -474,11 +474,11 @@ func TestRecordFetchFailed_ErrorTruncation(t *testing.T) {
 	overCapMsg := longWithMultibyte + "!" // 1001 runes — must be truncated
 
 	tests := []struct {
-		name        string
-		errMsg      string
-		wantExact   string // non-empty: stored value must equal this exactly
-		wantMaxRunes bool   // if true: stored value must be <= maxFetchErrorLen runes
-		wantValidUTF8 bool  // if true: stored value must be valid UTF-8
+		name          string
+		errMsg        string
+		wantExact     string // non-empty: stored value must equal this exactly
+		wantMaxRunes  bool   // if true: stored value must be <= maxFetchErrorLen runes
+		wantValidUTF8 bool   // if true: stored value must be valid UTF-8
 	}{
 		{
 			name:      "short message stored verbatim",

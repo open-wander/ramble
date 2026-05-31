@@ -20,7 +20,7 @@ func GetDevelopmentPacks(c *fiber.Ctx) error {
 		// Fallback for tests running in internal/handlers
 		packsDir = "../../examples"
 	}
-	
+
 	entries, err := os.ReadDir(packsDir)
 	if err != nil {
 		if os.IsNotExist(err) {

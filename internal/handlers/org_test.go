@@ -621,4 +621,3 @@ func TestRequireOrgOwner_OrgNotFound(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 404, resp.StatusCode)
 }
-

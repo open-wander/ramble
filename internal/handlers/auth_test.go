@@ -674,7 +674,7 @@ func TestRequireVerifiedEmail_OAuthUser(t *testing.T) {
 		Username:      "oauthtestuser",
 		Email:         "oauth@test.com",
 		Name:          "OAuth Test",
-		EmailVerified: false, // Even if false
+		EmailVerified: false,    // Even if false
 		Provider:      "github", // But has OAuth provider
 	}
 	database.DB.Create(&user)

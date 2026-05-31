@@ -268,4 +268,3 @@ variable "simple" {
 		})
 	}
 }
-
