@@ -103,3 +103,25 @@ PATTERN: authorization - central AuthorizeResourceAction with org-before-persona
 branching + sentinel errors + errors.Is in handlers; assert no side effect on deny.
 PATTERN: refactoring - consolidate duplicated inline DB status-writes into one service
 method to kill dead code and guarantee field-write parity.
+
+## 2026-05-31 — Phase 5 review follow-ups (5.1-5.5)
+
+Implemented the five deferred review follow-ups. 5.1/5.3/5.4 ran as parallel workers;
+5.2 correctly self-blocked (needed a two-file fix: service ToggleStar still used a plain
+fmt.Errorf, so converting only the handler would break 404 detection) and was completed
+after 5.1 freed up service.go. 5.5 (gofmt) ran last so new code is included.
+
+`go build ./...` clean; `go test ./...` exit 0 (whole suite).
+
+- 5.1 d1e3e87 - RecordFetchFailed truncates fetch_error to 1000 runes (UTF-8 safe).
+- 5.2 d1e3e87 - ToggleStar returns ErrResourceNotFound; handler uses errors.Is.
+- 5.3 d195d9c - 10 MiB io.LimitReader on all 6 GitHub/GitLab JSON API decoders.
+- 5.4 d2d3da3 - OAuth email-collision probe broadened to any existing email (no more
+  generic 500 on cross-provider same-email); provider+id login path still runs first.
+- 5.5 b3f8b1d - gofmt -w across internal/ and cmd/ (23 files), formatting only.
+
+All Phase 5 commits carry DCO Signed-off-by (per [[dco-signoff-required]]). Branch had
+its earlier 11 commits sign-off-rebased; the new commits were created with `git commit -s`.
+
+PATTERN: norman-parallelism - do not run workers in parallel when a "handler-only" change
+actually requires a matching service-layer change in a file another worker owns; sequence them.
