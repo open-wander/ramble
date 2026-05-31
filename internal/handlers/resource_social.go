@@ -1,10 +1,12 @@
 package handlers
 
 import (
-	"rmbl/internal/services/resource"
+	"errors"
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
+
+	"rmbl/internal/services/resource"
 )
 
 // ToggleStar godoc
@@ -31,7 +33,7 @@ func ToggleStar(c *fiber.Ctx) error {
 	// Toggle star via service
 	isStarred, starCount, err := resource.Service.ToggleStar(resourceID, userID)
 	if err != nil {
-		if err.Error() == "resource not found" {
+		if errors.Is(err, resource.ErrResourceNotFound) {
 			return c.Status(404).SendString("Resource not found")
 		}
 		return c.Status(fiber.StatusInternalServerError).SendString("Failed to update star status")
