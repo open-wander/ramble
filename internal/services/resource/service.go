@@ -291,7 +291,7 @@ func (s *ResourceService) DeleteResource(id uint, userID uint) error {
 func (s *ResourceService) ToggleStar(resourceID, userID uint) (isStarred bool, starCount int64, err error) {
 	var resource models.NomadResource
 	if err := s.db.Preload("StarredBy").First(&resource, resourceID).Error; err != nil {
-		return false, 0, fmt.Errorf("resource not found")
+		return false, 0, ErrResourceNotFound
 	}
 
 	// Check if already starred
