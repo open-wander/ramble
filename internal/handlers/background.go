@@ -12,6 +12,7 @@ import (
 	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"rmbl/internal/services/logger"
+	"rmbl/internal/services/resource"
 )
 
 // isPermanentError determines if an error should stop retries immediately
@@ -118,14 +119,9 @@ func fetchVersionContent(ctx context.Context, resID uint, versionStr, repoURL, r
 				Msg("panic during version fetch")
 
 			// Persist panic as failure
-			now := time.Now()
-			database.DB.Model(&models.ResourceVersion{}).
-				Where("resource_id = ? AND version = ?", resID, versionStr).
-				Updates(map[string]interface{}{
-					"fetch_status":       models.FetchStatusFailed,
-					"fetch_error":        fmt.Sprintf("panic: %v", r),
-					"fetch_completed_at": now,
-				})
+			if err := resource.Service.RecordFetchFailed(resID, versionStr, fmt.Sprintf("panic: %v", r)); err != nil {
+				log.Error().Err(err).Msg("failed to record panic as fetch failure")
+			}
 		}
 	}()
 
@@ -205,14 +201,9 @@ func fetchVersionContent(ctx context.Context, resID uint, versionStr, repoURL, r
 			Dur("duration", duration).
 			Msg("version fetch failed")
 
-		now := time.Now()
-		database.DB.Model(&models.ResourceVersion{}).
-			Where("resource_id = ? AND version = ?", resID, versionStr).
-			Updates(map[string]interface{}{
-				"fetch_status":       models.FetchStatusFailed,
-				"fetch_error":        err.Error(),
-				"fetch_completed_at": now,
-			})
+		if recErr := resource.Service.RecordFetchFailed(resID, versionStr, err.Error()); recErr != nil {
+			log.Error().Err(recErr).Msg("failed to record fetch failure")
+		}
 		return
 	}
 

@@ -41,6 +41,10 @@ type ResourceServicer interface {
 	// given resource. Pass requireOwner=true for destructive actions (delete).
 	// Returns ErrResourceNotFound or ErrUnauthorized as appropriate.
 	AuthorizeResourceAction(resourceID, userID uint, requireOwner bool) error
+	// RecordFetchFailed marks a resource version fetch as FAILED with the supplied
+	// error message. It updates only FetchStatus, FetchError, and FetchCompletedAt;
+	// it never clears content columns.
+	RecordFetchFailed(resourceID uint, version, errMsg string) error
 }
 
 // ResourceService implements ResourceServicer
