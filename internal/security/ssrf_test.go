@@ -294,6 +294,45 @@ func TestSSRFProtection_RedirectLimits(t *testing.T) {
 	})
 }
 
+// TestIsHostAllowed_ParentDomainBypass verifies that parent domains, TLDs,
+// and lookalike domains are rejected when only specific hosts are allowed.
+// AllowedHosts = ["github.com", "raw.githubusercontent.com"]
+func TestIsHostAllowed_ParentDomainBypass(t *testing.T) {
+	allowed := []string{"github.com", "raw.githubusercontent.com"}
+
+	tests := []struct {
+		name      string
+		host      string
+		wantAllow bool
+	}{
+		// --- permitted ---
+		{name: "exact github.com", host: "github.com", wantAllow: true},
+		{name: "subdomain api.github.com", host: "api.github.com", wantAllow: true},
+		{name: "exact raw.githubusercontent.com", host: "raw.githubusercontent.com", wantAllow: true},
+		// --- rejected: parent-domain / TLD bypass (core regression) ---
+		{name: "parent githubusercontent.com", host: "githubusercontent.com", wantAllow: false},
+		{name: "TLD com", host: "com", wantAllow: false},
+		// --- rejected: unrelated domains ---
+		{name: "notgithub.com", host: "notgithub.com", wantAllow: false},
+		{name: "evil.com", host: "evil.com", wantAllow: false},
+		// --- rejected: subdomain-of-attacker wrapping allowed suffix ---
+		{name: "github.com.evil.com", host: "github.com.evil.com", wantAllow: false},
+		// --- edge cases ---
+		{name: "uppercase GitHub.COM normalised", host: "GitHub.COM", wantAllow: true},
+		{name: "trailing dot github.com.", host: "github.com.", wantAllow: true},
+		{name: "empty host", host: "", wantAllow: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isHostAllowed(tt.host, allowed)
+			if got != tt.wantAllow {
+				t.Errorf("isHostAllowed(%q, %v) = %v, want %v", tt.host, allowed, got, tt.wantAllow)
+			}
+		})
+	}
+}
+
 // TestDefaultAllowedHosts tests that default allowed hosts are returned correctly
 func TestDefaultAllowedHosts(t *testing.T) {
 	hosts := DefaultAllowedHosts()
