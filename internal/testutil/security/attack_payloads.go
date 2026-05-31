@@ -71,7 +71,10 @@ var WebhookAttacks = []AttackCase{
 	{
 		Name:        "ReplayExpiredTimestamp",
 		Description: "Valid signature but timestamp more than 5 minutes old - replay attack",
-		Signature:   func() string { ts := GenerateExpiredTimestamp(); return ComputeValidSignature([]byte("test-body"), ts, "test-secret") }(),
+		Signature: func() string {
+			ts := GenerateExpiredTimestamp()
+			return ComputeValidSignature([]byte("test-body"), ts, "test-secret")
+		}(),
 		Timestamp:   GenerateExpiredTimestamp(),
 		Body:        []byte("test-body"),
 		ExpectValid: false,
@@ -79,7 +82,10 @@ var WebhookAttacks = []AttackCase{
 	{
 		Name:        "ReplayFutureTimestamp",
 		Description: "Valid signature but timestamp more than 5 minutes in future - clock skew attack",
-		Signature:   func() string { ts := GenerateFutureTimestamp(); return ComputeValidSignature([]byte("test-body"), ts, "test-secret") }(),
+		Signature: func() string {
+			ts := GenerateFutureTimestamp()
+			return ComputeValidSignature([]byte("test-body"), ts, "test-secret")
+		}(),
 		Timestamp:   GenerateFutureTimestamp(),
 		Body:        []byte("test-body"),
 		ExpectValid: false,

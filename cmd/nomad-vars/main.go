@@ -35,10 +35,10 @@ type Config struct {
 		FromAddress  string `yaml:"fromAddress"`
 	} `yaml:"email"`
 	OAuth struct {
-		GithubKey       string `yaml:"githubKey"`
-		GithubSecret    string `yaml:"githubSecret"`
-		GitlabKey       string `yaml:"gitlabKey"`
-		GitlabSecret    string `yaml:"gitlabSecret"`
+		GithubKey    string `yaml:"githubKey"`
+		GithubSecret string `yaml:"githubSecret"`
+		GitlabKey    string `yaml:"gitlabKey"`
+		GitlabSecret string `yaml:"gitlabSecret"`
 	} `yaml:"oauth"`
 }
 
@@ -56,19 +56,19 @@ func main() {
 
 	// Prepare arguments for nomad var put
 	args := []string{"var", "put", "nomad/jobs/rmbl"}
-	
+
 	// Database
 	args = append(args, fmt.Sprintf("db_name=%s", cfg.Database.DBName))
 	args = append(args, fmt.Sprintf("db_user=%s", cfg.Database.Username))
 	args = append(args, fmt.Sprintf("db_password=%s", cfg.Database.Password))
 	args = append(args, fmt.Sprintf("db_host=%s", cfg.Database.Host))
 	args = append(args, fmt.Sprintf("db_port=%s", cfg.Database.Port))
-	
+
 	// Server
 	args = append(args, fmt.Sprintf("session_secret=%s", cfg.Server.SessionSecret))
 	args = append(args, fmt.Sprintf("base_url=%s", cfg.Server.BaseURL))
 	args = append(args, fmt.Sprintf("auto_seed=%s", cfg.Server.AutoSeed))
-	
+
 	// Seed
 	args = append(args, fmt.Sprintf("initial_user_username=%s", cfg.Seed.Username))
 	args = append(args, fmt.Sprintf("initial_user_email=%s", cfg.Seed.Email))
@@ -90,7 +90,7 @@ func main() {
 	cmd := exec.Command("nomad", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	
+
 	fmt.Printf("Executing: nomad %v (hiding values for security)\n", args[0:3])
 	if err := cmd.Run(); err != nil {
 		log.Fatalf("Failed to set nomad vars: %v", err)

@@ -14,58 +14,58 @@ func GetCreateOrg(c *fiber.Ctx) error {
 }
 
 func PostCreateOrg(c *fiber.Ctx) error {
-    sess, _ := Store.Get(c)
-    userID := sess.Get("user_id").(uint)
+	sess, _ := Store.Get(c)
+	userID := sess.Get("user_id").(uint)
 
-    type OrgInput struct {
-        Name        string `form:"name"`
-        Description string `form:"description"`
-    }
+	type OrgInput struct {
+		Name        string `form:"name"`
+		Description string `form:"description"`
+	}
 
-    var input OrgInput
-    if err := c.BodyParser(&input); err != nil {
-        return c.Status(400).SendString("Invalid input")
-    }
+	var input OrgInput
+	if err := c.BodyParser(&input); err != nil {
+		return c.Status(400).SendString("Invalid input")
+	}
 
-    orgName := strings.TrimSpace(input.Name)
-    if orgName == "" {
-        return c.Status(400).SendString("Organization name is required")
-    }
+	orgName := strings.TrimSpace(input.Name)
+	if orgName == "" {
+		return c.Status(400).SendString("Organization name is required")
+	}
 
-    // Check if name is taken by a User or another Org
-    var count int64
-    database.DB.Model(&models.User{}).Where("username ILIKE ?", orgName).Count(&count)
-    if count > 0 {
-        return c.Status(400).SendString("This name is already taken by a user")
-    }
-    database.DB.Model(&models.Organization{}).Where("name ILIKE ?", orgName).Count(&count)
-    if count > 0 {
-        return c.Status(400).SendString("This organization name is already taken")
-    }
+	// Check if name is taken by a User or another Org
+	var count int64
+	database.DB.Model(&models.User{}).Where("username ILIKE ?", orgName).Count(&count)
+	if count > 0 {
+		return c.Status(400).SendString("This name is already taken by a user")
+	}
+	database.DB.Model(&models.Organization{}).Where("name ILIKE ?", orgName).Count(&count)
+	if count > 0 {
+		return c.Status(400).SendString("This organization name is already taken")
+	}
 
-    // Create Organization
-    org := models.Organization{
-        Name:        orgName,
-        Description: input.Description,
-    }
+	// Create Organization
+	org := models.Organization{
+		Name:        orgName,
+		Description: input.Description,
+	}
 
-    if err := database.DB.Create(&org).Error; err != nil {
-        return c.Status(500).SendString("Could not create organization")
-    }
+	if err := database.DB.Create(&org).Error; err != nil {
+		return c.Status(500).SendString("Could not create organization")
+	}
 
-    // Create Membership as Owner
-    membership := models.Membership{
-        UserID:         userID,
-        OrganizationID: org.ID,
-        Role:           "owner",
-    }
-    database.DB.Create(&membership)
+	// Create Membership as Owner
+	membership := models.Membership{
+		UserID:         userID,
+		OrganizationID: org.ID,
+		Role:           "owner",
+	}
+	database.DB.Create(&membership)
 
-    AuditLog(c, "org.create", "organization", org.ID, org.Name, nil)
+	AuditLog(c, "org.create", "organization", org.ID, org.Name, nil)
 
-    SetFlash(c, "success", "Organization '"+org.Name+"' created successfully!")
-    c.Set("HX-Redirect", "/"+org.Name)
-    return c.SendStatus(200)
+	SetFlash(c, "success", "Organization '"+org.Name+"' created successfully!")
+	c.Set("HX-Redirect", "/"+org.Name)
+	return c.SendStatus(200)
 }
 
 // Middleware to check if user is an owner of the organization

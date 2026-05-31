@@ -47,9 +47,9 @@ func TestSSRF_BypassAttempts(t *testing.T) {
 				// Verify error indicates blocking
 				errStr := strings.ToLower(err.Error())
 				if !strings.Contains(errStr, "ssrf") &&
-				   !strings.Contains(errStr, "blocked") &&
-				   !strings.Contains(errStr, "disallowed") &&
-				   !strings.Contains(errStr, "allowlist") {
+					!strings.Contains(errStr, "blocked") &&
+					!strings.Contains(errStr, "disallowed") &&
+					!strings.Contains(errStr, "allowlist") {
 					t.Logf("Note: Error type '%v' - may indicate network-level block", err)
 				}
 			}
@@ -108,9 +108,9 @@ func TestSSRF_RedirectChainAttack(t *testing.T) {
 
 	errStr := strings.ToLower(err.Error())
 	if !strings.Contains(errStr, "disallowed") &&
-	   !strings.Contains(errStr, "allowlist") &&
-	   !strings.Contains(errStr, "blocked") &&
-	   !strings.Contains(errStr, "ssrf") {
+		!strings.Contains(errStr, "allowlist") &&
+		!strings.Contains(errStr, "blocked") &&
+		!strings.Contains(errStr, "ssrf") {
 		t.Errorf("expected disallowed/blocked error, got: %v", err)
 	}
 }

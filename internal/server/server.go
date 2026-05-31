@@ -7,11 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"rmbl/internal/database"
-	"rmbl/internal/handlers"
-	"rmbl/internal/models"
-	"rmbl/internal/services/logger"
-	resourcesvc "rmbl/internal/services/resource"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/csrf"
 	"github.com/gofiber/fiber/v2/middleware/helmet"
@@ -21,6 +16,11 @@ import (
 	"github.com/gofiber/swagger"
 	"github.com/gofiber/template/html/v2"
 	_ "rmbl/api-docs"
+	"rmbl/internal/database"
+	"rmbl/internal/handlers"
+	"rmbl/internal/models"
+	"rmbl/internal/services/logger"
+	resourcesvc "rmbl/internal/services/resource"
 )
 
 // Config holds server configuration options

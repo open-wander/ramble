@@ -103,6 +103,36 @@ func isAllowedContentType(contentType string) bool {
 	return false
 }
 
+// MaxRemoteFileBytes is the maximum number of bytes accepted from any remote
+// file fetch (README, LICENSE, metadata, variables, job files). Downloads
+// exceeding this limit are rejected with an error; no partial content is
+// returned or stored.
+const MaxRemoteFileBytes = 1 << 20 // 1 MiB
+
+// maxAPIResponseBytes caps the body read from any GitHub/GitLab JSON API
+// response before it is passed to json.Decoder. 10 MiB is generous enough
+// for large tag lists (thousands of semver tags) and full directory-tree
+// listings from large monorepos, while still bounding worst-case memory
+// consumption from a malicious or runaway API endpoint.
+const maxAPIResponseBytes = 10 << 20 // 10 MiB
+
+// readLimited reads up to MaxRemoteFileBytes from r. It uses io.LimitReader
+// with a capacity of MaxRemoteFileBytes+1 so that a body of exactly
+// MaxRemoteFileBytes is accepted (len == Max) while a body of MaxRemoteFileBytes+1
+// bytes triggers the explicit length check and is rejected (len == Max+1).
+// The caller is responsible for closing the underlying reader.
+func readLimited(r io.Reader) (string, error) {
+	limited := io.LimitReader(r, MaxRemoteFileBytes+1)
+	body, err := io.ReadAll(limited)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+	if len(body) > MaxRemoteFileBytes {
+		return "", fmt.Errorf("remote file blocked: exceeds maximum allowed size of %d bytes", MaxRemoteFileBytes)
+	}
+	return string(body), nil
+}
+
 func downloadFile(repoURL string, fileName string) (string, error) {
 	if repoURL == "" || fileName == "" {
 		return "", nil
@@ -133,11 +163,11 @@ func downloadFile(repoURL string, fileName string) (string, error) {
 			}
 			defer resp.Body.Close()
 			if resp.StatusCode == 200 {
-				body, err := io.ReadAll(resp.Body)
+				content, err := readLimited(resp.Body)
 				if err != nil {
-					continue
+					return "", err
 				}
-				return string(body), nil
+				return content, nil
 			}
 		}
 	}
@@ -160,11 +190,11 @@ func downloadFile(repoURL string, fileName string) (string, error) {
 			}
 			defer resp.Body.Close()
 			if resp.StatusCode == 200 {
-				body, err := io.ReadAll(resp.Body)
+				content, err := readLimited(resp.Body)
 				if err != nil {
-					continue
+					return "", err
 				}
-				return string(body), nil
+				return content, nil
 			}
 		}
 	}
@@ -226,7 +256,7 @@ func fetchGitHubMetadata(repoURL string, token string) (*GitHubRepo, error) {
 	}
 
 	var repo GitHubRepo
-	if err := json.NewDecoder(resp.Body).Decode(&repo); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxAPIResponseBytes)).Decode(&repo); err != nil {
 		return nil, err
 	}
 	return &repo, nil
@@ -273,7 +303,7 @@ func fetchGitHubLatestTag(repoURL string, token string) (string, error) {
 		Name string `json:"name"`
 	}
 	var tags []GitHubTag
-	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxAPIResponseBytes)).Decode(&tags); err != nil {
 		return "", err
 	}
 	if len(tags) == 0 {
@@ -325,7 +355,7 @@ func fetchGitHubJobFile(repoURL string, token string) (string, error) {
 		Type string `json:"type"`
 	}
 	var contents []GitHubContent
-	if err := json.NewDecoder(resp.Body).Decode(&contents); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxAPIResponseBytes)).Decode(&contents); err != nil {
 		return "", err
 	}
 
@@ -374,7 +404,7 @@ func fetchGitLabMetadata(repoURL string, token string) (*GitLabProject, error) {
 	}
 
 	var project GitLabProject
-	if err := json.NewDecoder(resp.Body).Decode(&project); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxAPIResponseBytes)).Decode(&project); err != nil {
 		return nil, err
 	}
 	return &project, nil
@@ -420,7 +450,7 @@ func fetchGitLabLatestTag(repoURL string, token string) (string, error) {
 		Name string `json:"name"`
 	}
 	var tags []GitLabTag
-	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxAPIResponseBytes)).Decode(&tags); err != nil {
 		return "", err
 	}
 	if len(tags) == 0 {
@@ -470,7 +500,7 @@ func fetchGitLabJobFile(repoURL string, token string) (string, error) {
 		Type string `json:"type"`
 	}
 	var tree []GitLabTreeItem
-	if err := json.NewDecoder(resp.Body).Decode(&tree); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxAPIResponseBytes)).Decode(&tree); err != nil {
 		return "", err
 	}
 

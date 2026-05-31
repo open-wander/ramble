@@ -3,15 +3,49 @@ package resource
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"gorm.io/gorm"
 	"rmbl/internal/models"
 )
 
 var tagRegex = regexp.MustCompile(`^[a-z0-9-]+$`)
+
+// Sentinel errors for authorization checks.
+var (
+	ErrUnauthorized     = errors.New("unauthorized")
+	ErrResourceNotFound = errors.New("resource not found")
+)
+
+// Role constants matching models.Membership.Role values.
+const (
+	RoleOwner  = "owner"
+	RoleMember = "member"
+)
+
+// maxFetchErrorLen is the maximum number of runes stored in the fetch_error
+// column. The column type is text (unbounded), so we cap here to prevent
+// runaway driver errors or panic strings from bloating the database.
+const maxFetchErrorLen = 1000
+
+// truncateFetchError caps msg to maxFetchErrorLen runes. When truncation
+// occurs a short marker is appended; the total length is guaranteed to be
+// <= maxFetchErrorLen runes and the result is always valid UTF-8.
+func truncateFetchError(msg string) string {
+	const marker = " ...(truncated)"
+	if utf8.RuneCountInString(msg) <= maxFetchErrorLen {
+		return msg
+	}
+	// Leave room for the marker.
+	keep := maxFetchErrorLen - utf8.RuneCountInString(marker)
+	runes := []rune(msg)
+	return string(runes[:keep]) + marker
+}
 
 // ResourceServicer defines business logic operations for resources
 type ResourceServicer interface {
@@ -23,6 +57,14 @@ type ResourceServicer interface {
 	ValidateOrgMembership(userID, orgID uint) (bool, error)
 	GenerateWebhookSecret() (string, error)
 	ResetWebhookSecret(resourceID, userID uint) error
+	// AuthorizeResourceAction checks whether userID may perform an action on the
+	// given resource. Pass requireOwner=true for destructive actions (delete).
+	// Returns ErrResourceNotFound or ErrUnauthorized as appropriate.
+	AuthorizeResourceAction(resourceID, userID uint, requireOwner bool) error
+	// RecordFetchFailed marks a resource version fetch as FAILED with the supplied
+	// error message. It updates only FetchStatus, FetchError, and FetchCompletedAt;
+	// it never clears content columns.
+	RecordFetchFailed(resourceID uint, version, errMsg string) error
 }
 
 // ResourceService implements ResourceServicer
@@ -115,17 +157,17 @@ func (s *ResourceService) CreateResource(input CreateInput, userID uint, orgID *
 
 	// Create resource
 	resource := models.NomadResource{
-		Name:          input.Name,
-		Type:          models.ResourceType(input.Type),
-		Description:   input.Description,
-		License:       license,
-		RepositoryURL: input.RepositoryURL,
-		FilePath:      input.FilePath,
-		WebhookSecret: secret,
-		UserID:        userID,
+		Name:           input.Name,
+		Type:           models.ResourceType(input.Type),
+		Description:    input.Description,
+		License:        license,
+		RepositoryURL:  input.RepositoryURL,
+		FilePath:       input.FilePath,
+		WebhookSecret:  secret,
+		UserID:         userID,
 		OrganizationID: orgID,
-		Tags:          tags,
-		Versions:      []models.ResourceVersion{{Version: input.Version}},
+		Tags:           tags,
+		Versions:       []models.ResourceVersion{{Version: input.Version}},
 	}
 
 	if err := s.db.Create(&resource).Error; err != nil {
@@ -137,18 +179,14 @@ func (s *ResourceService) CreateResource(input CreateInput, userID uint, orgID *
 
 // UpdateResource updates an existing resource with authorization checks
 func (s *ResourceService) UpdateResource(id uint, input UpdateInput, userID uint) error {
-	var resource models.NomadResource
-	if err := s.db.First(&resource, id).Error; err != nil {
-		return fmt.Errorf("resource not found")
-	}
-
-	// Validate ownership (resource owner or org member)
-	isAllowed, err := s.ValidateOwnership(id, userID)
-	if err != nil {
+	// Authorize first (returns ErrResourceNotFound or ErrUnauthorized as appropriate)
+	if err := s.AuthorizeResourceAction(id, userID, false); err != nil {
 		return err
 	}
-	if !isAllowed {
-		return fmt.Errorf("unauthorized")
+
+	var resource models.NomadResource
+	if err := s.db.First(&resource, id).Error; err != nil {
+		return ErrResourceNotFound
 	}
 
 	// Parse new owner if transferring
@@ -228,28 +266,18 @@ func (s *ResourceService) UpdateResource(id uint, input UpdateInput, userID uint
 	return nil
 }
 
-// DeleteResource deletes a resource after authorization check
+// DeleteResource deletes a resource after authorization check.
+// For org-owned resources, only the org owner may delete (requireOwner=true).
+// For personal resources, only the owning user may delete.
 func (s *ResourceService) DeleteResource(id uint, userID uint) error {
+	if err := s.AuthorizeResourceAction(id, userID, true); err != nil {
+		return err
+	}
+
 	var resource models.NomadResource
 	if err := s.db.First(&resource, id).Error; err != nil {
-		return fmt.Errorf("resource not found")
-	}
-
-	// Check authorization: user owns resource OR user is organization owner
-	var isAuthorized bool
-	if resource.OrganizationID != nil {
-		// Resource belongs to an organization - check if user is owner
-		var membership models.Membership
-		if err := s.db.Where("user_id = ? AND organization_id = ? AND role = ?", userID, *resource.OrganizationID, "owner").First(&membership).Error; err == nil {
-			isAuthorized = true
-		}
-	} else {
-		// Resource belongs to a user - check if it's the current user
-		isAuthorized = resource.UserID == userID
-	}
-
-	if !isAuthorized {
-		return fmt.Errorf("unauthorized")
+		// AuthorizeResourceAction already loaded the resource; this is a safety net.
+		return ErrResourceNotFound
 	}
 
 	if err := s.db.Delete(&resource).Error; err != nil {
@@ -263,7 +291,7 @@ func (s *ResourceService) DeleteResource(id uint, userID uint) error {
 func (s *ResourceService) ToggleStar(resourceID, userID uint) (isStarred bool, starCount int64, err error) {
 	var resource models.NomadResource
 	if err := s.db.Preload("StarredBy").First(&resource, resourceID).Error; err != nil {
-		return false, 0, fmt.Errorf("resource not found")
+		return false, 0, ErrResourceNotFound
 	}
 
 	// Check if already starred
@@ -332,6 +360,44 @@ func (s *ResourceService) ValidateOrgMembership(userID, orgID uint) (bool, error
 	return true, nil
 }
 
+// AuthorizeResourceAction is the single, canonical authorization check for any
+// mutating action on a resource.
+//
+// Rules:
+//   - If the resource belongs to an organization (OrganizationID != nil), the
+//     user must have a Membership row for that org. When requireOwner is true the
+//     membership role must be RoleOwner; any membership suffices otherwise.
+//   - If the resource is personal (OrganizationID == nil), the user must be the
+//     owning user (resource.UserID == userID). requireOwner is ignored for
+//     personal resources: the owning user always has full control including delete.
+//
+// Returns ErrResourceNotFound when the resource does not exist, ErrUnauthorized
+// when the user is not permitted, nil on success.
+func (s *ResourceService) AuthorizeResourceAction(resourceID, userID uint, requireOwner bool) error {
+	var resource models.NomadResource
+	if err := s.db.First(&resource, resourceID).Error; err != nil {
+		return ErrResourceNotFound
+	}
+
+	if resource.OrganizationID != nil {
+		// Org-owned resource: org branch takes priority regardless of UserID.
+		var membership models.Membership
+		if err := s.db.Where("user_id = ? AND organization_id = ?", userID, *resource.OrganizationID).First(&membership).Error; err != nil {
+			return ErrUnauthorized
+		}
+		if requireOwner && membership.Role != RoleOwner {
+			return ErrUnauthorized
+		}
+		return nil
+	}
+
+	// Personal resource: only the owning user is allowed.
+	if resource.UserID != userID {
+		return ErrUnauthorized
+	}
+	return nil
+}
+
 // GenerateWebhookSecret generates a cryptographically secure random webhook secret
 func (s *ResourceService) GenerateWebhookSecret() (string, error) {
 	b := make([]byte, 32)
@@ -341,20 +407,39 @@ func (s *ResourceService) GenerateWebhookSecret() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// ResetWebhookSecret resets the webhook secret for a resource
-func (s *ResourceService) ResetWebhookSecret(resourceID, userID uint) error {
-	var resource models.NomadResource
-	if err := s.db.First(&resource, resourceID).Error; err != nil {
-		return fmt.Errorf("resource not found")
+// RecordFetchFailed marks a resource version fetch as FAILED with the supplied
+// error message. It never stores content alongside the failure: the caller is
+// responsible for not writing partial content on error. This helper centralises
+// the DB update so that all fetch-failure paths (background job, webhook
+// handler, retry) share the same invariant:
+//
+//	FetchStatus == failed, FetchError set, FetchCompletedAt set.
+func (s *ResourceService) RecordFetchFailed(resourceID uint, version, errMsg string) error {
+	now := time.Now()
+	result := s.db.Model(&models.ResourceVersion{}).
+		Where("resource_id = ? AND version = ?", resourceID, version).
+		Updates(map[string]interface{}{
+			"fetch_status":       models.FetchStatusFailed,
+			"fetch_error":        truncateFetchError(errMsg),
+			"fetch_completed_at": now,
+		})
+	if result.Error != nil {
+		return fmt.Errorf("failed to record fetch failure: %w", result.Error)
 	}
+	return nil
+}
 
-	// Verify permission
-	isAllowed, err := s.ValidateOwnership(resourceID, userID)
-	if err != nil {
+// ResetWebhookSecret resets the webhook secret for a resource.
+// Org members (not just owners) may reset the secret; personal resources
+// require the owning user.
+func (s *ResourceService) ResetWebhookSecret(resourceID, userID uint) error {
+	if err := s.AuthorizeResourceAction(resourceID, userID, false); err != nil {
 		return err
 	}
-	if !isAllowed {
-		return fmt.Errorf("unauthorized")
+
+	var resource models.NomadResource
+	if err := s.db.First(&resource, resourceID).Error; err != nil {
+		return ErrResourceNotFound
 	}
 
 	// Generate new secret

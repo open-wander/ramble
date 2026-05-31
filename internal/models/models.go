@@ -1,8 +1,8 @@
 package models
 
 import (
-	"time"
 	"gorm.io/gorm"
+	"time"
 )
 
 type User struct {
@@ -30,7 +30,7 @@ type User struct {
 	PasswordChangedAt time.Time // Set on password change, used for session invalidation
 
 	// Email Verification
-	EmailVerified            bool      `gorm:"default:false"`
+	EmailVerified            bool `gorm:"default:false"`
 	VerificationToken        string
 	VerificationTokenExpires time.Time
 
@@ -76,20 +76,20 @@ const (
 
 type NomadResource struct {
 	gorm.Model
-	Name           string       `gorm:"not null;uniqueIndex:idx_user_res_name"`
-	Description    string
-	Type           ResourceType `gorm:"default:'job'"` // job or pack
-	License        string       // e.g., MIT, Apache-2.0
-	RepositoryURL  string       // Link to GitHub/GitLab
-	FilePath       string       // Path to the main .nomad.hcl or pack directory
-	WebhookSecret  string       // Secret for validating incoming webhooks
+	Name                string `gorm:"not null;uniqueIndex:idx_user_res_name"`
+	Description         string
+	Type                ResourceType `gorm:"default:'job'"` // job or pack
+	License             string       // e.g., MIT, Apache-2.0
+	RepositoryURL       string       // Link to GitHub/GitLab
+	FilePath            string       // Path to the main .nomad.hcl or pack directory
+	WebhookSecret       string       // Secret for validating incoming webhooks
 	LastWebhookDelivery time.Time
 	LastWebhookStatus   string // 'success', 'failure'
 	LastWebhookError    string // Error message if failed
-	StarCount      int          `gorm:"default:0"` // Denormalized count for sorting
-	DownloadCount  int          `gorm:"default:0"` // Count of raw HCL fetches
-	OrganizationID *uint        `gorm:"uniqueIndex:idx_user_res_name"`
-	UserID         uint         `gorm:"uniqueIndex:idx_user_res_name"`
+	StarCount           int    `gorm:"default:0"` // Denormalized count for sorting
+	DownloadCount       int    `gorm:"default:0"` // Count of raw HCL fetches
+	OrganizationID      *uint  `gorm:"uniqueIndex:idx_user_res_name"`
+	UserID              uint   `gorm:"uniqueIndex:idx_user_res_name"`
 	// Relations
 	Organization Organization      `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 	User         User              `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
@@ -135,8 +135,8 @@ type PackRequest struct {
 	Type           ResourceType  `gorm:"default:'pack'"` // pack or job
 	Status         RequestStatus `gorm:"default:'open'"`
 	UserID         uint          `gorm:"not null;index"`
-	GitHubIssueURL string `gorm:"column:github_issue_url"` // URL to the created GitHub issue
-	GitHubIssueNum int    `gorm:"column:github_issue_num"` // GitHub issue number
+	GitHubIssueURL string        `gorm:"column:github_issue_url"` // URL to the created GitHub issue
+	GitHubIssueNum int           `gorm:"column:github_issue_num"` // GitHub issue number
 	VoteCount      int           `gorm:"default:0"`
 	// Relations
 	User   User   `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`

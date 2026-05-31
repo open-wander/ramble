@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"rmbl/internal/services/resource"
@@ -73,6 +74,22 @@ func PostNewResource(c *fiber.Ctx) error {
 		orgID = &val
 	}
 
+	// Authorization: when an org is specified, verify the org exists and that the
+	// authenticated user is a member (role 'member' or 'owner').
+	if orgID != nil {
+		var org models.Organization
+		if err := database.DB.First(&org, *orgID).Error; err != nil {
+			return fiber.NewError(fiber.StatusForbidden, "organization not found")
+		}
+		var membership models.Membership
+		if err := database.DB.Where(
+			"user_id = ? AND organization_id = ? AND role IN ('member','owner')",
+			userID, *orgID,
+		).First(&membership).Error; err != nil {
+			return fiber.NewError(fiber.StatusForbidden, "you must be a member of this organization to create resources in it")
+		}
+	}
+
 	// Download and detect license if not provided
 	license := input.License
 	if license == "" {
@@ -141,15 +158,33 @@ func PostNewVersion(c *fiber.Ctx) error {
 	if versionStr == "" {
 		return c.Status(400).SendString("Version is required")
 	}
-	var resource models.NomadResource
-	if err := database.DB.First(&resource, uint(id)).Error; err != nil {
+
+	// Authorization: read current user from session (same pattern as sibling handlers)
+	sess, err := Store.Get(c)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
+	}
+	currentUserID, ok := sess.Get("user_id").(uint)
+	if !ok || currentUserID == 0 {
+		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
+	}
+
+	if authErr := resource.Service.AuthorizeResourceAction(uint(id), currentUserID, false); authErr != nil {
+		if errors.Is(authErr, resource.ErrResourceNotFound) {
+			return c.Status(404).SendString("Resource not found")
+		}
+		return c.Status(403).SendString("You don't have permission to add versions to this resource")
+	}
+
+	var res models.NomadResource
+	if err := database.DB.First(&res, uint(id)).Error; err != nil {
 		return c.Status(404).SendString("Resource not found")
 	}
 	version := models.ResourceVersion{ResourceID: uint(id), Version: versionStr}
 	if err := database.DB.Create(&version).Error; err != nil {
 		return c.Status(500).SendString("Could not add version")
 	}
-	go fetchVersionContent(context.Background(), resource.ID, versionStr, resource.RepositoryURL, string(resource.Type), resource.Name, resource.FilePath)
+	go fetchVersionContent(context.Background(), res.ID, versionStr, res.RepositoryURL, string(res.Type), res.Name, res.FilePath)
 	SetFlash(c, "success", "Version "+version.Version+" added!")
 	c.Set("HX-Refresh", "true")
 	return c.SendStatus(200)
@@ -258,8 +293,11 @@ func PostEditResource(c *fiber.Ctx) error {
 	}
 
 	if err := resource.Service.UpdateResource(uint(id), serviceInput, currentUserID); err != nil {
-		if err.Error() == "unauthorized" {
+		if errors.Is(err, resource.ErrUnauthorized) {
 			return c.Status(403).SendString("Unauthorized")
+		}
+		if errors.Is(err, resource.ErrResourceNotFound) {
+			return c.Status(404).SendString("Resource not found")
 		}
 		return c.Status(fiber.StatusBadRequest).SendString(err.Error())
 	}
@@ -313,23 +351,17 @@ func PostRetryFetch(c *fiber.Ctx) error {
 		return c.Status(404).SendString("Resource not found")
 	}
 
-	// Check ownership: user is resource owner, org member, or admin
+	// Check ownership: admin bypass preserved; otherwise use centralized authorization.
 	var currentUser models.User
 	database.DB.First(&currentUser, currentUserID)
 
-	isAllowed := currentUser.IsAdmin
-	if !isAllowed {
-		if res.OrganizationID != nil {
-			var m models.Membership
-			if err := database.DB.Where("user_id = ? AND organization_id = ?", currentUserID, *res.OrganizationID).First(&m).Error; err == nil {
-				isAllowed = true
+	if !currentUser.IsAdmin {
+		if authErr := resource.Service.AuthorizeResourceAction(uint(id), currentUserID, false); authErr != nil {
+			if errors.Is(authErr, resource.ErrResourceNotFound) {
+				return c.Status(404).SendString("Resource not found")
 			}
-		} else {
-			isAllowed = currentUserID == res.UserID
+			return c.Status(403).SendString("You don't have permission to retry this fetch")
 		}
-	}
-	if !isAllowed {
-		return c.Status(403).SendString("You don't have permission to retry this fetch")
 	}
 
 	if len(res.Versions) == 0 {
@@ -376,8 +408,11 @@ func DeleteResource(c *fiber.Ctx) error {
 
 	// Delete via service
 	if err := resource.Service.DeleteResource(resourceID, userID); err != nil {
-		if err.Error() == "unauthorized" {
+		if errors.Is(err, resource.ErrUnauthorized) {
 			return c.Status(403).SendString("Unauthorized")
+		}
+		if errors.Is(err, resource.ErrResourceNotFound) {
+			return c.Status(404).SendString("Resource not found")
 		}
 		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
 	}
