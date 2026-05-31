@@ -317,6 +317,143 @@ func TestRecordFetchFailed_SizeLimit(t *testing.T) {
 		"fetch_completed_at must be set on failure")
 }
 
+// TestAuthorizeResourceAction covers the centralized authorization helper.
+func TestAuthorizeResourceAction(t *testing.T) {
+	svc := NewResourceService(database.DB)
+
+	// Setup: two users, one org
+	owner := createTestUser(t, "authzsvc_owner")
+	member := createTestUser(t, "authzsvc_member")
+	nonMember := createTestUser(t, "authzsvc_nonmember")
+	creator := createTestUser(t, "authzsvc_creator") // org resource creator but not a member
+	defer func() {
+		database.DB.Exec("DELETE FROM memberships WHERE user_id IN (?,?,?,?)", owner.ID, member.ID, nonMember.ID, creator.ID)
+		database.DB.Exec("DELETE FROM nomad_resources WHERE user_id IN (?,?,?,?)", owner.ID, member.ID, nonMember.ID, creator.ID)
+		database.DB.Exec("DELETE FROM organizations WHERE name = 'authzsvc-org'")
+		database.DB.Exec("DELETE FROM users WHERE id IN (?,?,?,?)", owner.ID, member.ID, nonMember.ID, creator.ID)
+	}()
+
+	org := models.Organization{Name: "authzsvc-org"}
+	require.NoError(t, database.DB.Create(&org).Error)
+
+	// owner is org owner, member is org member, creator is NOT a member
+	database.DB.Create(&models.Membership{UserID: owner.ID, OrganizationID: org.ID, Role: RoleOwner})
+	database.DB.Create(&models.Membership{UserID: member.ID, OrganizationID: org.ID, Role: RoleMember})
+
+	// org resource: created by creator (non-member) but owned by the org
+	orgInput := CreateInput{Name: "authzsvc-org-res", Type: "pack", Version: "v1.0.0"}
+	orgRes, err := svc.CreateResource(orgInput, creator.ID, &org.ID)
+	require.NoError(t, err)
+	defer database.DB.Delete(orgRes)
+
+	// personal resource: owned by owner user, no org
+	personalInput := CreateInput{Name: "authzsvc-personal-res", Type: "pack", Version: "v1.0.0"}
+	personalRes, err := svc.CreateResource(personalInput, owner.ID, nil)
+	require.NoError(t, err)
+	defer database.DB.Delete(personalRes)
+
+	tests := []struct {
+		name        string
+		resourceID  uint
+		userID      uint
+		requireOwner bool
+		wantErr     error
+	}{
+		// Org resource: member + requireOwner=false -> allowed
+		{
+			name:        "org member edit allowed",
+			resourceID:  orgRes.ID,
+			userID:      member.ID,
+			requireOwner: false,
+			wantErr:     nil,
+		},
+		// Org resource: org owner + requireOwner=false -> allowed
+		{
+			name:        "org owner edit allowed",
+			resourceID:  orgRes.ID,
+			userID:      owner.ID,
+			requireOwner: false,
+			wantErr:     nil,
+		},
+		// Org resource: org owner + requireOwner=true -> allowed
+		{
+			name:        "org owner delete allowed",
+			resourceID:  orgRes.ID,
+			userID:      owner.ID,
+			requireOwner: true,
+			wantErr:     nil,
+		},
+		// Org resource: member + requireOwner=true -> ErrUnauthorized
+		{
+			name:        "org member delete blocked",
+			resourceID:  orgRes.ID,
+			userID:      member.ID,
+			requireOwner: true,
+			wantErr:     ErrUnauthorized,
+		},
+		// Org resource: non-member + requireOwner=false -> ErrUnauthorized
+		{
+			name:        "org non-member edit blocked",
+			resourceID:  orgRes.ID,
+			userID:      nonMember.ID,
+			requireOwner: false,
+			wantErr:     ErrUnauthorized,
+		},
+		// Org resource: creator who is NOT a member -> ErrUnauthorized (org branch wins)
+		{
+			name:        "org resource creator-not-member blocked",
+			resourceID:  orgRes.ID,
+			userID:      creator.ID,
+			requireOwner: false,
+			wantErr:     ErrUnauthorized,
+		},
+		// Personal resource: owning user + requireOwner=false -> allowed
+		{
+			name:        "personal owner edit allowed",
+			resourceID:  personalRes.ID,
+			userID:      owner.ID,
+			requireOwner: false,
+			wantErr:     nil,
+		},
+		// Personal resource: owning user + requireOwner=true -> allowed (owner always has full control)
+		{
+			name:        "personal owner delete allowed",
+			resourceID:  personalRes.ID,
+			userID:      owner.ID,
+			requireOwner: true,
+			wantErr:     nil,
+		},
+		// Personal resource: other user -> ErrUnauthorized
+		{
+			name:        "personal non-owner blocked",
+			resourceID:  personalRes.ID,
+			userID:      member.ID,
+			requireOwner: false,
+			wantErr:     ErrUnauthorized,
+		},
+		// Non-existent resource -> ErrResourceNotFound
+		{
+			name:        "nonexistent resource",
+			resourceID:  999999999,
+			userID:      owner.ID,
+			requireOwner: false,
+			wantErr:     ErrResourceNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := svc.AuthorizeResourceAction(tt.resourceID, tt.userID, tt.requireOwner)
+			if tt.wantErr == nil {
+				assert.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, tt.wantErr, "expected error %v, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
 // TestRecordFetchFailed_DoesNotOverwriteContent verifies that RecordFetchFailed
 // updates only the status/error/timestamp columns and does not wipe existing
 // content if it were somehow already written (defensive check).
