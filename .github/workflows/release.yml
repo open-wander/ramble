@@ -11,6 +11,11 @@ on:
           - patch
           - minor
           - major
+      publish_unsigned_cli:
+        description: 'Emergency only: publish unsigned CLI binaries from GitHub Actions'
+        required: true
+        type: boolean
+        default: false
       deploy_compose:
         description: 'Deploy via Docker Compose'
         required: true
@@ -210,6 +215,7 @@ jobs:
 
   release:
     needs: [bump-version, build-and-push]
+    if: inputs.publish_unsigned_cli
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

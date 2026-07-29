@@ -44,6 +44,8 @@ VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
 COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 IMAGE_NAME := ghcr.io/open-wander/ramble
+MACOS_SIGN_IDENTITY ?= Developer ID Application: Lance Norman Haig (VC27MNBWFP)
+MACOS_NOTARY_PROFILE ?= VC27MNBWFP-notary
 
 # Run security checks
 security:
@@ -105,6 +107,14 @@ release-major:
 	gh workflow run release.yml -f bump_type=major -f deploy_compose=true -f deploy_nomad=false
 	@echo "Release workflow triggered. Check progress at: https://github.com/open-wander/ramble/actions"
 
+# Publish signed and notarized CLI artifacts after the release workflow creates
+# the tag. This must run on the Mac that holds the Developer ID identity and
+# notarytool Keychain profile.
+release-cli:
+	@MACOS_SIGN_IDENTITY="$(MACOS_SIGN_IDENTITY)" \
+		MACOS_NOTARY_PROFILE="$(MACOS_NOTARY_PROFILE)" \
+		./scripts/release-cli-local.sh
+
 # Interactive release - prompts for bump type
 release:
 	@echo "Select version bump type:"
@@ -119,4 +129,4 @@ release:
 		*) echo "Invalid choice" ;; \
 	esac
 
-.PHONY: build run dev migrate test swagger bootstrap update security docker-build docker-push nomad-vars tailwind-install css-build css-watch deploy release release-patch release-minor release-major
+.PHONY: build run dev migrate test swagger bootstrap update security docker-build docker-push nomad-vars tailwind-install css-build css-watch deploy release release-patch release-minor release-major release-cli
