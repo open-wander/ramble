@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+artifact="${1:?usage: sign-notarize-macos ARTIFACT RECEIPT}"
+receipt="${2:?usage: sign-notarize-macos ARTIFACT RECEIPT}"
+identity="${MACOS_SIGN_IDENTITY:?MACOS_SIGN_IDENTITY is required}"
+profile="${MACOS_NOTARY_PROFILE:-}"
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "error: macOS binaries must be signed on macOS" >&2
+  exit 1
+fi
+
+if [[ ! -f "$artifact" ]]; then
+  echo "error: artifact not found: $artifact" >&2
+  exit 1
+fi
+
+echo "Signing $(basename "$artifact") with Developer ID..."
+codesign --force --options runtime --timestamp --sign "$identity" "$artifact"
+codesign --verify --strict --verbose=2 "$artifact"
+
+mkdir -p "$(dirname "$receipt")"
+
+if [[ "${MACOS_NOTARY_SKIP:-0}" == "1" ]]; then
+  printf '{"status":"Skipped","reason":"MACOS_NOTARY_SKIP=1"}\n' >"$receipt"
+  exit 0
+fi
+
+if [[ -z "$profile" ]]; then
+  echo "error: MACOS_NOTARY_PROFILE is required" >&2
+  exit 1
+fi
+
+submission_dir="$(mktemp -d)"
+trap 'rm -rf "$submission_dir"' EXIT
+submission="$submission_dir/$(basename "$artifact").zip"
+
+ditto -c -k --keepParent "$artifact" "$submission"
+
+echo "Submitting $(basename "$artifact") to Apple notary service..."
+xcrun notarytool submit "$submission" \
+  --keychain-profile "$profile" \
+  --wait \
+  --output-format json >"$receipt"
+
+status="$(plutil -extract status raw "$receipt")"
+if [[ "$status" != "Accepted" ]]; then
+  echo "error: Apple notarization status is '$status'" >&2
+  cat "$receipt" >&2
+  exit 1
+fi
+
+codesign --verify --strict --verbose=2 "$artifact"
+echo "Signed and notarized: $(basename "$artifact")"
