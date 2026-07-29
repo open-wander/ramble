@@ -7,8 +7,7 @@ Ramble can be used as both a registry server and a CLI tool.
 ### Homebrew (macOS & Linux)
 
 ```bash
-brew tap open-wander/tap
-brew install ramble
+brew install open-wander/tap/ramble
 ```
 
 ### Download Binary
