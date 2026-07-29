@@ -171,26 +171,40 @@ func TestConstants(t *testing.T) {
 }
 
 func TestGetCachePath(t *testing.T) {
+	useTemporaryCache(t)
+
 	path := getCachePath()
 	assert.Contains(t, path, "ramble")
 	assert.Contains(t, path, "update-check.json")
 }
 
 func TestLoadCache_NoFile(t *testing.T) {
-	// If no cache file exists, should return nil
+	useTemporaryCache(t)
+
 	cache := loadCache()
-	// This is system-dependent, so we just verify it doesn't panic
-	_ = cache
+	assert.Nil(t, cache)
 }
 
 func TestSaveCache(t *testing.T) {
-	// Just verify it doesn't panic
+	useTemporaryCache(t)
+
 	cache := &cacheData{
 		LastCheck:     time.Now(),
 		LatestVersion: "v1.0.0",
 		ReleaseURL:    "https://example.com",
 	}
 	saveCache(cache)
+
+	loaded := loadCache()
+	assert.NotNil(t, loaded)
+	assert.WithinDuration(t, cache.LastCheck, loaded.LastCheck, time.Nanosecond)
+	assert.Equal(t, cache.LatestVersion, loaded.LatestVersion)
+	assert.Equal(t, cache.ReleaseURL, loaded.ReleaseURL)
+}
+
+func useTemporaryCache(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
 }
 
 func TestParseVersion_EdgeCases(t *testing.T) {
