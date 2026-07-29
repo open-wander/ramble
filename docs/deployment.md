@@ -12,7 +12,8 @@ Ramble uses GitHub Actions for automated deployment. When you trigger a release:
 4. Image is pushed to GitHub Container Registry
 5. Server is updated via SSH (docker compose)
 6. Health check verifies the deployment
-7. GoReleaser creates a GitHub release with CLI binaries
+7. A trusted Mac runs GoReleaser locally to sign and notarize the macOS
+   binaries, create the GitHub release, and update the Homebrew cask
 
 ## Server Structure
 
@@ -72,6 +73,25 @@ make release-minor   # v0.3.7 -> v0.4.0
 make release-major   # v0.3.7 -> v1.0.0
 ```
 
+The GitHub workflow creates the tag and deploys the container, but intentionally
+does not publish CLI binaries by default. After the workflow creates the tag,
+update the local checkout and publish the signed CLI release from the Mac that
+holds the Developer ID identity and notary profile:
+
+```bash
+git pull --ff-only
+git fetch --tags
+make release-cli
+```
+
+`make release-cli` requires:
+
+- `Developer ID Application: Lance Norman Haig (VC27MNBWFP)` in the login
+  Keychain;
+- a `notarytool` profile named `VC27MNBWFP-notary`;
+- authenticated `gh` access to both `open-wander/ramble` and
+  `open-wander/homebrew-tap`.
+
 Using GitHub CLI:
 
 ```bash
@@ -91,7 +111,8 @@ gh workflow run release.yml \
    - Pulls new image
    - Restarts only the ramble container (traefik, db stay running)
 5. **Health Check**: Verifies site responds at https://ramble.openwander.org
-6. **GitHub Release**: Creates release with CLI binaries via GoReleaser
+6. **GitHub Release**: Run `make release-cli` locally to sign and notarize the
+   macOS binaries, create the release, and update Homebrew
 
 ## Monitoring Deployment
 

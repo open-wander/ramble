@@ -9,14 +9,14 @@ before:
     - go mod download
 
 builds:
-  - main: ./cmd/ramble
+  - id: ramble
+    main: ./cmd/ramble
     binary: ramble
     env:
       - CGO_ENABLED=0
     goos:
       - linux
       - windows
-      - darwin
     goarch:
       - amd64
       - arm64
@@ -28,6 +28,34 @@ builds:
       - -X rmbl/internal/cli/cmd.Version={{.Version}}
       - -X rmbl/internal/cli/cmd.Commit={{.ShortCommit}}
       - -X rmbl/internal/cli/cmd.BuildDate={{.Date}}
+
+  - id: ramble-macos
+    main: ./cmd/ramble
+    binary: ramble
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X rmbl/internal/cli/cmd.Version={{.Version}}
+      - -X rmbl/internal/cli/cmd.Commit={{.ShortCommit}}
+      - -X rmbl/internal/cli/cmd.BuildDate={{.Date}}
+
+binary_signs:
+  - id: macos-developer-id
+    cmd: ./scripts/sign-notarize-macos
+    args:
+      - "${artifact}"
+      - "${signature}"
+    artifacts: binary
+    ids:
+      - ramble-macos
+    signature: "${artifact}_{{ .Os }}_{{ .Arch }}.notarization.json"
+    output: true
 
 archives:
   - formats:
@@ -60,17 +88,18 @@ changelog:
       - Merge pull request
       - Merge branch
 
-brews:
+homebrew_casks:
   - repository:
       owner: open-wander
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    directory: Formula
+    binaries:
+      - ramble
+    url:
+      verified: github.com/open-wander/ramble/
     homepage: "https://ramble.openwander.org"
     description: "CLI for deploying Nomad packs and jobs"
     license: "MPL-2.0"
-    test: |
-      assert_match version.to_s, shell_output("#{bin}/ramble --version")
 
 release:
   github:

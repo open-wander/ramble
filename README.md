@@ -38,7 +38,7 @@ A modernized registry for HashiCorp Nomad job files and Nomad Packs, with a buil
 ### Homebrew (macOS & Linux)
 
 ```bash
-brew install open-wander/tap/ramble
+brew install --cask open-wander/tap/ramble
 ```
 
 ### Download Binary
