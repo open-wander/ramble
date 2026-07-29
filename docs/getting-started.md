@@ -7,7 +7,7 @@ Ramble can be used as both a registry server and a CLI tool.
 ### Homebrew (macOS & Linux)
 
 ```bash
-brew install open-wander/tap/ramble
+brew install --cask open-wander/tap/ramble
 ```
 
 ### Download Binary
@@ -37,12 +37,13 @@ sudo mv ramble /usr/local/bin/
 
 ### Security Notes
 
-**macOS**: The binary is not signed with an Apple Developer certificate. If you see "cannot be opened because it is from an unidentified developer", run:
-```bash
-xattr -d com.apple.quarantine /usr/local/bin/ramble
-```
+**macOS**: Release binaries are signed with a Developer ID Application
+certificate and notarized by Apple. You can inspect a downloaded binary with:
 
-Alternatively, right-click the binary in Finder, select "Open", and confirm.
+```bash
+codesign --verify --strict --verbose=2 ramble
+codesign --display --verbose=4 ramble
+```
 
 **Windows**: The binary is not signed with a Windows code signing certificate. If SmartScreen shows "Windows protected your PC":
 1. Click "More info"
