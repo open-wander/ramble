@@ -6,6 +6,15 @@ not yet implemented (task 1.2 still TODO) and was not verified.
 Method: independent Opus verifier per story, reading the implementation against the
 PRD acceptance criteria and running the package tests.
 
+> **UPDATE (2026-05-31, later same day): everything flagged below has since been
+> completed.** This report is a snapshot of the mid-PRD verification pass; do not read
+> it as a list of open work. Task 1.2 (US-004) shipped as
+> `ResourceService.AuthorizeResourceAction`, and task 4.1 wired `RecordFetchFailed` into
+> the live `fetchVersionContent` path, killing the dead-code gap. All 6 tasks plus the 5
+> Phase-5 follow-ups are done and the PRD moved to `done/`. See `progress.md`
+> (2026-05-31 entries) and `TASKS-archive.md`. See "Remaining work" at the foot for the
+> per-item resolution.
+
 ## Summary
 
 | Story | Task | Result | Notes |
@@ -14,7 +23,7 @@ PRD acceptance criteria and running the package tests.
 | US-002 Limit remote repository content size | 2.1 | PARTIAL | Behaviour (incl. FR-4) met; coverage gap — `RecordFetchFailed` is dead code |
 | US-003 Tighten SSRF host allowlisting | 2.2 | PASS | Reverse-suffix branch removed; bypass tests green (incl. -tags security) |
 | US-005 Harden OAuth account linking | 3.1 | PASS | No email-based auto-link; collision rejected; EmailVerified left false |
-| US-004 Clarify org resource management roles | 1.2 | NOT IMPLEMENTED | Task 1.2 still TODO |
+| US-004 Clarify org resource management roles | 1.2 | NOT IMPLEMENTED **at time of this pass — since completed, see UPDATE above** | Task 1.2 was still TODO when verified |
 
 ## Test results
 
@@ -70,6 +79,18 @@ Minor (UX, not security): a same-email account already linked to a *different* p
 falls to Create and hits the Email uniqueIndex, surfacing a generic failure flash
 rather than the clear collision message.
 
-## Remaining work
-- 1.2 (US-004): organization resource management roles — not yet implemented.
-- US-002 coverage gap: dead `RecordFetchFailed` helper (wire in or remove).
+## Remaining work — ALL RESOLVED
+
+Both items below were outstanding when this pass ran and were completed later the same
+day. Nothing here is open.
+
+- ~~1.2 (US-004): organization resource management roles — not yet implemented.~~
+  RESOLVED — `ResourceService.AuthorizeResourceAction(resourceID, userID, requireOwner)`
+  added with org-before-personal branching and `ErrUnauthorized`/`ErrResourceNotFound`
+  sentinels. Edit/version/retry/reset-webhook are member-allowed, delete is owner-only,
+  and `PostNewVersion` (previously UNAUTHENTICATED) is now gated. Tests:
+  `resource_authz_test.go` (24) + `TestAuthorizeResourceAction` (10).
+- ~~US-002 coverage gap: dead `RecordFetchFailed` helper (wire in or remove).~~
+  RESOLVED (task 4.1) — `background.go fetchVersionContent` now calls `RecordFetchFailed`
+  on both the panic-recovery and error branches, so the helper is live and its tests
+  cover the real path. Later hardened by 5.1 (1000-rune UTF-8-safe truncation).
