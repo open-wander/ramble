@@ -95,22 +95,19 @@ make release-cli
 Using GitHub CLI:
 
 ```bash
-gh workflow run release.yml \
-  -f bump_type=patch \
-  -f deploy_compose=true \
-  -f deploy_nomad=false
+gh workflow run release.yml -f bump_type=patch
 ```
 
 ## What Happens During Deployment
 
-1. **Version Bump**: Updates VERSION file, commits, creates git tag
-2. **Docker Build**: Builds multi-arch image (amd64 + arm64)
-3. **Push to GHCR**: Pushes `ghcr.io/open-wander/ramble:0.3.8` and `:latest`
-4. **SSH Deploy**:
-   - Updates docker-compose.yml with new version
-   - Pulls new image
-   - Restarts only the ramble container (traefik, db stay running)
-5. **Health Check**: Verifies site responds at https://ramble.openwander.org
+1. **Version Bump**: the latest tag is bumped and the new tag pushed
+2. **Docker Build**: multi-arch image (amd64 + arm64) on the self-hosted runner
+3. **Push to GHCR**: `ghcr.io/open-wander/ramble:<version>` and `:latest`, with provenance attestation
+4. **Deploy**: the runner (on the tailnet) runs `deploy/nomad/ramble.nomad.hcl`
+   against the Hetzner Nomad cluster with `-var image=<that tag>`. The job
+   spec in git is the deployment; nothing is edited on any server. Traefik,
+   Postgres and the rest of the platform live in `TydeWhatMay/infra`.
+5. **Health Check**: the site is verified against the cluster's address
 6. **GitHub Release**: Run `make release-cli` locally to sign and notarize the
    macOS binaries, create the release, and update Homebrew
 
