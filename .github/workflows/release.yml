@@ -16,16 +16,6 @@ on:
         required: true
         type: boolean
         default: false
-      deploy_compose:
-        description: 'Deploy via Docker Compose'
-        required: true
-        type: boolean
-        default: true
-      deploy_nomad:
-        description: 'Deploy via Nomad'
-        required: true
-        type: boolean
-        default: false
 
 permissions:
   contents: write
@@ -91,9 +81,10 @@ jobs:
           git tag -a "$NEW_VERSION" -m "Release $NEW_VERSION"
           git push origin "$NEW_VERSION"
 
+  # Self-hosted (the-runner): no GitHub-hosted minutes, arm64 via binfmt.
   build-and-push:
     needs: bump-version
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -142,76 +133,58 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
-  deploy-compose:
+  # Runs on the-runner, which is on the private network, so it reaches the-cluster directly.
+  # Secrets: NOMAD_ADDR (http://<db-host>:4646), NOMAD_TOKEN (github-ci).
+  # The job spec in git IS the deployment: the only thing the workflow adds is
+  # the image tag, as a variable. Nothing is edited on any server.
+  deploy:
     needs: [bump-version, build-and-push]
-    if: inputs.deploy_compose
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v5
         with:
           ref: ${{ needs.bump-version.outputs.new_version }}
 
-      - name: Setup Tailscale
-        uses: tailscale/github-action@v2
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci
-
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          script: |
-            cd /opt/wander
-
-            # Update compose file with new version
-            sed -i "s|ghcr.io/open-wander/ramble:[0-9.]*|ghcr.io/open-wander/ramble:${{ needs.bump-version.outputs.new_version_num }}|g" docker-compose.yml
-
-            # Pull new image
-            docker compose pull ramble
-
-            # Restart ramble service only (keeps traefik, db, etc running)
-            docker compose up -d ramble
-
-            # Wait for container to be healthy
-            echo "Waiting for service to be healthy..."
-            sleep 10
-
-            # Health check via traefik
-            curl -sf https://ramble.openwander.org/ > /dev/null && echo "Health check passed!" || echo "Health check failed!"
-
-      - name: Verify deployment
+      # Pinned Nomad CLI matching the cluster, verified against HashiCorp's
+      # published checksums. No third-party action in the deploy path.
+      - name: Install nomad
+        env:
+          NOMAD_VERSION: 2.0.6
         run: |
-          sleep 5
-          curl -sf https://ramble.openwander.org/ > /dev/null && echo "Site is up!" || exit 1
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -sSfO "https://releases.hashicorp.com/nomad/${NOMAD_VERSION}/nomad_${NOMAD_VERSION}_linux_amd64.zip"
+          curl -sSf "https://releases.hashicorp.com/nomad/${NOMAD_VERSION}/nomad_${NOMAD_VERSION}_SHA256SUMS" \
+            | grep " nomad_${NOMAD_VERSION}_linux_amd64.zip\$" | sha256sum -c -
+          unzip -oq "nomad_${NOMAD_VERSION}_linux_amd64.zip" nomad
+          mkdir -p "$HOME/.local/bin" && mv nomad "$HOME/.local/bin/nomad"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-  deploy-nomad:
-    needs: [bump-version, build-and-push]
-    if: inputs.deploy_nomad
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ needs.bump-version.outputs.new_version }}
+      - name: Deploy to the-cluster
+        env:
+          NOMAD_ADDR: ${{ secrets.NOMAD_ADDR }}
+          NOMAD_TOKEN: ${{ secrets.NOMAD_TOKEN }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:${{ needs.bump-version.outputs.new_version_num }}"
+          echo "deploying $image"
+          nomad job run -var "image=$image" deploy/nomad/ramble.nomad.hcl
 
-      - name: Deploy to Nomad
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.NOMAD_SSH_HOST || secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
-          script: |
-            # Update nomad job with new version
-            cd ${{ secrets.DEPLOY_PATH || '~/ramble' }}
-            sed -i 's|ghcr.io/open-wander/ramble:.*|ghcr.io/open-wander/ramble:${{ needs.bump-version.outputs.new_version }}|g' ramble.nomad.hcl
-
-            # Run the job
-            nomad job run ramble.nomad.hcl
+      # Verified against the CLUSTER's address, not whatever DNS says: until
+      # Phase 2's DNS cut-over, ramble.openwander.org still resolves to the
+      # mail box. -k because the cluster cannot get a certificate for the name
+      # before DNS moves; drop it after the cut-over.
+      - name: Verify
+        run: |
+          sleep 20
+          code=$(curl -sk --max-time 15 -o /dev/null -w '%{http_code}' \
+            --resolve ramble.openwander.org:443:<cluster-ip> https://ramble.openwander.org/)
+          echo "ramble.openwander.org -> $code"
+          [ "$code" = "200" ] || { echo FAILED; exit 1; }
+          code=$(curl -sk --max-time 15 -o /dev/null -w '%{http_code}' \
+            --resolve rmbl.openwander.org:443:<cluster-ip> https://rmbl.openwander.org/x)
+          echo "rmbl.openwander.org  -> $code (expect 301)"
+          [ "$code" = "301" ] || { echo FAILED; exit 1; }
 
   release:
     needs: [bump-version, build-and-push]
