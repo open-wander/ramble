@@ -61,10 +61,12 @@ job "ramble" {
         "traefik.http.routers.rmbl-redirect.middlewares=rmbl-to-ramble",
       ]
 
-      # Ramble has no dedicated health path; the landing page is public.
+      # TCP, not HTTP: in production Ramble answers a plain-HTTP GET with a
+      # 301 to HTTPS (correct behind Traefik, a failure to Nomad's probe),
+      # and it has no unauthenticated health path that skips the redirect.
       check {
-        type     = "http"
-        path     = "/"
+        type     = "tcp"
+        port     = "http"
         interval = "15s"
         timeout  = "3s"
       }
