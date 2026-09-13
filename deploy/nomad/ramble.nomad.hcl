@@ -1,15 +1,14 @@
-# Ramble on the Hetzner cluster (nomad-prod). Fronted by the platform Traefik,
-# Postgres from the platform, secrets from a Nomad variable. Moved from the
-# wander-prod Compose stack in Phase 2 of the estate split.
+# Ramble on a Nomad cluster: fronted by Traefik (Let's Encrypt), Postgres
+# reached over the network, secrets and the database host from a Nomad
+# variable. The public ramble.openwander.org runs from this file.
 #
-# A release is a tag: .github/workflows/release.yml builds the image on the
-# mcsvr1 runner, pushes ghcr.io/open-wander/ramble:<version> and runs this
-# spec with -var image=<that>. Never :latest.
+# A release runs .github/workflows/release.yml: it builds the image on the
+# self-hosted runner, pushes ghcr.io/open-wander/ramble:<version> and runs
+# this spec with -var image=<that> and the datacenter. Never :latest.
 #
-# Secrets: Nomad variable nomad/jobs/ramble (source of truth: 1Password
-# Infra / nomad-prod-ramble-env and Infra / nomad-prod-postgres-ramble).
-# AUTO_SEED and INITIAL_USER_* are deliberately absent: the database arrives
-# populated, and a seeding credential has no business in a running job.
+# Secrets: Nomad variable nomad/jobs/ramble. AUTO_SEED and INITIAL_USER_* are
+# deliberately absent: the database arrives populated, and a seeding
+# credential has no business in a running job.
 
 variable "image" {
   description = "App image. Set by the deploy job to the tag being released."
@@ -18,13 +17,7 @@ variable "image" {
 }
 
 variable "datacenters" {
-  type    = list(string)
-  default = ["hz-nbg1"]
-}
-
-variable "db_host" {
-  type    = string
-  default = "100.71.239.13" # the platform Postgres, tailnet address
+  type = list(string)
 }
 
 job "ramble" {
@@ -83,7 +76,7 @@ job "ramble" {
           {{ with nomadVar "nomad/jobs/ramble" }}
           ENV=production
           BASE_URL=https://ramble.openwander.org
-          DATABASE_URL=host=${var.db_host} user=ramble password={{ .db_password }} dbname=rambledb port=5432 sslmode=disable
+          DATABASE_URL=host={{ .db_host }} user=ramble password={{ .db_password }} dbname=rambledb port=5432 sslmode=disable
           SESSION_SECRET={{ .session_secret }}
           TOKEN_ENCRYPTION_KEY={{ .token_encryption_key }}
           AUTO_SEED=false

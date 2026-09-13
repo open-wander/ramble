@@ -81,7 +81,7 @@ jobs:
           git tag -a "$NEW_VERSION" -m "Release $NEW_VERSION"
           git push origin "$NEW_VERSION"
 
-  # Self-hosted (mcsvr1): no GitHub-hosted minutes, arm64 via binfmt.
+  # Self-hosted runner: no GitHub-hosted minutes, arm64 via binfmt.
   build-and-push:
     needs: bump-version
     runs-on: [self-hosted, linux, x64]
@@ -133,10 +133,10 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
-  # Runs on mcsvr1, which is on the tailnet, so it reaches nomad-prod directly.
-  # Secrets: NOMAD_ADDR (http://100.71.239.13:4646), NOMAD_TOKEN (github-ci).
-  # The job spec in git IS the deployment: the only thing the workflow adds is
-  # the image tag, as a variable. Nothing is edited on any server.
+  # The self-hosted runner can reach the Nomad API; the address, token and
+  # datacenter are repo secrets. The job spec in git IS the deployment: the
+  # workflow adds only the image tag, as a variable. Nothing is edited on any
+  # server.
   deploy:
     needs: [bump-version, build-and-push]
     runs-on: [self-hosted, linux, x64]
@@ -160,29 +160,24 @@ jobs:
           mkdir -p "$HOME/.local/bin" && mv nomad "$HOME/.local/bin/nomad"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Deploy to nomad-prod
+      - name: Deploy
         env:
           NOMAD_ADDR: ${{ secrets.NOMAD_ADDR }}
           NOMAD_TOKEN: ${{ secrets.NOMAD_TOKEN }}
+          NOMAD_DATACENTER: ${{ secrets.NOMAD_DATACENTER }}
         run: |
           set -euo pipefail
           image="ghcr.io/${GITHUB_REPOSITORY,,}:${{ needs.bump-version.outputs.new_version_num }}"
           echo "deploying $image"
-          nomad job run -var "image=$image" deploy/nomad/ramble.nomad.hcl
+          nomad job run -var "image=$image" -var "datacenters=[\"${NOMAD_DATACENTER}\"]" deploy/nomad/ramble.nomad.hcl
 
-      # Verified against the CLUSTER's address, not whatever DNS says: until
-      # Phase 2's DNS cut-over, ramble.openwander.org still resolves to the
-      # mail box. -k because the cluster cannot get a certificate for the name
-      # before DNS moves; drop it after the cut-over.
       - name: Verify
         run: |
           sleep 20
-          code=$(curl -sk --max-time 15 -o /dev/null -w '%{http_code}' \
-            --resolve ramble.openwander.org:443:178.104.63.233 https://ramble.openwander.org/)
+          code=$(curl -s --max-time 15 -o /dev/null -w '%{http_code}' https://ramble.openwander.org/)
           echo "ramble.openwander.org -> $code"
           [ "$code" = "200" ] || { echo FAILED; exit 1; }
-          code=$(curl -sk --max-time 15 -o /dev/null -w '%{http_code}' \
-            --resolve rmbl.openwander.org:443:178.104.63.233 https://rmbl.openwander.org/x)
+          code=$(curl -s --max-time 15 -o /dev/null -w '%{http_code}' https://rmbl.openwander.org/x)
           echo "rmbl.openwander.org  -> $code (expect 301)"
           [ "$code" = "301" ] || { echo FAILED; exit 1; }
 
