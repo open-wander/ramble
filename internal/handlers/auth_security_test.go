@@ -286,12 +286,19 @@ func TestAuth_TimingAttackMitigation(t *testing.T) {
 		// Security property: Attacker cannot determine if email exists
 		// by measuring response time
 
-		// Verify dummyHash exists in code
+		// Calibrate against a real cost-10 bcrypt compare on this machine
+		// rather than a fixed threshold: a fast CI runner finishes bcrypt in
+		// under 50ms, while skipping bcrypt entirely takes about a millisecond.
+		dummyHash := "$2a$10$dummyHashForTimingAttackPreventionXXXXXXXXXXXXXXXXXXXXX"
+		start := time.Now()
+		_ = bcrypt.CompareHashAndPassword([]byte(dummyHash), []byte("WrongPass123!"))
+		bcryptCost := time.Since(start)
+
 		app := setupTestApp()
 		app.Post("/login", PostLogin)
 
 		// Login with non-existent email
-		start := time.Now()
+		start = time.Now()
 		payload := strings.NewReader("email=nonexistent@test.com&password=WrongPass123!")
 		req := httptest.NewRequest("POST", "/login", payload)
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -299,8 +306,8 @@ func TestAuth_TimingAttackMitigation(t *testing.T) {
 		elapsed1 := time.Since(start)
 
 		assert.Equal(t, 401, resp.StatusCode)
-		assert.True(t, elapsed1 > 50*time.Millisecond,
-			"Should take time for bcrypt comparison even when user doesn't exist")
+		assert.True(t, elapsed1 >= bcryptCost/2,
+			"Should take time for bcrypt comparison even when user doesn't exist: request %v, bcrypt %v", elapsed1, bcryptCost)
 	})
 
 	t.Run("Token comparisons should use constant-time", func(t *testing.T) {
