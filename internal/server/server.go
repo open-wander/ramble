@@ -82,8 +82,11 @@ func Run(cfg Config) error {
 	app := fiber.New(fiber.Config{
 		Views:                   engine,
 		EnableTrustedProxyCheck: true,
-		TrustedProxies:          []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"},
+		TrustedProxies:          trustedProxies(os.Getenv("TRUSTED_PROXIES")),
 		ProxyHeader:             fiber.HeaderXForwardedFor,
+		// X-Forwarded-For may carry a chain ("visitor, edge"); with validation c.IP() is
+		// the first valid address rather than the whole header.
+		EnableIPValidation: true,
 	})
 
 	// 4. Middleware
@@ -391,4 +394,24 @@ func Run(cfg Config) error {
 		port = "3000"
 	}
 	return app.Listen(":" + port)
+}
+
+// defaultTrustedProxies covers loopback and the RFC1918 ranges, which is where a reverse
+// proxy on the same host or private network connects from. TRUSTED_PROXIES (comma-separated
+// IPs or CIDRs) replaces the list when the proxy's source address is elsewhere - it must be
+// exactly the proxy's range, because whoever is in it may set X-Forwarded-For, which keys the
+// rate limiters and the audit log.
+var defaultTrustedProxies = []string{"127.0.0.1/8", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
+
+func trustedProxies(env string) []string {
+	var out []string
+	for _, p := range strings.Split(env, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		return defaultTrustedProxies
+	}
+	return out
 }

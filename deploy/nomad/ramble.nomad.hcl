@@ -76,6 +76,8 @@ job "ramble" {
           {{ with nomadVar "nomad/jobs/ramble" }}
           ENV=production
           BASE_URL=https://ramble.openwander.org
+          # The reverse proxy's source range - the only peers allowed to set X-Forwarded-For.
+          TRUSTED_PROXIES=127.0.0.1/8,100.64.0.0/10
           DATABASE_URL=host={{ .db_host }} user=ramble password={{ .db_password }} dbname=rambledb port=5432 sslmode=disable
           SESSION_SECRET={{ .session_secret }}
           TOKEN_ENCRYPTION_KEY={{ .token_encryption_key }}
