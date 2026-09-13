@@ -51,6 +51,7 @@ docker pull ghcr.io/open-wander/ramble:latest
 | `BASE_URL` | Yes | Public URL (e.g., `https://ramble.example.com`) |
 | `ENV` | Yes | Set to `production` for production deployments |
 | `SESSION_SECRET` | Yes | Random string for session encryption |
+| `TRUSTED_PROXIES` | No | Comma-separated IPs/CIDRs your reverse proxy connects from. Only these peers may set `X-Forwarded-For`, which the rate limiters and audit log key on. Default: loopback and the RFC1918 ranges; set it to exactly your proxy's range if it connects from anywhere else |
 
 #### Database URL Format
 
