@@ -33,6 +33,7 @@ bootstrap: tailwind-install
 	go install github.com/securego/gosec/v2/cmd/gosec@latest
 	go install golang.org/x/vuln/cmd/govulncheck@latest
 	go mod tidy
+	git config core.hooksPath .githooks
 
 # Update dependencies
 update:

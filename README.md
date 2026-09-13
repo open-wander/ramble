@@ -147,7 +147,11 @@ ramble
    ```bash
    git clone https://github.com/open-wander/ramble.git
    cd ramble
+   make bootstrap
    ```
+   `make bootstrap` installs the dev tools and enables the repo git hooks. Pull requests
+   must pass the [DCO](https://developercertificate.org/) check, so every commit needs a
+   `Signed-off-by` trailer; the hook adds it for you (the same as `git commit -s`).
 
 2. **Set up the database:**
    ```bash
