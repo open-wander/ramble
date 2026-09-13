@@ -8,6 +8,16 @@
 
 A modernized registry for HashiCorp Nomad job files and Nomad Packs, with a built-in CLI for discovering, rendering, and running packs.
 
+## Deployment (ramble.openwander.org)
+
+The public registry runs on the Hetzner Nomad cluster `nomad-prod` (platform:
+`TydeWhatMay/infra`). A release is `gh workflow run release.yml -f bump_type=patch`:
+the workflow tags, builds the multi-arch image on the self-hosted runner,
+pushes `ghcr.io/open-wander/ramble:<version>` and runs
+`deploy/nomad/ramble.nomad.hcl` against the cluster with the image as a
+variable. Nothing is edited on any server. Details: `docs/deployment.md` and
+`deploy/nomad/README.md`. Self-hosting your own registry: `SELF-HOSTING.md`.
+
 ## Features
 
 ### Registry Server
