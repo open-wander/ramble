@@ -103,11 +103,11 @@ gh workflow run release.yml -f bump_type=patch
 1. **Version Bump**: the latest tag is bumped and the new tag pushed
 2. **Docker Build**: multi-arch image (amd64 + arm64) on the self-hosted runner
 3. **Push to GHCR**: `ghcr.io/open-wander/ramble:<version>` and `:latest`, with provenance attestation
-4. **Deploy**: the runner (on the private network) runs `deploy/nomad/ramble.nomad.hcl`
-   against the Nomad cluster with `-var image=<that tag>`. The job
-   spec in git is the deployment; nothing is edited on any server. Traefik,
-   Postgres and the rest of the platform live in `the platform repo`.
-5. **Health Check**: the site is verified against the cluster's address
+4. **Deploy**: the self-hosted runner runs `deploy/nomad/ramble.nomad.hcl`
+   against the Nomad cluster with `-var image=<that tag>`. The job spec in
+   git is the deployment; nothing is edited on any server. The platform
+   (Traefik, Postgres, backups) is operated outside this repository.
+5. **Health Check**: the public URLs are verified
 6. **GitHub Release**: Run `make release-cli` locally to sign and notarize the
    macOS binaries, create the release, and update Homebrew
 
