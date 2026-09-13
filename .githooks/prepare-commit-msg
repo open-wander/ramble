@@ -1,0 +1,25 @@
+#!/bin/sh
+# Add a Signed-off-by trailer when one is missing. The repository enforces
+# the Developer Certificate of Origin on pull requests, so every commit
+# must carry a sign-off. Equivalent to always passing -s to git commit.
+#
+# Enable with: git config core.hooksPath .githooks (make bootstrap does this)
+
+msg_file="$1"
+source="$2"
+
+# Leave merges, squashes and amended messages alone; git already carries
+# the original trailers through for those.
+case "$source" in
+  merge|squash) exit 0 ;;
+esac
+
+name=$(git config user.name)
+email=$(git config user.email)
+if [ -z "$name" ] || [ -z "$email" ]; then
+  echo "prepare-commit-msg: user.name and user.email must be set for DCO sign-off" >&2
+  exit 1
+fi
+
+git interpret-trailers --in-place --if-exists addIfDifferent \
+  --trailer "Signed-off-by: $name <$email>" "$msg_file"
