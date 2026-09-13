@@ -1,0 +1,15 @@
+#!/bin/sh
+# Reject commit messages that carry AI-assistant attribution or session
+# links. Those point at private transcripts and must not end up in a
+# public repository. Runs after prepare-commit-msg, before the commit is
+# written.
+#
+# Enable with: git config core.hooksPath .githooks (make bootstrap does this)
+
+msg_file="$1"
+
+# Ignore comment lines; git strips them before committing.
+if grep -v '^#' "$msg_file" | grep -qiE 'claude\.ai/code|^Claude-Session:|^Co-Authored-By:.*(claude|anthropic)'; then
+  echo "commit-msg: message contains an AI session link or attribution line; remove it and retry" >&2
+  exit 1
+fi
