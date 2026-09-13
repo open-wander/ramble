@@ -95,8 +95,6 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     binaries:
       - ramble
-    url:
-      verified: github.com/open-wander/ramble/
     homepage: "https://ramble.openwander.org"
     description: "CLI for deploying Nomad packs and jobs"
     license: "MPL-2.0"
