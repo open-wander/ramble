@@ -75,6 +75,8 @@ job "ramble" {
         data        = <<-EOT
           {{ with nomadVar "nomad/jobs/ramble" }}
           ENV=production
+          SENTRY_ENVIRONMENT=production
+          {{ if .sentry_dsn }}SENTRY_DSN={{ .sentry_dsn }}{{ end }}
           BASE_URL=https://ramble.openwander.org
           # The reverse proxy's source range - the only peers allowed to set X-Forwarded-For.
           TRUSTED_PROXIES=127.0.0.1/8,100.64.0.0/10
