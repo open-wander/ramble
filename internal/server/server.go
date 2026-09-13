@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	sentry "github.com/getsentry/sentry-go"
+	sentryfiber "github.com/getsentry/sentry-go/fiber"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/csrf"
 	"github.com/gofiber/fiber/v2/middleware/helmet"
@@ -34,6 +36,26 @@ type Config struct {
 func Run(cfg Config) error {
 	// Initialize structured logger
 	logger.Init()
+
+	// Crash reporting to GlitchTip (Sentry protocol) when SENTRY_DSN is set.
+	// The DSN is injected from the deployment secret, never committed here.
+	if dsn := strings.TrimSpace(os.Getenv("SENTRY_DSN")); dsn != "" {
+		env := os.Getenv("SENTRY_ENVIRONMENT")
+		if env == "" {
+			env = "production"
+		}
+		if err := sentry.Init(sentry.ClientOptions{
+			Dsn:              dsn,
+			Environment:      env,
+			Release:          cfg.Version,
+			AttachStacktrace: true,
+		}); err != nil {
+			log.Printf("sentry init: %v", err)
+		} else {
+			log.Printf("crash reporting enabled (environment=%s release=%s)", env, cfg.Version)
+			defer sentry.Flush(2 * time.Second)
+		}
+	}
 
 	// 1. Connect to Database
 	database.Connect()
@@ -90,6 +112,12 @@ func Run(cfg Config) error {
 	})
 
 	// 4. Middleware
+	// Crash reporting (GlitchTip) - outermost, captures panics. Repanic:false
+	// so a panic is reported and the request 500s rather than crashing the app.
+	if os.Getenv("SENTRY_DSN") != "" {
+		app.Use(sentryfiber.New(sentryfiber.Options{Repanic: false}))
+	}
+
 	// Request ID middleware for tracing
 	app.Use(requestid.New())
 
