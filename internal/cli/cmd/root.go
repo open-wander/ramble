@@ -62,5 +62,9 @@ func Execute() {
 }
 
 func init() {
+	// Setting Version makes cobra add --version/-v; the template keeps the
+	// first line consistent with the fuller "ramble version" subcommand.
+	rootCmd.Version = Version
+	rootCmd.SetVersionTemplate("ramble {{.Version}}\n")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "V", false, "Enable verbose output")
 }
