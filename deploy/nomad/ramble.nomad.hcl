@@ -65,7 +65,7 @@ job "ramble" {
       }
     }
 
-    task "server" {
+    task "ramble" {
       driver = "docker"
 
       template {
