@@ -2,9 +2,13 @@ package logger
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	stdlog "log"
 	"strings"
 	"testing"
+
+	"github.com/rs/zerolog"
 )
 
 func TestInit_Development(t *testing.T) {
@@ -168,4 +172,69 @@ func TestLoggerWithFields(t *testing.T) {
 		Bool("bool_field", true).
 		Float64("float_field", 3.14).
 		Msg("message with fields")
+}
+
+func TestInit_ProductionFormat(t *testing.T) {
+	t.Setenv("ENV", "production")
+	Init()
+	t.Cleanup(func() { t.Setenv("ENV", "development"); Init() })
+
+	var buf bytes.Buffer
+	Log = Log.Output(&buf)
+
+	Log.Warn().Int("n", 1).Msg("test.event")
+	stdlog.Printf("legacy %s", "line")
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("want 2 lines, got %q", buf.String())
+	}
+	if strings.Contains(buf.String(), "\x1b[") {
+		t.Fatalf("ANSI escape in production output: %q", buf.String())
+	}
+
+	tests := []struct {
+		line      string
+		wantLevel string
+		wantMsg   string
+		wantField string
+		wantValue any
+	}{
+		{lines[0], "WARN", "test.event", "n", float64(1)},
+		{lines[1], "INFO", "stdlib.log", "text", "legacy line"},
+	}
+	for _, tt := range tests {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(tt.line), &m); err != nil {
+			t.Fatalf("not JSON: %q: %v", tt.line, err)
+		}
+		if _, ok := m["time"]; !ok {
+			t.Errorf("missing time: %v", m)
+		}
+		if m["level"] != tt.wantLevel {
+			t.Errorf("level = %v, want %s", m["level"], tt.wantLevel)
+		}
+		if m["msg"] != tt.wantMsg {
+			t.Errorf("msg = %v, want %s", m["msg"], tt.wantMsg)
+		}
+		if m[tt.wantField] != tt.wantValue {
+			t.Errorf("%s = %v, want %v", tt.wantField, m[tt.wantField], tt.wantValue)
+		}
+	}
+}
+
+func TestFromContext(t *testing.T) {
+	t.Setenv("ENV", "production")
+	Init()
+
+	if got := FromContext(context.Background()); got != &Log {
+		t.Error("FromContext without attached logger should return the global logger")
+	}
+	var buf bytes.Buffer
+	attached := zerolog.New(&buf).With().Str("request_id", "r1").Logger()
+	ctx := attached.WithContext(context.Background())
+	FromContext(ctx).Info().Msg("x")
+	if !strings.Contains(buf.String(), `"request_id":"r1"`) {
+		t.Errorf("attached logger not used: %q", buf.String())
+	}
 }
