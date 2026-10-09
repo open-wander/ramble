@@ -1,9 +1,9 @@
 package database
 
 import (
-	"log"
 	"os"
 	"rmbl/internal/models"
+	"rmbl/internal/services/logger"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -22,13 +22,13 @@ func SeedInitialUser(db *gorm.DB) {
 	db.Model(&models.User{}).Where("email = ? OR username = ?", email, username).Count(&count)
 
 	if count > 0 {
-		log.Println("Initial user already exists, skipping seed.")
+		logger.Log.Info().Msg("seed.initial_user_exists")
 		return
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		log.Printf("Failed to hash password for initial user: %v", err)
+		logger.Log.Error().Err(err).Msg("seed.hash_password_failed")
 		return
 	}
 
@@ -41,8 +41,8 @@ func SeedInitialUser(db *gorm.DB) {
 	}
 
 	if err := db.Create(&user).Error; err != nil {
-		log.Printf("Failed to create initial user: %v", err)
+		logger.Log.Error().Err(err).Msg("seed.create_user_failed")
 	} else {
-		log.Println("Successfully seeded initial admin user")
+		logger.Log.Info().Msg("seed.initial_user_created")
 	}
 }
