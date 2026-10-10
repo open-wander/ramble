@@ -43,7 +43,10 @@ job "ramble" {
         "traefik.http.routers.ramble.rule=Host(`ramble.openwander.org`)",
         "traefik.http.routers.ramble.entrypoints=websecure",
         "traefik.http.routers.ramble.tls.certresolver=letsencrypt",
-        "traefik.http.routers.ramble.middlewares=block-exploits@file",
+        # compress@file is defined in the platform Traefik (infra
+        # platform/traefik): gzip/brotli, the homepage goes 82 KB -> 8.7 KB.
+        # Traefik must have it before this deploys, or the router errors.
+        "traefik.http.routers.ramble.middlewares=block-exploits@file,compress@file",
         # The old hostname, redirected permanently - as the Compose labels did.
         "traefik.http.routers.rmbl-redirect.rule=Host(`rmbl.openwander.org`)",
         "traefik.http.routers.rmbl-redirect.entrypoints=websecure",
