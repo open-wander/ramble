@@ -2,12 +2,12 @@ package handlers
 
 import (
 	"fmt"
-	"log"
 	"math"
 	"os"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"rmbl/internal/services/github"
+	"rmbl/internal/services/logger"
 	"strconv"
 	"strings"
 
@@ -209,20 +209,20 @@ func createGitHubIssueForRequest(requestID uint) {
 	// Get token from environment variable (like other GitHub/GitLab secrets)
 	token := os.Getenv("GITHUB_REQUESTS_TOKEN")
 	if token == "" {
-		log.Printf("GITHUB_REQUESTS_TOKEN not configured")
+		logger.Log.Warn().Str("operation", "github_issue_create").Msg("github.requests_token_missing")
 		return
 	}
 
 	var request models.PackRequest
 	if err := database.DB.Preload("User").First(&request, requestID).Error; err != nil {
-		log.Printf("Failed to load request %d: %v", requestID, err)
+		logger.Log.Error().Err(err).Str("operation", "github_issue_create").Uint("pack_request_id", requestID).Msg("request.load_failed")
 		return
 	}
 
 	// Get repo from database settings (not a secret, can be configured in admin)
 	var repoSetting models.SiteSetting
 	if err := database.DB.Where("key = ?", "github_requests_repo").First(&repoSetting).Error; err != nil {
-		log.Printf("GitHub requests repo not configured in admin settings")
+		logger.Log.Warn().Str("operation", "github_issue_create").Msg("github.requests_repo_missing")
 		return
 	}
 
@@ -232,7 +232,7 @@ func createGitHubIssueForRequest(requestID uint) {
 
 	parts := strings.Split(repoSetting.Value, "/")
 	if len(parts) != 2 {
-		log.Printf("Invalid repo format: %s (expected owner/repo)", repoSetting.Value)
+		logger.Log.Warn().Str("operation", "github_issue_create").Str("repo", repoSetting.Value).Msg("github.requests_repo_invalid")
 		return
 	}
 
@@ -250,7 +250,7 @@ func createGitHubIssueForRequest(requestID uint) {
 
 	resp, err := github.CreateIssue(token, parts[0], parts[1], issue)
 	if err != nil {
-		log.Printf("Failed to create GitHub issue: %v", err)
+		logger.Log.Error().Err(err).Str("operation", "github_issue_create").Uint("pack_request_id", requestID).Msg("github.issue_create_failed")
 		return
 	}
 

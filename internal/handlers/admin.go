@@ -2,13 +2,13 @@ package handlers
 
 import (
 	"fmt"
-	"log"
 	"sort"
 	"strconv"
 	"time"
 
 	"rmbl/internal/database"
 	"rmbl/internal/models"
+	"rmbl/internal/services/logger"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -346,7 +346,7 @@ func PostUpdateRequestStatus(c *fiber.Ctx) error {
 	// Sync status to GitHub in background
 	go func(req models.PackRequest) {
 		if err := SyncRequestToGitHub(req); err != nil {
-			log.Printf("Failed to sync request %d to GitHub: %v", req.ID, err)
+			logger.Log.Error().Err(err).Str("operation", "github_sync").Uint("pack_request_id", req.ID).Msg("github.sync_request_failed")
 		}
 	}(request)
 

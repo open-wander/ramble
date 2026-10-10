@@ -2,15 +2,14 @@ package database
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"time"
 
 	"rmbl/internal/models"
+	"rmbl/internal/services/logger"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 var DB *gorm.DB
@@ -41,7 +40,7 @@ func Connect() {
 			dsn = fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
 				host, user, password, dbname, port, sslmode)
 		} else if os.Getenv("ENV") == "production" {
-			log.Fatal("Database credentials required in production")
+			logger.Log.Fatal().Msg("db.credentials_missing")
 		} else {
 			// Fallback to local default for development
 			dsn = "host=localhost user=postgres password=postgres dbname=rmbl port=5432 sslmode=disable"
@@ -50,17 +49,17 @@ func Connect() {
 
 	var err error
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: newDefaultGormLogger(),
 	})
 
 	if err != nil {
-		log.Fatal("Failed to connect to database: ", err)
+		logger.Log.Fatal().Err(err).Msg("db.connect_failed")
 	}
 
-	log.Println("Database connection successfully opened")
+	logger.Log.Info().Msg("db.connected")
 
 	// Auto Migrate
-	log.Println("Running Migrations...")
+	logger.Log.Info().Msg("db.migrate_started")
 	err = DB.AutoMigrate(
 		&models.User{},
 		&models.Organization{},
@@ -73,9 +72,9 @@ func Connect() {
 		&models.AuditLog{},
 	)
 	if err != nil {
-		log.Fatal("Migration failed: ", err)
+		logger.Log.Fatal().Err(err).Msg("db.migrate_failed")
 	}
-	log.Println("Migrations completed")
+	logger.Log.Info().Msg("db.migrate_completed")
 
 	// Backfill fetch status for existing resource versions
 	backfillFetchStatus(DB)
@@ -95,7 +94,7 @@ func cleanupExpiredTokens(db *gorm.DB) {
 			"reset_token_used_at": nil,
 		})
 	if result.RowsAffected > 0 {
-		log.Printf("Cleared %d existing password reset tokens", result.RowsAffected)
+		logger.Log.Info().Int64("count", result.RowsAffected).Msg("db.reset_tokens_cleared")
 	}
 }
 
@@ -107,6 +106,6 @@ func backfillFetchStatus(db *gorm.DB) {
 		Where("fetch_status = '' OR fetch_status IS NULL").
 		Update("fetch_status", models.FetchStatusCompleted)
 	if result.RowsAffected > 0 {
-		log.Printf("Backfilled %d resource versions with fetch_status=completed", result.RowsAffected)
+		logger.Log.Info().Int64("count", result.RowsAffected).Msg("db.fetch_status_backfilled")
 	}
 }

@@ -2,7 +2,6 @@ package server
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -13,7 +12,6 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/csrf"
 	"github.com/gofiber/fiber/v2/middleware/helmet"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
-	fiberlogger "github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"github.com/gofiber/swagger"
 	"github.com/gofiber/template/html/v2"
@@ -50,9 +48,9 @@ func Run(cfg Config) error {
 			Release:          cfg.Version,
 			AttachStacktrace: true,
 		}); err != nil {
-			log.Printf("sentry init: %v", err)
+			logger.Log.Error().Err(err).Msg("sentry.init_failed")
 		} else {
-			log.Printf("crash reporting enabled (environment=%s release=%s)", env, cfg.Version)
+			logger.Log.Info().Str("environment", env).Str("release", cfg.Version).Msg("sentry.enabled")
 			defer sentry.Flush(2 * time.Second)
 		}
 	}
@@ -121,10 +119,8 @@ func Run(cfg Config) error {
 	// Request ID middleware for tracing
 	app.Use(requestid.New())
 
-	// Logger with request ID
-	app.Use(fiberlogger.New(fiberlogger.Config{
-		Format: "[${time}] ${status} - ${latency} ${method} ${path} [${locals:requestid}]\n",
-	}))
+	// Structured access log (http.request) with request ID
+	app.Use(requestLogger(&logger.Log))
 
 	// HTTPS enforcement middleware (only in production)
 	app.Use(func(c *fiber.Ctx) error {
@@ -193,7 +189,7 @@ func Run(cfg Config) error {
 					if time.Since(time.Unix(created, 0)) > maxSessionLifetime {
 						// Session expired - destroy and redirect to login
 						if err := sess.Destroy(); err != nil {
-							log.Printf("failed to destroy expired session: %v", err)
+							logger.FromContext(c.UserContext()).Error().Err(err).Msg("session.destroy_expired_failed")
 						}
 						if c.Get("Accept") == "application/json" {
 							return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Session expired"})
@@ -215,7 +211,7 @@ func Run(cfg Config) error {
 							if !user.PasswordChangedAt.IsZero() && user.PasswordChangedAt.After(sessionTime) {
 								// Session is stale - password was changed after this session was created
 								if err := sess.Destroy(); err != nil {
-									log.Printf("failed to destroy stale session: %v", err)
+									logger.FromContext(c.UserContext()).Error().Err(err).Msg("session.destroy_stale_failed")
 								}
 								// Continue request without user context (will redirect to login on protected routes)
 								return c.Next()
@@ -237,7 +233,7 @@ func Run(cfg Config) error {
 				sess.Delete("flash_type")
 				sess.Delete("flash_message")
 				if err := sess.Save(); err != nil {
-					log.Printf("Error saving session in middleware: %v", err)
+					logger.FromContext(c.UserContext()).Error().Err(err).Msg("session.save_failed")
 				}
 			}
 		}
