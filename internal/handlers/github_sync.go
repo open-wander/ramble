@@ -185,7 +185,7 @@ func syncRequestToGitHubWithRetry(request models.PackRequest) error {
 	var attempt int
 	operation := func() error {
 		attempt++
-		log.Debug().Int("attempt", attempt).Msg("sync attempt")
+		log.Debug().Int("attempt", attempt).Msg("github.sync_attempt")
 		return SyncRequestToGitHub(request)
 	}
 
@@ -197,12 +197,12 @@ func syncRequestToGitHubWithRetry(request models.PackRequest) error {
 	b.RandomizationFactor = 0.5
 
 	if err := backoff.Retry(operation, backoff.WithMaxRetries(b, 3)); err != nil {
-		log.Error().Err(err).Int("attempts", attempt).Msg("sync failed after retries")
+		log.Error().Err(err).Int("attempts", attempt).Msg("github.sync_failed")
 		return err
 	}
 
 	if attempt > 1 {
-		log.Info().Int("attempts", attempt).Msg("sync succeeded after retries")
+		log.Info().Int("attempts", attempt).Msg("github.sync_retry_succeeded")
 	}
 	return nil
 }
@@ -247,7 +247,7 @@ func runBidirectionalSync() (*SyncResult, error) {
 		SyncedAt: time.Now(),
 	}
 
-	log.Info().Msg("starting bidirectional sync")
+	log.Info().Msg("github.bidirectional_sync_started")
 
 	cfg, err := getGitHubSyncConfig()
 	if err != nil {
@@ -260,7 +260,7 @@ func runBidirectionalSync() (*SyncResult, error) {
 		return nil, fmt.Errorf("failed to list issues: %w", err)
 	}
 
-	log.Info().Int("issue_count", len(issues)).Msg("fetched issues from GitHub")
+	log.Info().Int("issue_count", len(issues)).Msg("github.issues_fetched")
 
 	// Build a map of issue numbers to issues
 	issueMap := make(map[int]*github.Issue)
@@ -272,7 +272,7 @@ func runBidirectionalSync() (*SyncResult, error) {
 	var requests []models.PackRequest
 	database.DB.Where("github_issue_num > 0").Find(&requests)
 
-	log.Info().Int("request_count", len(requests)).Msg("loaded linked requests")
+	log.Info().Int("request_count", len(requests)).Msg("github.linked_requests_loaded")
 
 	// Sync app -> GitHub: update issues based on request status
 	g := new(errgroup.Group)
@@ -300,7 +300,7 @@ func runBidirectionalSync() (*SyncResult, error) {
 					mu.Lock()
 					syncErrors = append(syncErrors, fmt.Sprintf("Failed to sync request %d to GitHub: %v", request.ID, err))
 					mu.Unlock()
-					log.Warn().Err(err).Uint("request_id", request.ID).Msg("sync request to GitHub failed")
+					log.Warn().Err(err).Uint("request_id", request.ID).Msg("github.sync_request_failed")
 					return nil // Don't fail entire sync
 				}
 				updatedCount.Add(1)
@@ -394,7 +394,7 @@ func runBidirectionalSync() (*SyncResult, error) {
 		Int("updated_issues", result.UpdatedIssues).
 		Int("errors", len(result.Errors)).
 		Dur("duration", time.Since(result.SyncedAt)).
-		Msg("sync completed")
+		Msg("github.sync_completed")
 
 	return result, nil
 }
@@ -435,7 +435,7 @@ func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
 	// Validate signature
 	secret := os.Getenv("GITHUB_WEBHOOK_SECRET")
 	if secret == "" {
-		logger.Log.Error().Msg("GITHUB_WEBHOOK_SECRET not configured")
+		logger.Log.Error().Msg("github.webhook_secret_missing")
 		return c.SendStatus(500)
 	}
 
@@ -447,7 +447,7 @@ func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
 		// New format: timestamp + signature with replay protection
 		valid, _, reason := ValidateWebhookRequest(c.Body(), signature, timestamp, "", secret)
 		if !valid {
-			logger.Log.Warn().Str("operation", "github_issue_webhook").Str("reason", reason).Msg("webhook validation failed")
+			logger.Log.Warn().Str("operation", "github_issue_webhook").Str("reason", reason).Msg("webhook.validation_failed")
 			return c.Status(401).SendString("Invalid webhook signature")
 		}
 		isValid = valid
@@ -456,11 +456,11 @@ func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
 		// This maintains backward compatibility with GitHub's current webhook format
 		isValid = github.ValidateWebhookSignature(c.Body(), signature, secret)
 		if !isValid {
-			logger.Log.Warn().Str("operation", "github_issue_webhook").Msg("signature validation failed")
+			logger.Log.Warn().Str("operation", "github_issue_webhook").Msg("webhook.signature_invalid")
 			return c.Status(401).SendString("Invalid webhook signature")
 		}
 	} else {
-		logger.Log.Warn().Str("operation", "github_issue_webhook").Msg("missing signature header")
+		logger.Log.Warn().Str("operation", "github_issue_webhook").Msg("webhook.signature_missing")
 		return c.Status(401).SendString("Invalid webhook signature")
 	}
 
@@ -473,7 +473,7 @@ func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
 	// Parse payload
 	var payload IssueWebhookPayload
 	if err := json.Unmarshal(c.Body(), &payload); err != nil {
-		logger.Log.Error().Err(err).Str("operation", "github_issue_webhook").Msg("failed to parse payload")
+		logger.Log.Error().Err(err).Str("operation", "github_issue_webhook").Msg("webhook.payload_parse_failed")
 		return c.Status(400).SendString("Invalid payload")
 	}
 
@@ -482,12 +482,12 @@ func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
 	case "opened":
 		// Check if this is an externally created issue we should track
 		if err := handleNewIssue(payload.Issue); err != nil {
-			logger.Log.Error().Err(err).Str("operation", "github_issue_webhook").Int("issue_number", payload.Issue.Number).Msg("failed to handle new issue")
+			logger.Log.Error().Err(err).Str("operation", "github_issue_webhook").Int("issue_number", payload.Issue.Number).Msg("github.webhook_issue_open_failed")
 		}
 	case "closed", "reopened", "labeled", "unlabeled":
 		// Update existing request status
 		if err := handleIssueStateChange(payload.Issue); err != nil {
-			logger.Log.Error().Err(err).Str("operation", "github_issue_webhook").Int("issue_number", payload.Issue.Number).Msg("failed to handle issue state change")
+			logger.Log.Error().Err(err).Str("operation", "github_issue_webhook").Int("issue_number", payload.Issue.Number).Msg("github.webhook_issue_state_failed")
 		}
 	}
 
@@ -552,7 +552,7 @@ func handleNewIssue(issue IssuePayload) error {
 		Str("operation", "github_issue_webhook").
 		Int("issue_number", issue.Number).
 		Str("type", string(reqType)).
-		Msg("created request from external issue")
+		Msg("github.webhook_request_created")
 
 	return nil
 }
@@ -583,7 +583,7 @@ func handleIssueStateChange(issue IssuePayload) error {
 			Str("operation", "github_issue_webhook").
 			Int("issue_number", issue.Number).
 			Str("new_status", string(newStatus)).
-			Msg("updated request status from webhook")
+			Msg("github.webhook_request_status_updated")
 	}
 
 	return nil

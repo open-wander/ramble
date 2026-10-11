@@ -242,7 +242,7 @@ func HandleWebhook(c *fiber.Ctx) error {
 
 	if !valid {
 		// Log validation failure with reason (for debugging)
-		webhookLog.Warn().Str("reason", reason).Msg("webhook validation failed")
+		webhookLog.Warn().Str("reason", reason).Msg("webhook.validation_failed")
 
 		// Record failure in database
 		resource.LastWebhookDelivery = time.Now()
@@ -257,10 +257,10 @@ func HandleWebhook(c *fiber.Ctx) error {
 	// Handle legacy auth deprecation warning
 	if isLegacy {
 		c.Set("X-Deprecation-Warning", "Query parameter authentication is deprecated. Migrate to X-Hub-Signature-256 headers.")
-		webhookLog.Warn().Msg("resource using deprecated query parameter webhook authentication")
+		webhookLog.Warn().Msg("webhook.legacy_auth_deprecated")
 	}
 
-	webhookLog.Info().Bool("legacy_auth", isLegacy).Msg("webhook validated")
+	webhookLog.Info().Bool("legacy_auth", isLegacy).Msg("webhook.validated")
 
 	// Initial success state (might be updated later if fetch fails)
 	resource.LastWebhookDelivery = time.Now()
@@ -312,7 +312,7 @@ func HandleWebhook(c *fiber.Ctx) error {
 			}
 			database.DB.Create(&version)
 
-			webhookLog.Info().Str("version", newVersion).Msg("new version from webhook")
+			webhookLog.Info().Str("version", newVersion).Msg("webhook.version_received")
 
 			// Background Fetch for the NEW version with error propagation to webhook status
 			go func(resID uint, vStr, repoURL, resType, resName, filePath string) {
@@ -331,7 +331,7 @@ func HandleWebhook(c *fiber.Ctx) error {
 						webhookLog.Warn().
 							Str("version", vStr).
 							Str("fetch_error", version.FetchError).
-							Msg("webhook fetch failed, updated resource error status")
+							Msg("webhook.fetch_failed")
 					}
 				}
 			}(resource.ID, newVersion, resource.RepositoryURL, string(resource.Type), resource.Name, resource.FilePath)
@@ -344,7 +344,7 @@ func HandleWebhook(c *fiber.Ctx) error {
 	if len(resource.Versions) > 0 {
 		latest := resource.Versions[0]
 
-		webhookLog.Info().Str("version", latest.Version).Msg("refreshing latest version from webhook")
+		webhookLog.Info().Str("version", latest.Version).Msg("webhook.latest_version_refresh")
 
 		// Background Fetch for refresh with error propagation to webhook status
 		go func(resID uint, vStr, repoURL, resType, resName, filePath string) {
@@ -363,7 +363,7 @@ func HandleWebhook(c *fiber.Ctx) error {
 					webhookLog.Warn().
 						Str("version", vStr).
 						Str("fetch_error", version.FetchError).
-						Msg("webhook fetch failed, updated resource error status")
+						Msg("webhook.fetch_failed")
 				}
 			}
 		}(resource.ID, latest.Version, resource.RepositoryURL, string(resource.Type), resource.Name, resource.FilePath)

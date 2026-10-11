@@ -146,3 +146,25 @@ internal/server/startup_test.go pins DisableStartupMessage plus the trusted-prox
 and the server.started line. Mutation-checked (flag false, msg renamed -> red).
 Advisor review PASS. Re-verified by orchestrator: go vet, go test -tags=security ./... ok.
 Note: server.started is written before bind, so a bind failure still logs it first.
+
+## 2026-10-11 — 6.4 sentence-style log messages -> event keys
+
+Converted every remaining server-side zerolog message to a dotted event key (fields and
+levels unchanged, no Msgf existed). Prefixes: github.*, webhook.*, download.*,
+version_fetch.*, audit.recorded (was msg="audit"; no consumer found, JSON logs live only
+since 2026-10-10). internal/cli excluded on purpose (terminal tool). Guard:
+TestServerLogMessagesAreEventKeys walks internal/ and cmd/ with go/parser, rejects Msgf,
+non-literal Msg args and non-matching keys; requires >= 40 calls seen. The AST walk found
+8 multi-line chained calls the advisor's grep missed. Orchestrator re-ran the mutation
+(audit.recorded -> "audit recorded" -> red) and go test -tags=security ./... ok.
+Advisor MINOR notes: guard matches any .Msg selector, not only zerolog; a webhook fetch
+failure emits both webhook.fetch_failed and version_fetch.failed (two layers).
+Incident: the reviewer ran `git checkout` on a file with uncommitted worker edits during
+its mutation check and restored them by hand; diff verified intact before applying.
+
+PATTERN: review - a read-only reviewer must not use `git checkout <file>` to undo a
+mutation on a file with uncommitted changes; copy aside first or reverse the edit.
+PATTERN: logging - guard log-key conventions with a go/parser walk, not grep: grep misses
+multi-line chained zerolog calls.
+PATTERN: tooling - BSD sed ignores GNU `0,/re/`; a "mutation" that silently didn't apply
+looks like a surviving mutant. Confirm the mutation landed before trusting the result.
