@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"rmbl/internal/cli/update"
@@ -33,8 +35,7 @@ Examples:
   ramble registry browse --search go  Search namespaces
   ramble pack run user/mysql          Run a pack`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// Start update check in background (skip for version command, it does its own check)
-		if cmd.Name() != "version" && cmd.Name() != "help" {
+		if wantsUpdateCheck(cmd) {
 			updateCheck = update.CheckForUpdateAsync(Version)
 		}
 	},
@@ -53,10 +54,31 @@ Examples:
 	},
 }
 
+// wantsUpdateCheck reports whether cmd should start the background update
+// check. version does its own check, help is not worth a network call, and
+// server must write only JSON (no update notice, no network call at startup).
+func wantsUpdateCheck(cmd *cobra.Command) bool {
+	switch cmd.Name() {
+	case "version", "help", "server":
+		return false
+	}
+	return true
+}
+
+// reportExecError prints err in plain text unless it was already logged as
+// structured JSON (see runServerCmd).
+func reportExecError(err error, w io.Writer) {
+	var le loggedError
+	if errors.As(err, &le) {
+		return
+	}
+	fmt.Fprintln(w, err)
+}
+
 // Execute runs the root command
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+	if _, err := rootCmd.ExecuteC(); err != nil {
+		reportExecError(err, os.Stderr)
 		os.Exit(1)
 	}
 }

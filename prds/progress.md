@@ -229,3 +229,15 @@ Advisor REJECT, fix round, MINOR. Follow-ups: fetchVersionContent (background.go
 version_fetch.* via the global logger, so webhook-triggered fetch lines lack request_id;
 goroutine DB writes in resource_webhooks.go stay on database.DB; no test covers the
 github.webhook_request_* lines.
+
+## 2026-10-11 — 7.3 ramble server writes only JSON
+
+root.go: wantsUpdateCheck (no update check or notice for version/help/server);
+Execute uses ExecuteC + reportExecError, which skips errors marked loggedError.
+server.go: runServer seam, runServerCmd logs server.exit_error and wraps in loggedError;
+SilenceErrors/SilenceUsage on serverCmd only. Tests in internal/cli/cmd/server_test.go
+including an end-to-end `ramble server` with a failing runServer. Worker ran in a
+worktree based on main (cli untouched by the branch, applied cleanly).
+Orchestrator mutation: drop "server" from wantsUpdateCheck -> red. Suite ok.
+Advisor MINOR: predicate matches by name (a future `x server` subcommand would also
+skip); flag parse errors stay plain text; tests mutate package-level cobra state.
