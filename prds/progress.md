@@ -255,3 +255,13 @@ gormlogger.Default -> red. Both advisor PASS.
 PATTERN: parallel-in-one-checkout - workers sharing a checkout see each other's
 in-flight mutations; tell them to report cross-package failures, and re-run the suite
 after both finish.
+
+## 2026-10-11 — 8.1 real request chain test
+
+Moved requestLogger from internal/server to logger.RequestLogger (git mv requestlog.go ->
+logger/fiber.go, test likewise) so handler tests use the production middleware; the copy
+in handlers/db_test.go now builds on it. New TestRequestChain_QueryErrorSharesRequestIDWithAccessLine
+(one buffer for request and GORM logger, two requests, generated ids). Orchestrator
+mutation: SetUserContext removed -> red. Full suite ok. Advisor MINOR: server.Run's
+middleware wiring/order is only compile-time checked (a no-op swap stays green) -> 8.8;
+logLines helper now exists in three test packages.

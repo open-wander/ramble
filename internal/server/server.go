@@ -113,7 +113,7 @@ func Run(cfg Config) error {
 	app.Use(requestid.New())
 
 	// Structured access log (http.request) with request ID
-	app.Use(requestLogger(&logger.Log))
+	app.Use(logger.RequestLogger(&logger.Log))
 
 	// HTTPS enforcement middleware (only in production)
 	app.Use(func(c *fiber.Ctx) error {

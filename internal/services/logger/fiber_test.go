@@ -1,4 +1,4 @@
-package server
+package logger
 
 import (
 	"bytes"
@@ -10,8 +10,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"github.com/rs/zerolog"
-
-	"rmbl/internal/services/logger"
 )
 
 func newLoggedApp(t *testing.T) (*fiber.App, *bytes.Buffer) {
@@ -21,12 +19,12 @@ func newLoggedApp(t *testing.T) (*fiber.App, *bytes.Buffer) {
 
 	app := fiber.New()
 	app.Use(requestid.New())
-	app.Use(requestLogger(&base))
+	app.Use(RequestLogger(&base))
 	app.Get("/ok", func(c *fiber.Ctx) error { return c.SendString("ok") })
 	app.Get("/boom", func(c *fiber.Ctx) error { return fiber.NewError(fiber.StatusInternalServerError, "boom") })
 	app.Get("/bad", func(c *fiber.Ctx) error { return c.SendStatus(fiber.StatusBadRequest) })
 	app.Get("/inner", func(c *fiber.Ctx) error {
-		logger.FromContext(c.UserContext()).Info().Msg("handler.event")
+		FromContext(c.UserContext()).Info().Msg("handler.event")
 		return c.SendStatus(fiber.StatusNoContent)
 	})
 	return app, &buf
