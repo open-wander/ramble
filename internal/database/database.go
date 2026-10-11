@@ -88,11 +88,34 @@ func Connect() {
 	}
 	logger.Log.Info().Msg("db.migrate_completed")
 
+	// Not fatal: the handlers already reject case-variant names, so a failure
+	// here (an existing duplicate) must not take the app down.
+	if err := ensureCaseInsensitiveNameIndexes(DB); err != nil {
+		logger.Log.Error().Err(err).Msg("db.name_index_failed")
+	}
+
 	// Backfill fetch status for existing resource versions
 	backfillFetchStatus(DB)
 
 	// Clean up any existing reset tokens (security: fresh start on deploy)
 	cleanupExpiredTokens(DB)
+}
+
+// ensureCaseInsensitiveNameIndexes adds unique indexes on LOWER(username) and
+// LOWER(name), because names are looked up case-insensitively. GORM tags cannot
+// express an expression index. Like the existing unique indexes they include
+// soft-deleted rows. Uniqueness across users and organisations is enforced by
+// the handlers (nameTaken).
+func ensureCaseInsensitiveNameIndexes(db *gorm.DB) error {
+	for _, stmt := range []string{
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower ON users (LOWER(username))",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_organizations_name_lower ON organizations (LOWER(name))",
+	} {
+		if err := db.Exec(stmt).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // cleanupExpiredTokens invalidates all existing password reset tokens on startup.
