@@ -325,3 +325,20 @@ Merged with 8.2 in downloadFileWithRetry (kept FromContextOr + stripURLUserinfo)
 Orchestrator mutation: background.go back to &logger.Log -> 3 tests red. Suite ok.
 Advisor MINOR: three surviving mutants (panic-path WithContext, webhook follow-up First,
 success-path update) and duplicated goroutine bodies -> 8.10.
+
+## 2026-10-11 — 8.8, 8.9, 8.10
+
+8.8: server.go useRequestLogging(app, base) - Run's request-logging wiring is now tested
+(TestUseRequestLogging; four mutations red). Advisor PASS.
+8.9: gormlogger formatText + safeArg (orchestrator extension: typed-nil errors render
+<nil> instead of panicking, named scalar kinds keep their value, TestSafeArg). Raw args no
+longer serialised: fixes the useless `marshaling error` on connect failures and removes
+the risk of serialising pgconn.Config with the DB password. Password-sentinel test is a
+regression guard (ConnectError.Error() omits the password).
+8.10: finishWebhookFetch dedupes the webhook goroutines; fetchVersionHook seam; the three
+previously surviving WithContext mutants now killed. Deslop find-similar unavailable to
+the worker; the helper replaces two copies rather than adding one.
+Orchestrator mutations: 8.8 RequestLogger removed, 8.9 raw args restored, typed-nil guard
+disabled, 8.10 follow-up First without WithContext - all red. Suite ok.
+8.8 review found a real gap -> 8.11: handler panics produce no http.request line, and
+without SENTRY_DSN no middleware recovers them.
