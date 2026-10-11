@@ -136,3 +136,13 @@ API-limit test was de-cruft'd (removed dead 10 MiB padding alloc + unused table,
 real small-body assertion). build + full test green; gofmt-clean; DCO signed.
 LESSON: never trust a worker's DONE/commit-message claim over the actual diff — the
 adversarial code review is what caught this. Verify edits landed before committing.
+
+## 2026-10-11 — 6.6 startup banner -> server.started
+
+Batch with 6.4 (parallel worktrees, workflow). internal/server/server.go: Fiber config
+extracted to fiberConfig(views) with DisableStartupMessage: true; logStarted(l, addr,
+version) logs INFO `server.started` just before app.Listen, same addr variable for both.
+internal/server/startup_test.go pins DisableStartupMessage plus the trusted-proxy fields
+and the server.started line. Mutation-checked (flag false, msg renamed -> red).
+Advisor review PASS. Re-verified by orchestrator: go vet, go test -tags=security ./... ok.
+Note: server.started is written before bind, so a bind failure still logs it first.
