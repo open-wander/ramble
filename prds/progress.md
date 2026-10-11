@@ -504,3 +504,18 @@ PostCreateOrg uniqueness uses ILIKE (_ and % act as wildcards).
 PATTERN: tests - testcontainers startup can time out when many packages start Postgres at
 once; a single package failing with "wait until ready: context deadline exceeded" is
 infrastructure - re-run that package before suspecting the code.
+
+## 2026-10-11 — 9.10 ILIKE wildcards in exact lookups; OAuth taken nicknames
+
+utils.go iEq(col) -> LOWER(col) = LOWER(?); all 31 unescaped `ILIKE ?` exact-match sites
+(web, resource_crud, org, auth, nomad_pack) converted; compound clauses chained with Where.
+Escaped searches (ILIKE ? ESCAPE) untouched. sql_like_guard_test.go TestNoUnescapedLikeQueries
+(regexp; known limit: misses LIKE built via || or Sprintf). lookup_wildcard_test.go covers
+underscore and percent in user/resource lookups, org/signup uniqueness, OAuth taken nicknames.
+availableOAuthUsername(tx, base) replaces unreservedOAuthUsername: free base kept, else base-1..20;
+orchestrator added: empty base -> "user" (provider with no nickname and no name previously
+created an empty username).
+Orchestrator mutations: ILIKE restored in GetResource -> guard red; in GetUserProfile -> guard and
+three profile tests red; empty-base default removed -> OAuth test red. Suite ok.
+Not added: LOWER() functional unique indexes (prod may hold case-variant duplicates) -> 9.11
+handles the app-level checks. Noted: GetOrgSettings ignores First() error -> 9.11.

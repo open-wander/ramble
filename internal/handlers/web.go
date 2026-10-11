@@ -136,12 +136,12 @@ func GetResource(c *fiber.Ctx) error {
 	var displayName string
 
 	var user models.User
-	if err := reqDB(c).Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
+	if err := reqDB(c).Where(iEq("username"), namespace).First(&user).Error; err == nil {
 		userID = user.ID
 		displayName = user.Username
 	} else {
 		var org models.Organization
-		if err := reqDB(c).Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
+		if err := reqDB(c).Where(iEq("name"), namespace).First(&org).Error; err == nil {
 			orgID = &org.ID
 			displayName = org.Name
 		} else {
@@ -155,9 +155,9 @@ func GetResource(c *fiber.Ctx) error {
 	})
 
 	if orgID != nil {
-		dbQuery = dbQuery.Where("organization_id = ? AND name ILIKE ?", *orgID, resourcename)
+		dbQuery = dbQuery.Where("organization_id = ?", *orgID).Where(iEq("name"), resourcename)
 	} else {
-		dbQuery = dbQuery.Where("user_id = ? AND organization_id IS NULL AND name ILIKE ?", userID, resourcename)
+		dbQuery = dbQuery.Where("user_id = ? AND organization_id IS NULL", userID).Where(iEq("name"), resourcename)
 	}
 
 	if err := dbQuery.First(&resource).Error; err != nil {
@@ -253,12 +253,12 @@ func GetResourceVersion(c *fiber.Ctx) error {
 	versionStr := c.Query("version")
 
 	var user models.User
-	if err := reqDB(c).Where("username ILIKE ?", username).First(&user).Error; err != nil {
+	if err := reqDB(c).Where(iEq("username"), username).First(&user).Error; err != nil {
 		return c.Status(404).SendString("User not found")
 	}
 
 	var resource models.NomadResource
-	if err := reqDB(c).Where("user_id = ? AND name ILIKE ?", user.ID, resourcename).First(&resource).Error; err != nil {
+	if err := reqDB(c).Where("user_id = ?", user.ID).Where(iEq("name"), resourcename).First(&resource).Error; err != nil {
 		return c.Status(404).SendString("Resource not found")
 	}
 
@@ -297,12 +297,12 @@ func GetRawResourceVersion(c *fiber.Ctx) error {
 	versionStr := c.Params("version")
 
 	var user models.User
-	if err := reqDB(c).Where("username ILIKE ?", username).First(&user).Error; err != nil {
+	if err := reqDB(c).Where(iEq("username"), username).First(&user).Error; err != nil {
 		return c.Status(404).SendString("User not found")
 	}
 
 	var resource models.NomadResource
-	if err := reqDB(c).Where("user_id = ? AND name ILIKE ?", user.ID, resourcename).First(&resource).Error; err != nil {
+	if err := reqDB(c).Where("user_id = ?", user.ID).Where(iEq("name"), resourcename).First(&resource).Error; err != nil {
 		return c.Status(404).SendString("Resource not found")
 	}
 
@@ -351,7 +351,7 @@ func GetUserProfile(c *fiber.Ctx) error {
 
 	var user models.User
 
-	if err := reqDB(c).Preload("Memberships.Organization").Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
+	if err := reqDB(c).Preload("Memberships.Organization").Where(iEq("username"), namespace).First(&user).Error; err == nil {
 
 		profileUser = &user
 
@@ -359,7 +359,7 @@ func GetUserProfile(c *fiber.Ctx) error {
 
 		var org models.Organization
 
-		if err := reqDB(c).Preload("Memberships.User").Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
+		if err := reqDB(c).Preload("Memberships.User").Where(iEq("name"), namespace).First(&org).Error; err == nil {
 
 			profileOrg = &org
 
@@ -514,14 +514,14 @@ func GetRawResource(c *fiber.Ctx) error {
 	resourcename := c.Params("resourcename")
 
 	var user models.User
-	if err := reqDB(c).Where("username ILIKE ?", username).First(&user).Error; err != nil {
+	if err := reqDB(c).Where(iEq("username"), username).First(&user).Error; err != nil {
 		return c.Status(404).SendString("User not found")
 	}
 
 	var resource models.NomadResource
 	if err := reqDB(c).Preload("Versions", func(db *gorm.DB) *gorm.DB {
 		return db.Order("resource_versions.created_at DESC")
-	}).Where("user_id = ? AND name ILIKE ?", user.ID, resourcename).First(&resource).Error; err != nil {
+	}).Where("user_id = ?", user.ID).Where(iEq("name"), resourcename).First(&resource).Error; err != nil {
 		return c.Status(404).SendString("Resource not found")
 	}
 

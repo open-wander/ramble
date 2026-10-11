@@ -39,6 +39,13 @@ func escapeLikeString(s string) string {
 	return s
 }
 
+// iEq returns a case-insensitive equality clause for an exact-name lookup.
+// ILIKE would treat _ and % in the value as wildcards. Pass constant column
+// names only; chain further Where calls rather than concatenating.
+func iEq(col string) string {
+	return "LOWER(" + col + ") = LOWER(?)"
+}
+
 func SetFlash(c *fiber.Ctx, flashType, message string) {
 	sess, err := Store.Get(c)
 	if err != nil {

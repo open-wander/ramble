@@ -36,11 +36,11 @@ func PostCreateOrg(c *fiber.Ctx) error {
 
 	// Check if name is taken by a User or another Org
 	var count int64
-	reqDB(c).Model(&models.User{}).Where("username ILIKE ?", orgName).Count(&count)
+	reqDB(c).Model(&models.User{}).Where(iEq("username"), orgName).Count(&count)
 	if count > 0 {
 		return c.Status(400).SendString("This name is already taken by a user")
 	}
-	reqDB(c).Model(&models.Organization{}).Where("name ILIKE ?", orgName).Count(&count)
+	reqDB(c).Model(&models.Organization{}).Where(iEq("name"), orgName).Count(&count)
 	if count > 0 {
 		return c.Status(400).SendString("This organization name is already taken")
 	}
@@ -77,7 +77,7 @@ func RequireOrgOwner(c *fiber.Ctx) error {
 	userID := sess.Get("user_id").(uint)
 
 	var org models.Organization
-	if err := reqDB(c).Where("name ILIKE ?", orgName).First(&org).Error; err != nil {
+	if err := reqDB(c).Where(iEq("name"), orgName).First(&org).Error; err != nil {
 		return c.Status(404).SendString("Organization not found")
 	}
 
@@ -93,7 +93,7 @@ func RequireOrgOwner(c *fiber.Ctx) error {
 func GetOrgSettings(c *fiber.Ctx) error {
 	orgName := c.Params("orgname")
 	var org models.Organization
-	reqDB(c).Preload("Memberships.User").Where("name ILIKE ?", orgName).First(&org)
+	reqDB(c).Preload("Memberships.User").Where(iEq("name"), orgName).First(&org)
 
 	return c.Render("org_settings", MergeContext(BaseContext(c), fiber.Map{
 		"Organization": org,

@@ -201,11 +201,11 @@ func GetEditResource(c *fiber.Ctx) error {
 	var userID uint
 	var orgID *uint
 	var user models.User
-	if err := reqDB(c).Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
+	if err := reqDB(c).Where(iEq("username"), namespace).First(&user).Error; err == nil {
 		userID = user.ID
 	} else {
 		var org models.Organization
-		if err := reqDB(c).Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
+		if err := reqDB(c).Where(iEq("name"), namespace).First(&org).Error; err == nil {
 			orgID = &org.ID
 		} else {
 			return c.Status(404).SendString("Namespace not found")
@@ -226,9 +226,9 @@ func GetEditResource(c *fiber.Ctx) error {
 	var resource models.NomadResource
 	dbQuery := reqDB(c).Preload("User").Preload("Tags")
 	if orgID != nil {
-		dbQuery = dbQuery.Where("organization_id = ? AND name ILIKE ?", *orgID, resourcename)
+		dbQuery = dbQuery.Where("organization_id = ?", *orgID).Where(iEq("name"), resourcename)
 	} else {
-		dbQuery = dbQuery.Where("user_id = ? AND organization_id IS NULL AND name ILIKE ?", userID, resourcename)
+		dbQuery = dbQuery.Where("user_id = ? AND organization_id IS NULL", userID).Where(iEq("name"), resourcename)
 	}
 	if err := dbQuery.First(&resource).Error; err != nil {
 		return c.Status(404).SendString("Resource not found")

@@ -151,12 +151,9 @@ func processOAuthUserDB(tx *gorm.DB, gothUser goth.User) (models.User, error) {
 		username = gothUser.Name
 	}
 
-	if IsReservedName(username) {
-		alt, err := unreservedOAuthUsername(tx, username)
-		if err != nil {
-			return models.User{}, err
-		}
-		username = alt
+	username, err := availableOAuthUsername(tx, username)
+	if err != nil {
+		return models.User{}, err
 	}
 
 	newUser := models.User{
@@ -344,7 +341,7 @@ func PostSignup(c *fiber.Ctx) error {
 
 	// Check if username is taken by an Org
 	var count int64
-	reqDB(c).Model(&models.Organization{}).Where("name ILIKE ?", input.Username).Count(&count)
+	reqDB(c).Model(&models.Organization{}).Where(iEq("name"), input.Username).Count(&count)
 	if count > 0 {
 		return c.Status(fiber.StatusBadRequest).SendString("Username is already taken by an organization")
 	}
@@ -656,26 +653,49 @@ func PostResendVerification(c *fiber.Ctx) error {
 	return c.SendString("Verification email sent successfully")
 }
 
-// unreservedOAuthUsername returns base-N for the first N that is neither
-// reserved nor already used by a user or organisation. LOWER() equality is
-// used because ILIKE would treat _ and % in names as wildcards.
-func unreservedOAuthUsername(tx *gorm.DB, base string) (string, error) {
+// availableOAuthUsername returns base unchanged when it is not reserved and no
+// user or organisation has it, otherwise base-N for the first free N. An empty
+// base becomes "user". Exact
+// case-insensitive equality is used because ILIKE would treat _ and % in
+// names as wildcards.
+func availableOAuthUsername(tx *gorm.DB, base string) (string, error) {
 	base = strings.TrimSpace(base)
+	if base == "" {
+		// The provider sent neither a nickname nor a name.
+		base = "user"
+	}
+	free, err := usernameFree(tx, base)
+	if err != nil {
+		return "", err
+	}
+	if free {
+		return base, nil
+	}
 	for i := 1; i <= 20; i++ {
 		candidate := fmt.Sprintf("%s-%d", base, i)
-		if IsReservedName(candidate) {
-			continue
+		free, err := usernameFree(tx, candidate)
+		if err != nil {
+			return "", err
 		}
-		var users, orgs int64
-		if err := tx.Model(&models.User{}).Where("LOWER(username) = LOWER(?)", candidate).Count(&users).Error; err != nil {
-			return "", fmt.Errorf("database error checking username: %w", err)
-		}
-		if err := tx.Model(&models.Organization{}).Where("LOWER(name) = LOWER(?)", candidate).Count(&orgs).Error; err != nil {
-			return "", fmt.Errorf("database error checking organization name: %w", err)
-		}
-		if users == 0 && orgs == 0 {
+		if free {
 			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("no free username derived from reserved name %q", base)
+	return "", fmt.Errorf("no free username derived from %q", base)
+}
+
+// usernameFree reports whether name is neither reserved nor used by a user
+// or organisation.
+func usernameFree(tx *gorm.DB, name string) (bool, error) {
+	if IsReservedName(name) {
+		return false, nil
+	}
+	var users, orgs int64
+	if err := tx.Model(&models.User{}).Where(iEq("username"), name).Count(&users).Error; err != nil {
+		return false, fmt.Errorf("database error checking username: %w", err)
+	}
+	if err := tx.Model(&models.Organization{}).Where(iEq("name"), name).Count(&orgs).Error; err != nil {
+		return false, fmt.Errorf("database error checking organization name: %w", err)
+	}
+	return users == 0 && orgs == 0, nil
 }
