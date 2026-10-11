@@ -434,3 +434,11 @@ case fields removed; section comments fixed.
 Review notes: scanParamsCalls inspects FuncDecl bodies only (package-level func literals
 not covered; none exist); idLike/idParamName duplicated across two test packages; /requests/abc
 now 404s via the catch-all falling through -> 9.9 (no reserved usernames).
+
+## 2026-10-11 — 9.8 Go 1.27
+
+User request. go 1.26.1 -> 1.27.2 (latest; 1.26.9 still supported), golang:1.27-bookworm,
+setup-go 1.27.x in ci, release and security-nightly. GOTOOLCHAIN=auto switched the local
+toolchain to 1.27.2. go test -tags=security ./..., govulncheck (latest; vulns present in
+required modules but none called), gosec clean; `docker build --target builder` ok.
+Not done (offered to the user): `go get -u` dependency refresh; pinning alpine:latest.
