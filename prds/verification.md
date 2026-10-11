@@ -6,6 +6,13 @@ TydeWhatMay/infra `docs/prod-logging.md`. Method: one Opus verifier per point, e
 own worktree, reading every server write path, running the guarding tests, and making one
 or more mutations to check a test goes red (norman verify, single rigor, plus mutation sweep).
 
+> **UPDATE (2026-10-11, same day): gaps 1-6 fixed on the same branch as Phase 7**
+> (7.1 gaps 1-2, 7.2 gap 3, 7.3 gap 6, 7.4 gap 4, 7.5 gap 5), each with a test that a
+> mutation turns red; see TASKS-archive.md Phase 7. Gap 7 accepted. Remaining notes for a
+> later pass: SMTP server replies wrapped with %w can still echo a recipient address;
+> fetchVersionContent logs version_fetch.* via the global logger (no request_id on
+> webhook-triggered fetches); flag-parse errors on `ramble server` stay plain text.
+
 ## Summary
 
 | # | Requirement | Result | Mutation |
