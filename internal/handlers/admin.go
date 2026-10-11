@@ -182,6 +182,18 @@ func PostEditUser(c *fiber.Ctx) error {
 		return c.Status(400).SendString("This name is reserved")
 	}
 
+	// Gate on an exact change so edits to other fields keep working for
+	// legacy case-variant duplicates.
+	if input.Username != user.Username {
+		taken, err := nameTaken(reqDB(c), input.Username, user.ID, 0)
+		if err != nil {
+			return c.Status(500).SendString("Failed to check username")
+		}
+		if taken {
+			return c.Status(400).SendString("This name is already taken")
+		}
+	}
+
 	// Update user fields
 	user.Username = input.Username
 	user.Name = input.Name
@@ -253,6 +265,16 @@ func PostEditOrganization(c *fiber.Ctx) error {
 
 	if !strings.EqualFold(input.Name, org.Name) && IsReservedName(input.Name) {
 		return c.Status(400).SendString("This name is reserved")
+	}
+
+	if input.Name != org.Name {
+		taken, err := nameTaken(reqDB(c), input.Name, 0, org.ID)
+		if err != nil {
+			return c.Status(500).SendString("Failed to check organization name")
+		}
+		if taken {
+			return c.Status(400).SendString("This name is already taken")
+		}
 	}
 
 	// Update organization fields

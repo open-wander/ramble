@@ -93,7 +93,9 @@ func RequireOrgOwner(c *fiber.Ctx) error {
 func GetOrgSettings(c *fiber.Ctx) error {
 	orgName := c.Params("orgname")
 	var org models.Organization
-	reqDB(c).Preload("Memberships.User").Where(iEq("name"), orgName).First(&org)
+	if err := reqDB(c).Preload("Memberships.User").Where(iEq("name"), orgName).First(&org).Error; err != nil {
+		return c.Status(404).SendString("Organization not found")
+	}
 
 	return c.Render("org_settings", MergeContext(BaseContext(c), fiber.Map{
 		"Organization": org,
@@ -103,10 +105,14 @@ func GetOrgSettings(c *fiber.Ctx) error {
 func PostUpdateOrg(c *fiber.Ctx) error {
 	orgID := c.Locals("OrgID").(uint)
 	var org models.Organization
-	reqDB(c).First(&org, orgID)
+	if err := reqDB(c).First(&org, orgID).Error; err != nil {
+		return c.Status(404).SendString("Organization not found")
+	}
 
 	org.Description = c.FormValue("description")
-	reqDB(c).Save(&org)
+	if err := reqDB(c).Save(&org).Error; err != nil {
+		return c.Status(500).SendString("Failed to update organization")
+	}
 
 	SetFlash(c, "success", "Organization settings updated.")
 	c.Set("HX-Redirect", "/"+org.Name+"/settings")
@@ -117,6 +123,11 @@ func PostAddMember(c *fiber.Ctx) error {
 	orgID := c.Locals("OrgID").(uint)
 	username := c.FormValue("username")
 	role := c.FormValue("role")
+
+	var org models.Organization
+	if err := reqDB(c).First(&org, orgID).Error; err != nil {
+		return c.Status(404).SendString("Organization not found")
+	}
 
 	var user models.User
 	if err := reqDB(c).Where("username = ?", username).First(&user).Error; err != nil {
@@ -136,8 +147,6 @@ func PostAddMember(c *fiber.Ctx) error {
 	}
 	reqDB(c).Create(&membership)
 
-	var org models.Organization
-	reqDB(c).First(&org, orgID)
 	AuditLog(c, "org.add_member", "organization", org.ID, org.Name, map[string]interface{}{
 		"member": username,
 		"role":   role,
@@ -155,6 +164,11 @@ func PostRemoveMember(c *fiber.Ctx) error {
 		return c.Status(404).SendString("Member not found")
 	}
 
+	var org models.Organization
+	if err := reqDB(c).First(&org, orgID).Error; err != nil {
+		return c.Status(404).SendString("Organization not found")
+	}
+
 	// Don't allow removing yourself if you're the only owner
 	sess, _ := Store.Get(c)
 	currentUserID := sess.Get("user_id").(uint)
@@ -166,8 +180,6 @@ func PostRemoveMember(c *fiber.Ctx) error {
 		}
 	}
 
-	var org models.Organization
-	reqDB(c).First(&org, orgID)
 	AuditLog(c, "org.remove_member", "organization", org.ID, org.Name, map[string]interface{}{
 		"member_id": memberID,
 	})

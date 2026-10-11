@@ -333,17 +333,19 @@ func PostSignup(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).SendString("This name is reserved")
 	}
 
-	// Check if username or email exists
+	// Check if email exists
 	var existingUser models.User
-	if err := reqDB(c).Where("username = ? OR email = ?", input.Username, input.Email).First(&existingUser).Error; err == nil {
+	if err := reqDB(c).Where("email = ?", input.Email).First(&existingUser).Error; err == nil {
 		return c.Status(fiber.StatusBadRequest).SendString("Username or Email already registered")
 	}
 
-	// Check if username is taken by an Org
-	var count int64
-	reqDB(c).Model(&models.Organization{}).Where(iEq("name"), input.Username).Count(&count)
-	if count > 0 {
-		return c.Status(fiber.StatusBadRequest).SendString("Username is already taken by an organization")
+	// Usernames and organisation names share one case-insensitive namespace
+	taken, err := nameTaken(reqDB(c), input.Username, 0, 0)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString("Database error")
+	}
+	if taken {
+		return c.Status(fiber.StatusBadRequest).SendString("Username or Email already registered")
 	}
 
 	// Hash Password
@@ -690,12 +692,20 @@ func usernameFree(tx *gorm.DB, name string) (bool, error) {
 	if IsReservedName(name) {
 		return false, nil
 	}
+	taken, err := nameTaken(tx, name, 0, 0)
+	return !taken, err
+}
+
+// nameTaken reports whether name, compared case-insensitively, is used by a
+// user or an organisation. Pass the id of the user or organisation being
+// renamed as exceptUserID or exceptOrgID to exclude it; 0 excludes nothing.
+func nameTaken(tx *gorm.DB, name string, exceptUserID, exceptOrgID uint) (bool, error) {
 	var users, orgs int64
-	if err := tx.Model(&models.User{}).Where(iEq("username"), name).Count(&users).Error; err != nil {
+	if err := tx.Model(&models.User{}).Where(iEq("username"), name).Where("id <> ?", exceptUserID).Count(&users).Error; err != nil {
 		return false, fmt.Errorf("database error checking username: %w", err)
 	}
-	if err := tx.Model(&models.Organization{}).Where(iEq("name"), name).Count(&orgs).Error; err != nil {
+	if err := tx.Model(&models.Organization{}).Where(iEq("name"), name).Where("id <> ?", exceptOrgID).Count(&orgs).Error; err != nil {
 		return false, fmt.Errorf("database error checking organization name: %w", err)
 	}
-	return users == 0 && orgs == 0, nil
+	return users > 0 || orgs > 0, nil
 }

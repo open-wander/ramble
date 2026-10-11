@@ -519,3 +519,20 @@ Orchestrator mutations: ILIKE restored in GetResource -> guard red; in GetUserPr
 three profile tests red; empty-base default removed -> OAuth test red. Suite ok.
 Not added: LOWER() functional unique indexes (prod may hold case-variant duplicates) -> 9.11
 handles the app-level checks. Noted: GetOrgSettings ignores First() error -> 9.11.
+
+## 2026-10-11 — 9.11 case-insensitive name uniqueness, missing-org 404s
+
+auth.go nameTaken(tx, name, exceptUserID, exceptOrgID): users and orgs via iEq, excluding the
+given ids; usernameFree builds on it. PostSignup: separate email check + nameTaken (users and
+orgs). Admin PostEditUser/PostEditOrganization: when the name changes exactly, nameTaken with
+self-exclusion (own case-variant allowed; legacy case-duplicates stay editable). org.go:
+GetOrgSettings, PostUpdateOrg (previously Save()d a zero-value org = INSERT of a blank org on
+a miss), PostAddMember, PostRemoveMember now 404 on a missing org (lookups moved before writes).
+No LOWER() unique index. Duplicate audit SQL:
+SELECT LOWER(name) AS folded, COUNT(*) AS n, STRING_AGG(kind||':'||id||':'||name||CASE WHEN
+deleted_at IS NOT NULL THEN ' (deleted)' ELSE '' END, ', ' ORDER BY kind, id) AS rows FROM
+(SELECT 'user' AS kind, id, username AS name, deleted_at FROM users UNION ALL SELECT 'org', id,
+name, deleted_at FROM organizations) x GROUP BY LOWER(name) HAVING COUNT(*) > 1 ORDER BY folded;
+Review REJECT: cleanupOrgTestData missed mixed-case test orgs (fixed: LOWER(name) LIKE 'test%').
+Orchestrator mutations: admin user rename check removed -> red; signup nameTaken removed ->
+both signup tests red. Suite ok. Leftovers -> 9.12.
