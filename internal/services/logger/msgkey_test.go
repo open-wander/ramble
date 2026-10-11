@@ -198,3 +198,55 @@ func f(b *bytes.Buffer) {
 		t.Fatalf("got %d hits, want 8: %v", len(got), got)
 	}
 }
+
+// scanFatalPanic returns "file:line: call" for zero-argument .Fatal() and
+// .Panic() calls, the shape of a zerolog event constructor. These log at
+// FATAL/PANIC, outside DEBUG|INFO|WARN|ERROR, and Fatal exits without cleanup.
+// Calls with arguments (stdlib log.Fatalf, t.Fatal("x")) are not matched.
+func scanFatalPanic(fset *token.FileSet, f *ast.File) []string {
+	var hits []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || len(call.Args) != 0 {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if ok && (sel.Sel.Name == "Fatal" || sel.Sel.Name == "Panic") {
+			hits = append(hits, fset.Position(call.Pos()).String()+": "+sel.Sel.Name)
+		}
+		return true
+	})
+	return hits
+}
+
+func TestServerCodeHasNoFatalOrPanicEvents(t *testing.T) {
+	var hits []string
+	checked := walkServerFiles(t, []string{"../..", "../../../cmd"}, nil, func(fset *token.FileSet, f *ast.File) {
+		hits = append(hits, scanFatalPanic(fset, f)...)
+	})
+	if checked < 40 {
+		t.Fatalf("only %d files inspected; walk roots are wrong", checked)
+	}
+	for _, h := range hits {
+		t.Errorf("FATAL/PANIC event in server code (log at ERROR and return or exit): %s", h)
+	}
+}
+
+func TestScanFatalPanic(t *testing.T) {
+	src := `package x
+func f(l L, t T) {
+	l.Fatal().Msg("a.b")
+	l.Panic().Msg("a.b")
+	log.Fatalf("x")
+	t.Fatal("x")
+	l.Error().Msg("a.b")
+}`
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "x.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := scanFatalPanic(fset, file); len(got) != 2 {
+		t.Fatalf("got %d hits, want 2: %v", len(got), got)
+	}
+}

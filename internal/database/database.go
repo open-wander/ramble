@@ -14,6 +14,11 @@ import (
 
 var DB *gorm.DB
 
+// exit is a seam so tests can observe fatal startup failures. Startup
+// failures log at ERROR (zerolog Fatal is level FATAL, outside the
+// DEBUG|INFO|WARN|ERROR standard) and then exit 1.
+var exit = os.Exit
+
 // getSSLMode returns the appropriate SSL mode based on environment
 func getSSLMode() string {
 	if mode := os.Getenv("DB_SSLMODE"); mode != "" {
@@ -43,7 +48,9 @@ func Connect() {
 			dsn = fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
 				host, user, password, dbname, port, sslmode)
 		} else if os.Getenv("ENV") == "production" {
-			logger.Log.Fatal().Msg("db.credentials_missing")
+			logger.Log.Error().Msg("db.credentials_missing")
+			exit(1)
+			return
 		} else {
 			// Fallback to local default for development
 			dsn = "host=localhost user=postgres password=postgres dbname=rmbl port=5432 sslmode=disable"
@@ -54,7 +61,9 @@ func Connect() {
 	DB, err = gorm.Open(postgres.Open(dsn), gormConfig())
 
 	if err != nil {
-		logger.Log.Fatal().Err(err).Msg("db.connect_failed")
+		logger.Log.Error().Err(err).Msg("db.connect_failed")
+		exit(1)
+		return
 	}
 
 	logger.Log.Info().Msg("db.connected")
@@ -73,7 +82,9 @@ func Connect() {
 		&models.AuditLog{},
 	)
 	if err != nil {
-		logger.Log.Fatal().Err(err).Msg("db.migrate_failed")
+		logger.Log.Error().Err(err).Msg("db.migrate_failed")
+		exit(1)
+		return
 	}
 	logger.Log.Info().Msg("db.migrate_completed")
 

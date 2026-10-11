@@ -10,6 +10,17 @@ import (
 // runServer is a seam so tests can avoid starting a real server.
 var runServer = server.Run
 
+// initLogger is a seam so tests can redirect the logger output.
+var initLogger = logger.Init
+
+// serverFlagError logs a flag parse error as JSON. Flag errors never reach
+// RunE, so the logger is not initialised yet.
+func serverFlagError(_ *cobra.Command, err error) error {
+	initLogger()
+	logger.Log.Error().Err(err).Msg("server.flag_error")
+	return loggedError{err}
+}
+
 // loggedError marks an error already written to the JSON log, so Execute
 // does not print it again in plain text.
 type loggedError struct{ err error }
@@ -61,6 +72,7 @@ Environment variables:
 
 func init() {
 	rootCmd.AddCommand(serverCmd)
+	serverCmd.SetFlagErrorFunc(serverFlagError)
 
 	serverCmd.Flags().StringVarP(&serverPort, "port", "p", "3000", "Port to listen on")
 	serverCmd.Flags().BoolVar(&serverSeed, "seed", false, "Seed initial user from environment variables")

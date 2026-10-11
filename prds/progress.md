@@ -276,3 +276,16 @@ Orchestrator follow-up from review: sendSecrets(link, to, from) adds the link's 
 values (token) and both addresses verbatim; new row where the reply echoes only the token.
 Mutations: no redaction -> 4 rows red; token literals dropped -> token row red. Suite ok.
 Known limit: URL-encoded or line-wrapped echoes of the link are not matched.
+
+## 2026-10-11 — 8.7 flag errors as JSON, no FATAL level
+
+internal/cli/cmd/server.go: initLogger seam + serverFlagError set via SetFlagErrorFunc on
+serverCmd only. logger.InitWithWriter exported for tests in other packages.
+database.go: three Fatal() -> Error() + exit(1) + return (exit = os.Exit seam).
+AST guard TestServerCodeHasNoFatalOrPanicEvents. Orchestrator mutations: FlagErrorFunc
+removed -> TestServerCommandBadFlag red; Fatal re-added -> guard red; exit(1) dropped ->
+TestConnectConnectFailed red. Suite ok.
+Advisor MINOR: db.migrate_failed branch only AST-covered; InitWithWriter widens the API;
+level change FATAL -> ERROR may affect external alerts. Reported pre-existing bug:
+gorm logger db.error args fail JSON marshalling (pgconn.DialFunc) -> 8.9. 8.1 review
+-> 8.8 (server.Run middleware wiring untested).
