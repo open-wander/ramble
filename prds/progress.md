@@ -469,3 +469,18 @@ root's direct child (rootCmd itself would be an init cycle).
 Orchestrator: TestOuterBackstop now panics only on /boom and checks a follow-up /ok
 succeeds (the /ok route was dead). Mutations: Repanic false -> with_sentry red; BeforeSend
 removed -> TestSentryEventsCarryNoRequestSecrets red; name compare -> nested_server red.
+
+## 2026-10-11 — 9.5 handler and test debt
+
+audit.go redactValue sends any other composite through redactComposite (marshal, decode
+with UseNumber so big ints stay exact, recurse); unmarshalable values -> "[UNSERIALIZABLE]";
+caller's value untouched. fetch_log_test.go: follow-up lookup assertions folded into
+TestHandleWebhook_FetchLogsCarryRequestID. New internal/testutil/logtest (Lines, Find; imports
+nothing under rmbl) replaces the logLines copies in server, logger and handlers tests; note
+Lines fails on non-JSON lines where the old handlers copy skipped them. email sendSecrets adds
+url.QueryEscape/PathEscape of the link and token values.
+Orchestrator: fixed a stale logLines call in TestOuterBackstop (added after 9.5's worktree was
+cut), moved the logtest import into the rmbl group in five files, replaced a name-matched
+skip in TestRedactDetails with a marshal-error check. Mutations: composite fallback removed
+-> struct rows red; encoded secrets removed -> two encoded-echo rows red; follow-up First
+without WithContext -> merged webhook test red. Suite ok.

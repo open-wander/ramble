@@ -19,6 +19,7 @@ import (
 	"rmbl/internal/models"
 	"rmbl/internal/services/logger"
 	"rmbl/internal/services/resource"
+	"rmbl/internal/testutil/logtest"
 )
 
 // captureAllLogs routes the global logger, the request logger and every SQL
@@ -42,13 +43,11 @@ func captureAllLogs(t *testing.T) (*bytes.Buffer, zerolog.Logger) {
 
 func requireMsg(t *testing.T, buf *bytes.Buffer, msg string) map[string]any {
 	t.Helper()
-	for _, m := range logLines(buf) {
-		if m[zerolog.MessageFieldName] == msg {
-			return m
-		}
+	m := logtest.Find(t, buf, msg)
+	if m == nil {
+		t.Fatalf("expected log line %q not found in: %s", msg, buf.String())
 	}
-	t.Fatalf("expected log line %q not found in: %s", msg, buf.String())
-	return nil
+	return m
 }
 
 func requireNoSecrets(t *testing.T, buf *bytes.Buffer, secrets ...string) {
@@ -59,7 +58,15 @@ func requireNoSecrets(t *testing.T, buf *bytes.Buffer, secrets ...string) {
 	}
 }
 
+type auditCreds struct {
+	User          string
+	WebhookSecret string `json:"webhook_secret"`
+	Password      string
+}
+
 func TestRedactDetails(t *testing.T) {
+	ptr := &auditCreds{User: "u", WebhookSecret: "S", Password: "S"}
+	redactedCreds := map[string]interface{}{"User": "u", "webhook_secret": "[REDACTED]", "Password": "[REDACTED]"}
 	tests := []struct {
 		name string
 		in   map[string]interface{}
@@ -80,31 +87,51 @@ func TestRedactDetails(t *testing.T) {
 			map[string]interface{}{"items": []interface{}{map[string]interface{}{"api_key": "[REDACTED]", "n": 1}, "plain"}}},
 		{"typed slice of maps", map[string]interface{}{"items": []map[string]interface{}{{"token": "S"}}},
 			map[string]interface{}{"items": []map[string]interface{}{{"token": "[REDACTED]"}}}},
+		{"struct", map[string]interface{}{"c": auditCreds{User: "u", WebhookSecret: "S", Password: "S"}},
+			map[string]interface{}{"c": redactedCreds}},
+		{"pointer to struct", map[string]interface{}{"c": ptr},
+			map[string]interface{}{"c": redactedCreds}},
+		{"struct nested in map", map[string]interface{}{"outer": map[string]interface{}{"c": auditCreds{User: "u", WebhookSecret: "S", Password: "S"}}},
+			map[string]interface{}{"outer": map[string]interface{}{"c": redactedCreds}}},
+		{"slice of structs", map[string]interface{}{"cs": []auditCreds{{User: "u", WebhookSecret: "S", Password: "S"}}},
+			map[string]interface{}{"cs": []interface{}{redactedCreds}}},
+		{"large int kept exact", map[string]interface{}{"c": struct{ N uint64 }{1<<63 + 1}},
+			map[string]interface{}{"c": map[string]interface{}{"N": json.Number("9223372036854775809")}}},
+		{"unmarshalable value", map[string]interface{}{"ch": make(chan int), "reason": "r"},
+			map[string]interface{}{"ch": "[UNSERIALIZABLE]", "reason": "r"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Snapshot the input to prove it is not modified; skipped when the
+			// input itself cannot be marshalled (the chan row).
 			var before []byte
 			if tt.in != nil {
-				before, _ = json.Marshal(tt.in)
+				if b, err := json.Marshal(tt.in); err == nil {
+					before = b
+				}
 			}
 			got := redactDetails(tt.in)
 			assert.Equal(t, tt.want, got)
-			if tt.in != nil {
+			if before != nil {
 				after, _ := json.Marshal(tt.in)
 				assert.JSONEq(t, string(before), string(after), "caller's map must not be modified")
 			}
+			assert.Equal(t, "S", ptr.WebhookSecret, "caller's struct must not be modified")
 		})
 	}
 }
 
 func TestAuditLog_RedactsSensitiveDetails(t *testing.T) {
-	const s1, s2, s3 = "SENTINEL_AUDIT_ONE", "SENTINEL_AUDIT_TWO", "SENTINEL_AUDIT_THREE"
+	const s1, s2, s3, s4, s5, s6 = "SENTINEL_AUDIT_ONE", "SENTINEL_AUDIT_TWO", "SENTINEL_AUDIT_THREE", "SENTINEL_AUDIT_FOUR", "SENTINEL_AUDIT_FIVE", "SENTINEL_AUDIT_SIX"
 	newDetails := func() map[string]interface{} {
 		return map[string]interface{}{
 			"reason":         "kept-reason",
 			"webhook_secret": s1,
 			"nested":         fiber.Map{"X-Api-Key": s2, "ok": "kept-nested"},
 			"list":           []interface{}{map[string]interface{}{"reset_token": s3}},
+			"struct":         auditCreds{User: "kept-struct", WebhookSecret: s4},
+			"ptr":            &auditCreds{User: "kept-ptr", Password: s5},
+			"deep":           map[string]interface{}{"c": auditCreds{WebhookSecret: s6}},
 		}
 	}
 
@@ -121,10 +148,10 @@ func TestAuditLog_RedactsSensitiveDetails(t *testing.T) {
 		require.NoError(t, database.DB.Where("action = ?", action).First(&audit).Error)
 		assert.Contains(t, audit.Details, "kept-reason")
 		assert.Contains(t, audit.Details, "[REDACTED]")
-		for _, s := range []string{s1, s2, s3} {
+		for _, s := range []string{s1, s2, s3, s4, s5, s6} {
 			assert.NotContains(t, audit.Details, s, "stored Details")
 		}
-		requireNoSecrets(t, buf, s1, s2, s3)
+		requireNoSecrets(t, buf, s1, s2, s3, s4, s5, s6)
 	}
 
 	t.Run("AuditLog", func(t *testing.T) {

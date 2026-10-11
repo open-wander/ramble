@@ -14,6 +14,8 @@ import (
 	sentry "github.com/getsentry/sentry-go"
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog"
+
+	"rmbl/internal/testutil/logtest"
 )
 
 const panicSecret = "boom-secret-xyz"
@@ -49,7 +51,7 @@ func assertPanicRecovered(t *testing.T, app *fiber.App, buf *bytes.Buffer) {
 		t.Fatal("no X-Request-ID header")
 	}
 
-	lines := logLines(t, buf)
+	lines := logtest.Lines(t, buf)
 	if len(lines) != 2 {
 		t.Fatalf("got %d log lines, want 2: %s", len(lines), buf.String())
 	}
@@ -89,7 +91,7 @@ func assertPanicRecovered(t *testing.T, app *fiber.App, buf *bytes.Buffer) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("follow-up status = %d, want 200", resp.StatusCode)
 	}
-	lines = logLines(t, buf)
+	lines = logtest.Lines(t, buf)
 	if len(lines) != 1 || lines[0]["status"] != float64(200) {
 		t.Errorf("follow-up lines = %v", lines)
 	}
@@ -200,7 +202,7 @@ func TestOuterBackstop(t *testing.T) {
 			if strings.Contains(string(body), panicSecret) {
 				t.Errorf("body leaks panic value: %q", body)
 			}
-			lines := logLines(t, &buf)
+			lines := logtest.Lines(t, &buf)
 			if len(lines) != 1 {
 				t.Fatalf("got %d log lines, want 1: %s", len(lines), buf.String())
 			}

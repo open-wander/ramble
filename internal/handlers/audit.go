@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -54,7 +56,8 @@ func isSensitiveKey(k string) bool {
 }
 
 // redactValue returns a copy of v with sensitive map entries replaced,
-// recursing into maps and slices. The caller's data is never modified.
+// recursing into maps and slices; other composites (structs, pointers) are
+// redacted via a JSON round trip. The caller's data is never modified.
 func redactValue(v interface{}) interface{} {
 	switch t := v.(type) {
 	case map[string]interface{}:
@@ -84,7 +87,35 @@ func redactValue(v interface{}) interface{} {
 		}
 		return out
 	}
-	return v
+	if v == nil {
+		return v
+	}
+	switch reflect.TypeOf(v).Kind() {
+	case reflect.Bool, reflect.String,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64:
+		return v
+	}
+	return redactComposite(v)
+}
+
+// redactComposite handles structs, pointers and other composites by a JSON
+// round trip, so fields are matched by the names the sinks would emit. The
+// round trip builds a fresh value; the caller's is untouched. Values that
+// cannot be marshalled become a placeholder.
+func redactComposite(v interface{}) interface{} {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "[UNSERIALIZABLE]"
+	}
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber() // keep 64-bit integers exact
+	var decoded interface{}
+	if err := dec.Decode(&decoded); err != nil {
+		return "[UNSERIALIZABLE]"
+	}
+	return redactValue(decoded)
 }
 
 // redactDetails returns a copy of m with values under sensitive keys replaced

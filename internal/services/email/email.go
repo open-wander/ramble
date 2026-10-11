@@ -28,13 +28,19 @@ var addrPattern = regexp.MustCompile(`[^\s<>()\[\],;:"@]+@[^\s<>()\[\],;:"]+`)
 // unredacted *textproto.Error to anything walking the chain, so errors.Is/As
 // on the original are not supported (no caller uses them).
 // sendSecrets lists the literals a send error must not carry: the link, its
-// token on its own (a server may echo only part of the link), and both
-// addresses verbatim (covers forms addrPattern misses, such as quoted local parts).
+// token values on their own (a server may echo only part of the link), both
+// addresses verbatim (covers forms addrPattern misses, such as quoted local
+// parts), and the query- and path-escaped forms of the link and each token
+// (a server may echo the URL-encoded text). The escaped link forms come before
+// the bare tokens: redactError replaces in order, and a replaced token would
+// stop the escaped link matching as a whole.
 func sendSecrets(link, to, from string) []string {
-	secrets := []string{link, to, from}
+	secrets := []string{link, url.QueryEscape(link), url.PathEscape(link), to, from}
 	if u, err := url.Parse(link); err == nil {
 		for _, vs := range u.Query() {
-			secrets = append(secrets, vs...)
+			for _, v := range vs {
+				secrets = append(secrets, v, url.QueryEscape(v), url.PathEscape(v))
+			}
 		}
 	}
 	return secrets

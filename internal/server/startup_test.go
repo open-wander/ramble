@@ -2,29 +2,15 @@ package server
 
 import (
 	"bytes"
-	"encoding/json"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog"
 
 	"rmbl/internal/services/logger"
+	"rmbl/internal/testutil/logtest"
 )
-
-func logLines(t *testing.T, buf *bytes.Buffer) []map[string]any {
-	t.Helper()
-	var out []map[string]any
-	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
-		var m map[string]any
-		if err := json.Unmarshal([]byte(line), &m); err != nil {
-			t.Fatalf("log line is not JSON: %q: %v", line, err)
-		}
-		out = append(out, m)
-	}
-	return out
-}
 
 func TestFiberConfigDisablesStartupMessage(t *testing.T) {
 	cfg := fiberConfig(nil)
@@ -51,7 +37,7 @@ func TestLogStarted(t *testing.T) {
 	l := zerolog.New(&buf).With().Timestamp().Logger()
 	logStarted(&l, ":3000", "v1.2.3")
 
-	lines := logLines(t, &buf)
+	lines := logtest.Lines(t, &buf)
 	if len(lines) != 1 {
 		t.Fatalf("got %d lines, want 1", len(lines))
 	}
@@ -95,7 +81,7 @@ func TestUseRequestLogging(t *testing.T) {
 		t.Fatal("X-Request-ID response header is empty")
 	}
 
-	lines := logLines(t, &buf)
+	lines := logtest.Lines(t, &buf)
 	if len(lines) != 2 {
 		t.Fatalf("got %d log lines, want 2: %s", len(lines), buf.String())
 	}

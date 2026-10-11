@@ -128,6 +128,8 @@ func requireFetchLinesCarryRequestID(t *testing.T, reqBuf, baseBuf *lockedBuffer
 	assert.Nil(t, baseBuf.findLogLine("download.permanent_error"), "download.permanent_error leaked to the global logger")
 }
 
+// The goroutine's lookup of the fetched version (finishWebhookFetch, shared by
+// both webhook paths) is bound to the request context too.
 func TestHandleWebhook_FetchLogsCarryRequestID(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -188,6 +190,9 @@ func TestHandleWebhook_FetchLogsCarryRequestID(t *testing.T) {
 			line := reqBuf.findLogLine("db.slow_query", `UPDATE "nomad_resources"`, "last_webhook_error", "WHERE id = ")
 			require.NotNil(t, line, "webhook goroutine UPDATE not on the request logger: %s", reqBuf.String())
 			assert.Equal(t, "rid-85-wh", line["request_id"])
+
+			requireSQLOnRequestLogger(t, reqBuf, baseBuf, "rid-85-wh",
+				`SELECT * FROM "resource_versions"`, "(resource_id = ", "AND version = ", "LIMIT")
 		})
 	}
 }
@@ -282,64 +287,6 @@ func requireSQLOnRequestLogger(t *testing.T, reqBuf, baseBuf *lockedBuffer, rid 
 	require.NotNil(t, line, "%v not on the request logger:\nreq: %s\nbase: %s", sqlParts, reqBuf.String(), baseBuf.String())
 	assert.Equal(t, rid, line["request_id"], "%v", sqlParts)
 	assert.Nil(t, baseBuf.findLogLine("db.slow_query", sqlParts...), "%v leaked to the global logger", sqlParts)
-}
-
-// The webhook goroutine's follow-up lookup of the fetched version is bound to
-// the request context (both webhook paths share finishWebhookFetch).
-func TestHandleWebhook_FollowUpLookupCarriesRequestID(t *testing.T) {
-	tests := []struct {
-		name     string
-		event    string
-		body     string
-		versions []string
-	}{
-		{name: "latest refresh", versions: []string{"v1.0.0"}},
-		{name: "new tag", event: "create", body: `{"ref":"v9.9.9","ref_type":"tag"}`},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			defer cleanupTestData(t)
-
-			user := createTestUser(t, "fetchlogfu-"+strings.ReplaceAll(tt.name, " ", "-"))
-			const secret = "fetch-log-secret"
-			res := models.NomadResource{
-				Name:          "fetch-log-fu",
-				Type:          models.ResourceTypePack,
-				UserID:        user.ID,
-				WebhookSecret: secret,
-				RepositoryURL: failFastRepoURL,
-			}
-			require.NoError(t, database.DB.Create(&res).Error)
-			for _, v := range tt.versions {
-				require.NoError(t, database.DB.Create(&models.ResourceVersion{ResourceID: res.ID, Version: v}).Error)
-			}
-
-			reqBuf, baseBuf := fetchLogHarness(t)
-			app := newRequestLogApp(zerolog.New(reqBuf))
-			app.Post("/webhook/:id", HandleWebhook)
-
-			ts := fmt.Sprintf("%d", time.Now().Unix())
-			req := httptest.NewRequest("POST", "/webhook/"+toString(res.ID), strings.NewReader(tt.body))
-			req.Header.Set("X-Request-ID", "rid-810-fu")
-			req.Header.Set("X-Webhook-Timestamp", ts)
-			req.Header.Set("X-Hub-Signature-256", computeExpectedSignature([]byte(tt.body), ts, secret))
-			if tt.event != "" {
-				req.Header.Set("X-GitHub-Event", tt.event)
-				req.Header.Set("Content-Type", "application/json")
-			}
-			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, http.StatusOK, resp.StatusCode)
-
-			// webhook.fetch_failed is the helper's last line: the goroutine is done.
-			require.True(t, eventually(func() bool {
-				return reqBuf.findLogLine("webhook.fetch_failed") != nil
-			}), "goroutine did not finish: %s", reqBuf.String())
-
-			requireSQLOnRequestLogger(t, reqBuf, baseBuf, "rid-810-fu",
-				`SELECT * FROM "resource_versions"`, "(resource_id = ", "AND version = ", "LIMIT")
-		})
-	}
 }
 
 // The panic path persists the failure through the request context, so the
