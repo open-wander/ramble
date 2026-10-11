@@ -7,7 +7,7 @@ and the datacenter; nothing is edited on any server.
 
 | Where | What |
 |---|---|
-| Nomad variable `nomad/jobs/ramble` | `db_host`, `db_password`, `session_secret`, `token_encryption_key`, `github_key`, `github_secret`, `github_requests_token`, `gitlab_key`, `gitlab_secret`, `smtp_host`, `smtp_port`, `smtp_user`, `smtp_password`, `from_address` |
+| Nomad variable `nomad/jobs/ramble` | `db_host`, `db_password`, `session_secret`, `token_encryption_key`, `sentry_dsn` (optional; crash reports to GlitchTip), `github_key`, `github_secret`, `github_requests_token`, `github_webhook_secret` (optional; enables `/webhooks/github/issues`), `gitlab_key`, `gitlab_secret`, `smtp_host`, `smtp_port`, `smtp_user`, `smtp_password`, `from_address` |
 | Repo secrets `NOMAD_ADDR`, `NOMAD_TOKEN`, `NOMAD_DATACENTER` | how the runner reaches the cluster (set by hand) |
 
 `AUTO_SEED` is pinned to `false` and the `INITIAL_USER_*` variables are not
