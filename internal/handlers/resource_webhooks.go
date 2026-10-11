@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 )
 
@@ -225,7 +226,7 @@ func HandleWebhook(c *fiber.Ctx) error {
 	}
 
 	// Create webhook logger
-	webhookLog := logger.Log.With().
+	webhookLog := logger.FromContext(c.UserContext()).With().
 		Str("operation", "webhook").
 		Str("resource_id", id).
 		Logger()
@@ -315,7 +316,7 @@ func HandleWebhook(c *fiber.Ctx) error {
 			webhookLog.Info().Str("version", newVersion).Msg("webhook.version_received")
 
 			// Background Fetch for the NEW version with error propagation to webhook status
-			go func(resID uint, vStr, repoURL, resType, resName, filePath string) {
+			go func(log zerolog.Logger, resID uint, vStr, repoURL, resType, resName, filePath string) {
 				fetchVersionContent(context.Background(), resID, vStr, repoURL, resType, resName, filePath)
 
 				// Check if the fetch failed and update webhook error status
@@ -328,13 +329,13 @@ func HandleWebhook(c *fiber.Ctx) error {
 								"last_webhook_status": "failure",
 								"last_webhook_error":  "Fetch failed: " + version.FetchError,
 							})
-						webhookLog.Warn().
+						log.Warn().
 							Str("version", vStr).
 							Str("fetch_error", version.FetchError).
 							Msg("webhook.fetch_failed")
 					}
 				}
-			}(resource.ID, newVersion, resource.RepositoryURL, string(resource.Type), resource.Name, resource.FilePath)
+			}(webhookLog, resource.ID, newVersion, resource.RepositoryURL, string(resource.Type), resource.Name, resource.FilePath)
 
 			return c.SendStatus(200)
 		}
@@ -347,7 +348,7 @@ func HandleWebhook(c *fiber.Ctx) error {
 		webhookLog.Info().Str("version", latest.Version).Msg("webhook.latest_version_refresh")
 
 		// Background Fetch for refresh with error propagation to webhook status
-		go func(resID uint, vStr, repoURL, resType, resName, filePath string) {
+		go func(log zerolog.Logger, resID uint, vStr, repoURL, resType, resName, filePath string) {
 			fetchVersionContent(context.Background(), resID, vStr, repoURL, resType, resName, filePath)
 
 			// Check if the fetch failed and update webhook error status
@@ -360,13 +361,13 @@ func HandleWebhook(c *fiber.Ctx) error {
 							"last_webhook_status": "failure",
 							"last_webhook_error":  "Fetch failed: " + version.FetchError,
 						})
-					webhookLog.Warn().
+					log.Warn().
 						Str("version", vStr).
 						Str("fetch_error", version.FetchError).
 						Msg("webhook.fetch_failed")
 				}
 			}
-		}(resource.ID, latest.Version, resource.RepositoryURL, string(resource.Type), resource.Name, resource.FilePath)
+		}(webhookLog, resource.ID, latest.Version, resource.RepositoryURL, string(resource.Type), resource.Name, resource.FilePath)
 	}
 
 	return c.SendStatus(200)

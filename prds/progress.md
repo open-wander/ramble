@@ -215,3 +215,17 @@ echo the recipient; guard matches identifier names (aliases not caught); stdlib 
 PATTERN: workflow - Workflow `isolation: worktree` branches from the default branch, not
 the current HEAD. On a feature branch with unmerged commits, run isolated workers only
 when the base doesn't matter, or have them `git checkout <branch-sha>` first.
+
+## 2026-10-11 — 7.2 webhook lines carry request_id
+
+resource_webhooks.go webhookLog from logger.FromContext(c.UserContext()); both goroutines
+take a zerolog.Logger parameter (no *fiber.Ctx capture). HandleGitHubIssueWebhook uses the
+request logger; handleNewIssueDB/handleIssueStateChangeDB use
+logger.FromContextOr(db.Statement.Context, &logger.Log). Keys and levels unchanged.
+webhook_log_test.go: table test of early-reject paths plus a HandleWebhook case.
+Merged with 7.1: both extracted the same db_test.go helper; kept 7.1's newRequestLogApp.
+Orchestrator mutation: HandleGitHubIssueWebhook back to &logger.Log -> red. Suite ok.
+Advisor REJECT, fix round, MINOR. Follow-ups: fetchVersionContent (background.go) logs
+version_fetch.* via the global logger, so webhook-triggered fetch lines lack request_id;
+goroutine DB writes in resource_webhooks.go stay on database.DB; no test covers the
+github.webhook_request_* lines.
