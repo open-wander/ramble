@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -45,6 +46,29 @@ func (g *gormLogger) logger(ctx context.Context) *zerolog.Logger {
 	return logger.FromContextOr(ctx, g.base)
 }
 
+// safeArg returns a value that is safe to format: an error's text, a scalar
+// (including named kinds such as time.Duration), or the type name.
+func safeArg(a any) any {
+	if a == nil {
+		return "<nil>"
+	}
+	rv := reflect.ValueOf(a)
+	if rv.Kind() == reflect.Pointer && rv.IsNil() {
+		return "<nil>" // a typed-nil error would panic in Error()
+	}
+	if err, ok := a.(error); ok {
+		return err.Error()
+	}
+	switch rv.Kind() {
+	case reflect.String, reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		return a
+	}
+	return fmt.Sprintf("<%T>", a)
+}
+
 // formatText renders a GORM message with its args. Only errors, strings and
 // scalars are formatted; anything else (structs such as pgconn.Config, which
 // holds the password) is replaced by its type name.
@@ -54,17 +78,7 @@ func formatText(msg string, args []any) string {
 	}
 	safe := make([]any, len(args))
 	for i, a := range args {
-		switch v := a.(type) {
-		case error:
-			safe[i] = v.Error()
-		case string, bool,
-			int, int8, int16, int32, int64,
-			uint, uint8, uint16, uint32, uint64,
-			float32, float64:
-			safe[i] = v
-		default:
-			safe[i] = fmt.Sprintf("<%T>", a)
-		}
+		safe[i] = safeArg(a)
 	}
 	return fmt.Sprintf(msg, safe...)
 }

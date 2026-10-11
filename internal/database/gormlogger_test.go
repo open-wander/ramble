@@ -304,3 +304,36 @@ func TestGormOpenConnectFailureKeepsPasswordOut(t *testing.T) {
 		t.Errorf("unexpected line: %v", m)
 	}
 }
+
+type ptrErr struct{}
+
+func (*ptrErr) Error() string { return "ptr err" }
+
+func TestSafeArg(t *testing.T) {
+	type secretCfg struct{ Password string }
+	var typedNil *ptrErr
+	tests := []struct {
+		name string
+		in   any
+		want any
+	}{
+		{"nil", nil, "<nil>"},
+		{"typed nil error", error(typedNil), "<nil>"},
+		{"error", errors.New("boom"), "boom"},
+		{"string", "s", "s"},
+		{"int", 3, 3},
+		{"named scalar keeps value", 2 * time.Second, 2 * time.Second},
+		{"struct becomes type name", secretCfg{Password: "SENTINEL_PW"}, "<database.secretCfg>"},
+		{"pointer to struct becomes type name", &secretCfg{Password: "SENTINEL_PW"}, "<*database.secretCfg>"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := safeArg(tt.in); got != tt.want {
+				t.Errorf("safeArg(%T) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
+	}
+	if got := formatText("slow by %v", []any{2 * time.Second}); got != "slow by 2s" {
+		t.Errorf("formatText = %q, want %q", got, "slow by 2s")
+	}
+}
