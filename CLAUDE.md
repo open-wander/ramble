@@ -10,12 +10,15 @@ shared rules: `TydeWhatMay/infra` `platform/alloy/README.md`.
 - Selector: `{container="ramble"}` (`deploy/nomad/ramble.nomad.hcl`).
 - Format: zerolog JSON on stdout since v0.5.17 (2026-10-10 21:00 UTC). Before
   that it was text: Fiber access lines and GORM SQL traces with ANSI colours.
-  Fiber's startup banner is still text (task 6.6).
+  Since v0.5.18 each start logs one `server.started` line (`addr`, `version`)
+  instead of Fiber's text banner.
 - Requests are `msg="http.request"` with `request_id`, `method`, `path`,
   `status`, `duration_ms`, `client_ip`. Database: `db.slow_query` (WARN,
   over 200 ms) and `db.query_error` (ERROR); fast queries are not logged.
+  Since v0.5.18 SQL, handler and webhook lines carry the request's
+  `request_id`; panics log `http.panic`; audit events are `audit.recorded`.
 - `level` is not a label; filter after `| json`. Add `| __error__=""` to any
-  metric query: the banner and the pre-v0.5.17 lines do not parse, and Loki
+  metric query: the pre-v0.5.17 lines do not parse, and Loki
   fails the whole query on a parse error.
 
 ```
