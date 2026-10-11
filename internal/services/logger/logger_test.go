@@ -7,8 +7,10 @@ import (
 	stdlog "log"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 func TestInit_Development(t *testing.T) {
@@ -175,12 +177,27 @@ func TestLoggerWithFields(t *testing.T) {
 }
 
 func TestInit_ProductionFormat(t *testing.T) {
-	t.Setenv("ENV", "production")
-	Init()
-	t.Cleanup(func() { t.Setenv("ENV", "development"); Init() })
+	// Snapshot every global Init touches before calling it, and restore them.
+	prevLog := Log
+	prevGlobal := log.Logger
+	prevMsg := zerolog.MessageFieldName
+	prevLevel := zerolog.LevelFieldMarshalFunc
+	prevTimeFmt := zerolog.TimeFieldFormat
+	prevOut := stdlog.Writer()
+	prevFlags := stdlog.Flags()
+	t.Cleanup(func() {
+		Log = prevLog
+		log.Logger = prevGlobal
+		zerolog.MessageFieldName = prevMsg
+		zerolog.LevelFieldMarshalFunc = prevLevel
+		zerolog.TimeFieldFormat = prevTimeFmt
+		stdlog.SetOutput(prevOut)
+		stdlog.SetFlags(prevFlags)
+	})
 
+	t.Setenv("ENV", "production")
 	var buf bytes.Buffer
-	Log = Log.Output(&buf)
+	initWithWriter(&buf)
 
 	Log.Warn().Int("n", 1).Msg("test.event")
 	stdlog.Printf("legacy %s", "line")
@@ -208,8 +225,11 @@ func TestInit_ProductionFormat(t *testing.T) {
 		if err := json.Unmarshal([]byte(tt.line), &m); err != nil {
 			t.Fatalf("not JSON: %q: %v", tt.line, err)
 		}
-		if _, ok := m["time"]; !ok {
+		ts, ok := m["time"].(string)
+		if !ok {
 			t.Errorf("missing time: %v", m)
+		} else if _, err := time.Parse(time.RFC3339Nano, ts); err != nil {
+			t.Errorf("time %q not RFC3339Nano: %v", ts, err)
 		}
 		if m["level"] != tt.wantLevel {
 			t.Errorf("level = %v, want %s", m["level"], tt.wantLevel)
