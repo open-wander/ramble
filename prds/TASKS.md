@@ -14,3 +14,18 @@ verification in [verification.md](verification.md). PRD: [done/prd-security-bugf
 ## Phase 7: Logging standard gaps — 5 tasks completed 2026-10-11 (see [TASKS-archive.md](TASKS-archive.md))
 
 ## Phase 8: Logging test hardening — 11 tasks completed 2026-10-11 (see [TASKS-archive.md](TASKS-archive.md))
+
+## Phase 9: Webhook CSRF bug and code debt
+
+Source: the 8.4 e2e finding, the review notes in progress.md (Phases 6-8), staticcheck
+(latest) and `go fix` (modernize) on 2026-10-11. gosec is clean. Branch `fix/webhooks-and-debt`.
+
+| # | Task | PRD | Status | Notes |
+|---|------|-----|--------|-------|
+| 9.1 | Exempt `POST /resource/:id/webhook` and `POST /webhooks/github/issues` from the global CSRF middleware (both authenticate by signature); e2e test sends correctly signed webhooks for both through the real binary and gets past CSRF; a form POST without a token is still rejected | 8.4 finding | TODO | Bug since January: every real webhook delivery gets 403. |
+| 9.2 | Remove dead code and test-only wrappers: `validateGitHubSignature` (duplicate of `github.ValidateWebhookSignature`), unused `setupAuthenticatedApp` test helper, `SyncGitHubToRequest` (no callers), and the database.DB wrappers only tests call (`processOAuthUser`, `handleNewIssue`, `handleIssueStateChange`, `GetPopularTags`) - point tests at the *DB variants. `isAllowedContentType`: wire it into the remote download path with a test if every supported host's raw responses pass it, otherwise delete it and record why | staticcheck U1000, 6.3 review | TODO | |
+| 9.3 | staticcheck findings: replace deprecated `strings.Title` (pages.go), S1002 in seo.go, S1017 in pack/cache.go | staticcheck | TODO | |
+| 9.4 | Server and CLI hardening: an outermost recover so panics inside requestid/RequestLogger are recovered and logged without SENTRY_DSN; `wantsUpdateCheck` compares the command itself, not its name; Sentry events never carry the request query string | 8.7, 8.11 reviews, Phase 6 verify gap 7 | TODO | |
+| 9.5 | Handler and test debt: audit `redactValue` covers struct and pointer detail values; merge the duplicated webhook follow-up test setup in fetch_log_test.go; one shared `logLines` test helper (internal/testutil) instead of three copies; email redaction also matches URL-encoded link and token | 8.2, 8.10, 8.1, 8.6 reviews | TODO | |
+| 9.6 | Coverage gaps: runtime test for the `db.migrate_failed` exit path; e2e test makes the go test cache track ./views and ./public; event-key guard also rejects stdlib `log.Print*` calls in server code | 8.7, 8.4, 6.4/7.1 reviews | TODO | |
+| 9.7 | Apply `go fix` modernizers tree-wide (171 lines, 41 files) and add staticcheck to CI so new findings fail the build | 5.5 note, staticcheck | TODO | Last: touches most files. |
