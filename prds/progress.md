@@ -342,3 +342,24 @@ Orchestrator mutations: 8.8 RequestLogger removed, 8.9 raw args restored, typed-
 disabled, 8.10 follow-up First without WithContext - all red. Suite ok.
 8.8 review found a real gap -> 8.11: handler panics produce no http.request line, and
 without SENTRY_DSN no middleware recovers them.
+
+## 2026-10-11 — 8.11 panic recovery, 8.4 end-to-end production run
+
+8.11: server.go recoverPanics() registered in useRequestLogging after RequestLogger. Avoids
+Fiber's recover middleware (default ErrorHandler would put the panic value in the body).
+Reports through sentryfiber.GetHubFromContext(c).RecoverWithContext; outer sentryfiber
+(Repanic:false) stays as backstop for panics in requestid/RequestLogger themselves (only
+with SENTRY_DSN). First review REJECT: a worker mutation had been left in the session
+middleware log calls; fixed, re-review PASS. Orchestrator mutation: Sentry report removed
+-> TestRequestLoggingPanicReportedToSentry red.
+8.4: cmd/ramble/e2e_test.go builds and runs the real binary against testcontainers
+Postgres in production mode. Orchestrator mutation: println in handlers.Home -> red
+(stderr). Notes: the ConsoleWriter mutation fails via the 60s readiness timeout; the go
+test cache does not track ./views and ./public, so run with -count=1 after template
+changes. Suite ok.
+8.4 found a production bug outside logging: the global csrf middleware has no exemption
+for POST /resource/:id/webhook and POST /webhooks/github/issues, so webhook deliveries
+get 403 before the handler runs. Not fixed here - reported to the user.
+
+PATTERN: e2e - an end-to-end run of the real binary finds what unit tests with hand-built
+apps cannot (here: middleware order blocking webhooks entirely).
