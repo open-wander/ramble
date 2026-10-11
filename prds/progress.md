@@ -265,3 +265,14 @@ in handlers/db_test.go now builds on it. New TestRequestChain_QueryErrorSharesRe
 mutation: SetUserContext removed -> red. Full suite ok. Advisor MINOR: server.Run's
 middleware wiring/order is only compile-time checked (a no-op swap stays green) -> 8.8;
 logLines helper now exists in three test packages.
+
+## 2026-10-11 — 8.6 SMTP errors carry no addresses or link
+
+email.go: redactError(err, secrets...) wraps the send result of SendResetEmail and
+SendVerificationEmail; regex over addr-spec tokens plus literal secrets. smtpRootCAs
+seam lets email_send_test.go run the real STARTTLS send path against an in-process fake
+server that echoes addresses at MAIL, RCPT and DATA. No Unwrap on purpose.
+Orchestrator follow-up from review: sendSecrets(link, to, from) adds the link's query
+values (token) and both addresses verbatim; new row where the reply echoes only the token.
+Mutations: no redaction -> 4 rows red; token literals dropped -> token row red. Suite ok.
+Known limit: URL-encoded or line-wrapped echoes of the link are not matched.
