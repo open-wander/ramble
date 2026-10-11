@@ -590,3 +590,16 @@ govulncheck@latest verified with its real exit code: 0.
 
 PATTERN: verification - never judge a tool by its output piped through tail/grep; capture the
 exit code ($? of the tool itself, or set -o pipefail). A tool can print "Issues: 0" and fail.
+
+## 2026-10-11 — case-insensitive unique name indexes (post v0.5.18)
+
+The user ran the duplicate audit against prod: no case-variant duplicates. database.Connect now
+runs ensureCaseInsensitiveNameIndexes after AutoMigrate: CREATE UNIQUE INDEX IF NOT EXISTS
+idx_users_username_lower ON users (LOWER(username)) and idx_organizations_name_lower ON
+organizations (LOWER(name)) (soft-deleted rows included, like the existing indexes). A failure
+logs ERROR db.name_index_failed and does not exit (handlers already reject case variants).
+User-vs-org clashes stay an application check (nameTaken). The handler test DB helper does not
+create these indexes (two tests seed legacy case-duplicates on purpose).
+Tests: TestCaseInsensitiveNameIndexes (idempotent, Alice/alice and Acme/ACME rejected),
+TestConnectNameIndexFailureIsNotFatal. Mutations: plain-column index -> red; exit(1) on failure
+-> red. vet, gofmt, go fix check, suite, gosec (exit 0) ok.
