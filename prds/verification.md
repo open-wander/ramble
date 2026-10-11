@@ -1,3 +1,54 @@
+# Verification — Phase 6 structured logging (infra prod-logging standard)
+
+Date: 2026-10-11
+Scope: ramble at feat/logging-followups 7181db4 (PR #52) against the six-point standard in
+TydeWhatMay/infra `docs/prod-logging.md`. Method: one Opus verifier per point, each in its
+own worktree, reading every server write path, running the guarding tests, and making one
+or more mutations to check a test goes red (norman verify, single rigor, plus mutation sweep).
+
+## Summary
+
+| # | Requirement | Result | Mutation |
+|---|---|---|---|
+| S1 | One JSON object per line on stdout | PARTIAL | killed (stdlib redirect, banner flag) |
+| S2 | time / upper-case level / msg; msg a stable event key | PARTIAL | killed (sentence key, lower-case level) |
+| S3 | http.request fields; same request_id on every line of a request | PARTIAL | killed (reqDB, SetUserContext, query string) |
+| S4 | No ANSI / console writer in production | PARTIAL | **survived** (ConsoleWriter in prod branch) |
+| S5 | No SQL at INFO; slow/error at WARN/ERROR, placeholders only | PARTIAL | killed (bind values, level, threshold) |
+| S6 | No secrets, tokens, bodies, query strings | PARTIAL | killed (bind values, query string) |
+
+No FAILs. The tested components hold; the PARTIALs are untested or unconverted paths.
+None is a regression from PR #52 — all existed before it.
+
+## Gaps
+
+1. **Plain-text `fmt.Printf` on request paths** (S1, S2, S3, S6): `internal/handlers/auth.go:384`,
+   `auth.go:488` (email send errors; error text can contain the recipient address via
+   `internal/services/email/email.go:60`), `internal/handlers/utils.go:49` (SetFlash session save).
+   Not JSON, no request_id, invisible to the event-key guard.
+2. **No guard against direct stdout writes** in server packages: the AST guard checks only
+   `Msg`/`Msgf`. Extend it to flag `fmt.Print*` / `fmt.Fprint*(os.Stdout|os.Stderr)` outside `internal/cli`.
+3. **Webhook handlers log through the global logger** (S3): `resource_webhooks.go:228` builds
+   `webhookLog` from `logger.Log`; `github_sync.go:450-502` (HandleGitHubIssueWebhook) and the
+   `github.webhook_request_*` lines in handleNewIssueDB/handleIssueStateChangeDB use `logger.Log`.
+   Those lines lack request_id. Use `logger.FromContext(c.UserContext())`.
+4. **Production writer not tested** (S4, surviving mutant): `TestInit_ProductionFormat` replaces
+   the writer with `Log.Output(&buf)`, so switching the production branch of `logger.Init` to
+   `ConsoleWriter` passes. Make the writer injectable and assert on what Init itself writes.
+5. **GORM logger wiring not tested** (S4, S5): nothing asserts `database.Connect` sets
+   `Logger: newDefaultGormLogger()`; reverting to GORM's default (colour, interpolated values) passes.
+6. **Server-process CLI output** (S1, S2): `ramble server` runs under cobra; an error from
+   `server.Run` (e.g. Listen) prints plain text via cobra and `root.go:59`, and the update check
+   in Pre/PostRun can print a notice. Set SilenceErrors/SilenceUsage and log a JSON `server.exit_error`
+   for the server command; skip the update check there.
+7. Minor: `db_test.go` copies the requestLogger middleware rather than using it (drift risk);
+   `database.go:43,56,75` use `Fatal` (level FATAL, outside the four named levels); no test
+   guards secrets out of audit `details`; Sentry may receive the query string (SendDefaultPII is off).
+
+---
+
+# Previous report
+
 # Verification — prd-security-bugfix
 
 Date: 2026-05-31
