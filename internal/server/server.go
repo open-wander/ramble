@@ -46,12 +46,7 @@ func Run(cfg Config) error {
 		if env == "" {
 			env = "production"
 		}
-		if err := sentry.Init(sentry.ClientOptions{
-			Dsn:              dsn,
-			Environment:      env,
-			Release:          cfg.Version,
-			AttachStacktrace: true,
-		}); err != nil {
+		if err := sentry.Init(sentryOptions(dsn, env, cfg.Version)); err != nil {
 			logger.Log.Error().Err(err).Msg("sentry.init_failed")
 		} else {
 			logger.Log.Info().Str("environment", env).Str("release", cfg.Version).Msg("sentry.enabled")
@@ -106,12 +101,9 @@ func Run(cfg Config) error {
 	app := fiber.New(fiberConfig(engine))
 
 	// 4. Middleware
-	// Crash reporting (GlitchTip) - outermost. It supplies the hub that
-	// recoverPanics reports through, and backstops panics in the requestid and
-	// RequestLogger middleware. Repanic:false so nothing crashes the app.
-	if os.Getenv("SENTRY_DSN") != "" {
-		app.Use(sentryfiber.New(sentryfiber.Options{Repanic: false}))
-	}
+	// Outermost: a backstop for panics in the requestid and RequestLogger
+	// middleware (recoverPanics sits inside them), then Sentry when a DSN is set.
+	useOuterMiddleware(app, &logger.Log, os.Getenv("SENTRY_DSN") != "")
 
 	// Request ID tracing + structured access log
 	useRequestLogging(app, &logger.Log)
@@ -438,6 +430,72 @@ func fiberConfig(views fiber.Views) fiber.Config {
 		// The text banner breaks one-JSON-object-per-line; server.started replaces it.
 		DisableStartupMessage: true,
 	}
+}
+
+// useOuterMiddleware registers the outermost backstop and, when withSentry,
+// the sentryfiber hub. Repanic is true so a panic in a middleware outside
+// recoverPanics reaches recoverOuter instead of being swallowed as a 200;
+// handler panics are recovered inside and never re-panic.
+func useOuterMiddleware(app *fiber.App, base *zerolog.Logger, withSentry bool) {
+	app.Use(recoverOuter(base))
+	if withSentry {
+		app.Use(sentryfiber.New(sentryfiber.Options{Repanic: true}))
+	}
+}
+
+// recoverOuter turns a panic from the request logging middleware itself into
+// a 500. No request context exists this far out, so it logs through base and
+// marks the line outer. The panic value stays out of the response body.
+func recoverOuter(base *zerolog.Logger) fiber.Handler {
+	return func(c *fiber.Ctx) (err error) {
+		defer func() {
+			r := recover()
+			if r == nil {
+				return
+			}
+			base.Error().
+				Bool("outer", true).
+				Str("panic", fmt.Sprint(r)).
+				Str("stack", string(debug.Stack())).
+				Msg("http.panic")
+			err = fiber.ErrInternalServerError
+		}()
+		return c.Next()
+	}
+}
+
+// sentryOptions are the client options for Run. BeforeSend keeps request
+// data out of events; SendDefaultPII stays false.
+func sentryOptions(dsn, env, release string) sentry.ClientOptions {
+	return sentry.ClientOptions{
+		Dsn:              dsn,
+		Environment:      env,
+		Release:          release,
+		AttachStacktrace: true,
+		BeforeSend:       scrubSentryEvent,
+	}
+}
+
+// scrubSentryEvent removes the query string, cookies, body and credential
+// headers from an event. The SDK only redacts a built-in list of key names.
+func scrubSentryEvent(e *sentry.Event, _ *sentry.EventHint) *sentry.Event {
+	r := e.Request
+	if r == nil {
+		return e
+	}
+	r.QueryString = ""
+	r.Cookies = ""
+	r.Data = ""
+	r.URL, _, _ = strings.Cut(r.URL, "?")
+	r.URL, _, _ = strings.Cut(r.URL, "#")
+	for k := range r.Headers {
+		for _, h := range []string{"Authorization", "Cookie", "X-Hub-Signature-256", "X-Webhook-Timestamp"} {
+			if strings.EqualFold(k, h) {
+				delete(r.Headers, k)
+			}
+		}
+	}
+	return e
 }
 
 // useRequestLogging registers request ID tracing, the structured access log

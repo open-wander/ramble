@@ -31,14 +31,20 @@ func captureLog(t *testing.T) *bytes.Buffer {
 }
 
 func TestWantsUpdateCheck(t *testing.T) {
+	rootCmd.InitDefaultHelpCmd()
+	helpCmd, _, _ := rootCmd.Find([]string{"help"})
+	pack := &cobra.Command{Use: "pack"}
+	pack.AddCommand(&cobra.Command{Use: "server"})
 	tests := []struct {
 		name string
 		cmd  *cobra.Command
 		want bool
 	}{
 		{"server", serverCmd, false},
-		{"version", &cobra.Command{Use: "version"}, false},
-		{"help", &cobra.Command{Use: "help"}, false},
+		{"version", versionCmd, false},
+		{"help", helpCmd, false},
+		{"nested server", pack.Commands()[0], true},
+		{"unparented help", &cobra.Command{Use: "help"}, true},
 		{"pack list", packListCmd, true},
 		{"job list", &cobra.Command{Use: "list"}, true},
 		{"root", rootCmd, true},

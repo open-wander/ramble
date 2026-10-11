@@ -454,3 +454,18 @@ test process. Note: in practice the e2e test is never served from the go test ca
 is kept as cheap insurance. msgkey guard now rejects stdlib log.Print*/Fatal*/Panic* in
 server code. Orchestrator mutations: exit(1) removed on migrate branch -> red; log.Printf
 added to a handler -> guard red. Advisor PASS.
+
+## 2026-10-11 — 9.4 outer panic backstop, Sentry scrub, update-check predicate
+
+server.go useOuterMiddleware(app, base, withSentry): recoverOuter first (logs http.panic
+with outer=true via the base logger, returns 500), then sentryfiber. Advisor REVISE: with
+Repanic:false sentryfiber swallowed middleware panics as a 200 with no log line, so it is
+now Repanic:true; handler panics are recovered inside by recoverPanics and reported once.
+sentryOptions(dsn, env, release) sets BeforeSend: scrubSentryEvent (QueryString, URL
+?/#, Cookies, Data cleared; Authorization, Cookie, X-Hub-Signature-256, X-Webhook-Timestamp
+removed case-insensitively). Tests go through a capture Transport, not a test BeforeSend.
+root.go wantsUpdateCheck compares versionCmd/serverCmd by pointer; help matched as the
+root's direct child (rootCmd itself would be an init cycle).
+Orchestrator: TestOuterBackstop now panics only on /boom and checks a follow-up /ok
+succeeds (the /ok route was dead). Mutations: Repanic false -> with_sentry red; BeforeSend
+removed -> TestSentryEventsCarryNoRequestSecrets red; name compare -> nested_server red.
