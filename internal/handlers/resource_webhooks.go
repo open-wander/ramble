@@ -141,7 +141,7 @@ func FetchInfo(c *fiber.Ctx) error {
 		}
 	}
 	if existingTags != "" {
-		for _, t := range strings.Split(existingTags, ",") {
+		for t := range strings.SplitSeq(existingTags, ",") {
 			t = strings.ToLower(strings.TrimSpace(t))
 			if t != "" {
 				tagMap[t] = true
@@ -321,7 +321,7 @@ func finishWebhookFetch(ctx context.Context, log zerolog.Logger, resID uint, vSt
 		if version.FetchStatus == models.FetchStatusFailed {
 			database.DB.WithContext(ctx).Model(&models.NomadResource{}).
 				Where("id = ?", resID).
-				Updates(map[string]interface{}{
+				Updates(map[string]any{
 					"last_webhook_status": "failure",
 					"last_webhook_error":  "Fetch failed: " + version.FetchError,
 				})

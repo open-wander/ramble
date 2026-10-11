@@ -478,7 +478,7 @@ func TestListUserRegistriesAPI_Empty(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	var result map[string]interface{}
+	var result map[string]any
 	json.NewDecoder(resp.Body).Decode(&result)
 	assert.NotNil(t, result["registries"])
 }

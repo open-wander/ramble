@@ -45,7 +45,7 @@ func failingDB(t *testing.T, table string, op string) {
 }
 
 func logHasEvent(buf *bytes.Buffer, msg, level string) (map[string]any, bool) {
-	for _, line := range bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n")) {
+	for line := range bytes.SplitSeq(bytes.TrimSpace(buf.Bytes()), []byte("\n")) {
 		var m map[string]any
 		if json.Unmarshal(line, &m) != nil {
 			continue

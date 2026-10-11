@@ -8,6 +8,7 @@ import (
 	"rmbl/internal/models"
 	"rmbl/internal/services/github"
 	"rmbl/internal/services/logger"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -156,13 +157,7 @@ func syncRequestToGitHub(db *gorm.DB, request models.PackRequest) error {
 	var labels []string
 	statusLabels := getStatusLabels()
 	for _, label := range issue.Labels {
-		isStatusLabel := false
-		for _, sl := range statusLabels {
-			if label.Name == sl {
-				isStatusLabel = true
-				break
-			}
-		}
+		isStatusLabel := slices.Contains(statusLabels, label.Name)
 		if !isStatusLabel {
 			labels = append(labels, label.Name)
 		}
@@ -257,7 +252,6 @@ func runBidirectionalSync(db *gorm.DB) (*SyncResult, error) {
 	var updatedCount atomic.Int32
 
 	for _, request := range requests {
-		request := request
 		issue, exists := issueMap[request.GitHubIssueNum]
 		if !exists {
 			mu.Lock()
@@ -383,7 +377,7 @@ func PostSyncGitHubRequests(c *fiber.Ctx) error {
 		})
 	}
 
-	AuditLog(c, "admin.sync_github_requests", "system", 0, "", map[string]interface{}{
+	AuditLog(c, "admin.sync_github_requests", "system", 0, "", map[string]any{
 		"created": result.CreatedRequests,
 		"updated": result.UpdatedRequests,
 		"synced":  result.UpdatedIssues,

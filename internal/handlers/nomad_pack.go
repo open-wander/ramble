@@ -467,10 +467,7 @@ type RecentResource struct {
 // @Router /v1/recent [get]
 func ListRecentAPI(c *fiber.Ctx) error {
 	since := c.Query("since")
-	limit := c.QueryInt("limit", 50)
-	if limit > 100 {
-		limit = 100
-	}
+	limit := min(c.QueryInt("limit", 50), 100)
 	if limit < 1 {
 		limit = 50
 	}

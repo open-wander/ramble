@@ -52,7 +52,7 @@ func (b *lockedBuffer) String() string {
 // findLogLine returns the first line with the given msg whose sql field
 // contains every one of sqlParts, or nil.
 func (b *lockedBuffer) findLogLine(msg string, sqlParts ...string) map[string]any {
-	for _, line := range strings.Split(b.String(), "\n") {
+	for line := range strings.SplitSeq(b.String(), "\n") {
 		var m map[string]any
 		if json.Unmarshal([]byte(line), &m) != nil || m[zerolog.MessageFieldName] != msg {
 			continue

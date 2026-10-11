@@ -21,6 +21,22 @@ jobs:
     - name: Verify dependencies
       run: go mod verify
 
+    - name: Vet
+      run: |
+        go vet ./...
+        go vet -tags=security ./...
+
+    - name: Check formatting and go fix modernizers
+      run: |
+        unformatted=$(gofmt -l .)
+        if [ -n "$unformatted" ]; then
+          echo "gofmt needed on:"; echo "$unformatted"; exit 1
+        fi
+        fixes=$(go fix -diff ./...; go fix -tags=security -diff ./...)
+        if [ -n "$fixes" ]; then
+          echo "$fixes"; echo "Run 'go fix ./...' and 'go fix -tags=security ./...' and commit the changes."; exit 1
+        fi
+
     - name: Run tests
       run: go test -tags=security -v ./...
 

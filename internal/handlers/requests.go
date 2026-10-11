@@ -254,7 +254,7 @@ func createGitHubIssueForRequest(db *gorm.DB, requestID uint) {
 		return
 	}
 
-	db.Model(&request).Updates(map[string]interface{}{
+	db.Model(&request).Updates(map[string]any{
 		"github_issue_url": resp.HTMLURL,
 		"github_issue_num": resp.Number,
 	})
@@ -313,12 +313,12 @@ func ToggleRequestVote(c *fiber.Ctx) error {
 	}
 
 	if hasVoted {
-		if err := reqDB(c).Model(&request).Association("Voters").Delete(&models.User{Model: gorm.Model{ID: userID}}); err != nil {
+		if err := reqDB(c).Model(&request).Association("Voters").Delete(&models.User{ID: userID}); err != nil {
 			return c.Status(fiber.StatusInternalServerError).SendString("Failed to remove vote")
 		}
 		reqDB(c).Model(&request).Update("vote_count", gorm.Expr("vote_count - ?", 1))
 	} else {
-		if err := reqDB(c).Model(&request).Association("Voters").Append(&models.User{Model: gorm.Model{ID: userID}}); err != nil {
+		if err := reqDB(c).Model(&request).Association("Voters").Append(&models.User{ID: userID}); err != nil {
 			return c.Status(fiber.StatusInternalServerError).SendString("Failed to add vote")
 		}
 		reqDB(c).Model(&request).Update("vote_count", gorm.Expr("vote_count + ?", 1))

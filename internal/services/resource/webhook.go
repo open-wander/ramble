@@ -36,7 +36,7 @@ func (s *ResourceService) ProcessTagEvent(resourceID uint, newVersion string) (c
 func (s *ResourceService) RecordWebhookSuccess(resourceID uint) error {
 	return s.db.Model(&models.NomadResource{}).
 		Where("id = ?", resourceID).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"last_webhook_delivery": time.Now(),
 			"last_webhook_status":   "success",
 			"last_webhook_error":    "",
@@ -47,7 +47,7 @@ func (s *ResourceService) RecordWebhookSuccess(resourceID uint) error {
 func (s *ResourceService) RecordWebhookFailure(resourceID uint, errMsg string) error {
 	return s.db.Model(&models.NomadResource{}).
 		Where("id = ?", resourceID).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"last_webhook_delivery": time.Now(),
 			"last_webhook_status":   "failure",
 			"last_webhook_error":    errMsg,

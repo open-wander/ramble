@@ -100,7 +100,7 @@ func Connect() {
 func cleanupExpiredTokens(db *gorm.DB) {
 	result := db.Model(&models.User{}).
 		Where("reset_token != ?", "").
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"reset_token":         "",
 			"reset_token_expires": time.Time{},
 			"reset_token_used_at": nil,

@@ -70,11 +70,11 @@ func Run(cfg Config) error {
 	if os.Getenv("ENV") != "production" {
 		engine.Reload(true)
 	}
-	engine.AddFunc("dict", func(values ...interface{}) (map[string]interface{}, error) {
+	engine.AddFunc("dict", func(values ...any) (map[string]any, error) {
 		if len(values)%2 != 0 {
 			return nil, fmt.Errorf("invalid dict call")
 		}
-		dict := make(map[string]interface{}, len(values)/2)
+		dict := make(map[string]any, len(values)/2)
 		for i := 0; i < len(values); i += 2 {
 			key, ok := values[i].(string)
 			if !ok {
@@ -546,7 +546,7 @@ var defaultTrustedProxies = []string{"127.0.0.1/8", "::1", "10.0.0.0/8", "172.16
 
 func trustedProxies(env string) []string {
 	var out []string
-	for _, p := range strings.Split(env, ",") {
+	for p := range strings.SplitSeq(env, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			out = append(out, p)
 		}

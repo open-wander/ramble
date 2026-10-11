@@ -73,7 +73,7 @@ func TestGetSSLMode_EmptyWithNoEnv(t *testing.T) {
 
 func TestUserModelHasTokenSecurityFields(t *testing.T) {
 	// Verify User struct has required fields for token security
-	userType := reflect.TypeOf(models.User{})
+	userType := reflect.TypeFor[models.User]()
 
 	// Check ResetTokenUsedAt field
 	usedAtField, found := userType.FieldByName("ResetTokenUsedAt")
@@ -204,7 +204,7 @@ func TestConnectMigrateFailed(t *testing.T) {
 	}
 	// gorm's logger emits db.query_error first, so look for the migrate line.
 	var found bool
-	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
 		var rec map[string]any
 		if err := json.Unmarshal([]byte(line), &rec); err != nil {
 			t.Fatalf("non-JSON line %q: %v", line, err)

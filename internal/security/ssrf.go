@@ -36,7 +36,7 @@ func DefaultAllowedHosts() []string {
 
 	// Add hosts from environment variable
 	if envHosts := os.Getenv("ALLOWED_GIT_HOSTS"); envHosts != "" {
-		for _, host := range strings.Split(envHosts, ",") {
+		for host := range strings.SplitSeq(envHosts, ",") {
 			host = strings.TrimSpace(host)
 			if host != "" {
 				hosts = append(hosts, host)

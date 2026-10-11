@@ -403,7 +403,7 @@ func TestE2EProductionLogging(t *testing.T) {
 	seen := map[string]bool{}
 	httpLines := map[string]int{} // request_id -> count
 	httpTotal := 0
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}

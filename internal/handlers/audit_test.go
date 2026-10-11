@@ -79,7 +79,7 @@ func TestAuditLog_WithUser(t *testing.T) {
 
 	var auditCalled bool
 	app.Get("/test", func(c *fiber.Ctx) error {
-		AuditLog(c, "test.action", "resource", 456, "test-resource", map[string]interface{}{
+		AuditLog(c, "test.action", "resource", 456, "test-resource", map[string]any{
 			"note": "value",
 		})
 		auditCalled = true
@@ -157,7 +157,7 @@ func TestAuditLog_NilDetails(t *testing.T) {
 func TestAuditLogNoContext(t *testing.T) {
 	logger.Init()
 
-	AuditLogNoContext("background.action", 999, "system", "job", 1, "cleanup", map[string]interface{}{
+	AuditLogNoContext("background.action", 999, "system", "job", 1, "cleanup", map[string]any{
 		"processed": 100,
 	})
 

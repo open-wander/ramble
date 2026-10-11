@@ -16,11 +16,11 @@ import (
 
 func TestDictFunction_Valid(t *testing.T) {
 	// Recreate the dict function logic for testing
-	dictFunc := func(values ...interface{}) (map[string]interface{}, error) {
+	dictFunc := func(values ...any) (map[string]any, error) {
 		if len(values)%2 != 0 {
 			return nil, fmt.Errorf("invalid dict call")
 		}
-		dict := make(map[string]interface{}, len(values)/2)
+		dict := make(map[string]any, len(values)/2)
 		for i := 0; i < len(values); i += 2 {
 			key, ok := values[i].(string)
 			if !ok {
@@ -45,11 +45,11 @@ func TestDictFunction_Valid(t *testing.T) {
 }
 
 func TestDictFunction_OddValues(t *testing.T) {
-	dictFunc := func(values ...interface{}) (map[string]interface{}, error) {
+	dictFunc := func(values ...any) (map[string]any, error) {
 		if len(values)%2 != 0 {
 			return nil, fmt.Errorf("invalid dict call")
 		}
-		dict := make(map[string]interface{}, len(values)/2)
+		dict := make(map[string]any, len(values)/2)
 		for i := 0; i < len(values); i += 2 {
 			key, ok := values[i].(string)
 			if !ok {
@@ -67,11 +67,11 @@ func TestDictFunction_OddValues(t *testing.T) {
 }
 
 func TestDictFunction_NonStringKey(t *testing.T) {
-	dictFunc := func(values ...interface{}) (map[string]interface{}, error) {
+	dictFunc := func(values ...any) (map[string]any, error) {
 		if len(values)%2 != 0 {
 			return nil, fmt.Errorf("invalid dict call")
 		}
-		dict := make(map[string]interface{}, len(values)/2)
+		dict := make(map[string]any, len(values)/2)
 		for i := 0; i < len(values); i += 2 {
 			key, ok := values[i].(string)
 			if !ok {
@@ -89,11 +89,11 @@ func TestDictFunction_NonStringKey(t *testing.T) {
 }
 
 func TestDictFunction_Empty(t *testing.T) {
-	dictFunc := func(values ...interface{}) (map[string]interface{}, error) {
+	dictFunc := func(values ...any) (map[string]any, error) {
 		if len(values)%2 != 0 {
 			return nil, fmt.Errorf("invalid dict call")
 		}
-		dict := make(map[string]interface{}, len(values)/2)
+		dict := make(map[string]any, len(values)/2)
 		for i := 0; i < len(values); i += 2 {
 			key, ok := values[i].(string)
 			if !ok {

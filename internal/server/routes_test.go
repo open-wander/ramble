@@ -22,7 +22,7 @@ func TestRegisterRoutes_IDParamsAreIntConstrained(t *testing.T) {
 
 	constrained := 0
 	for _, r := range app.GetRoutes() {
-		for _, seg := range strings.Split(r.Path, "/") {
+		for seg := range strings.SplitSeq(r.Path, "/") {
 			if !strings.HasPrefix(seg, ":") {
 				continue
 			}
@@ -58,7 +58,7 @@ func TestRegisterRoutes_TopLevelSegmentsAreReserved(t *testing.T) {
 
 	seen := map[string]struct{}{}
 	for _, r := range app.GetRoutes() {
-		seg := strings.Split(strings.TrimPrefix(r.Path, "/"), "/")[0]
+		seg, _, _ := strings.Cut(strings.TrimPrefix(r.Path, "/"), "/")
 		seg = strings.TrimRight(seg, "*")
 		if seg == "" || strings.HasPrefix(seg, ":") {
 			continue

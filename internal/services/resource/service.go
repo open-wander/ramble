@@ -145,7 +145,7 @@ func (s *ResourceService) CreateResource(input CreateInput, userID uint, orgID *
 	// Process and validate tags
 	var tags []models.Tag
 	if input.Tags != "" {
-		for _, tn := range strings.Split(input.Tags, ",") {
+		for tn := range strings.SplitSeq(input.Tags, ",") {
 			tn = strings.ToLower(strings.TrimSpace(tn))
 			if len(tn) < 2 || len(tn) > 20 || !tagRegex.MatchString(tn) {
 				continue
@@ -251,7 +251,7 @@ func (s *ResourceService) UpdateResource(id uint, input UpdateInput, userID uint
 	// Update tags
 	var tags []models.Tag
 	if input.Tags != "" {
-		for _, tn := range strings.Split(input.Tags, ",") {
+		for tn := range strings.SplitSeq(input.Tags, ",") {
 			tn = strings.ToLower(strings.TrimSpace(tn))
 			if len(tn) < 2 || len(tn) > 20 || !tagRegex.MatchString(tn) {
 				continue
@@ -314,13 +314,13 @@ func (s *ResourceService) ToggleStar(resourceID, userID uint) (isStarred bool, s
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		if currentlyStarred {
 			// Unstar
-			if err := tx.Model(&resource).Association("StarredBy").Delete(&models.User{Model: gorm.Model{ID: userID}}); err != nil {
+			if err := tx.Model(&resource).Association("StarredBy").Delete(&models.User{ID: userID}); err != nil {
 				return err
 			}
 			return tx.Model(&resource).Update("star_count", gorm.Expr("star_count - ?", 1)).Error
 		}
 		// Star
-		if err := tx.Model(&resource).Association("StarredBy").Append(&models.User{Model: gorm.Model{ID: userID}}); err != nil {
+		if err := tx.Model(&resource).Association("StarredBy").Append(&models.User{ID: userID}); err != nil {
 			return err
 		}
 		return tx.Model(&resource).Update("star_count", gorm.Expr("star_count + ?", 1)).Error
@@ -425,7 +425,7 @@ func (s *ResourceService) RecordFetchFailed(resourceID uint, version, errMsg str
 	now := time.Now()
 	result := s.db.Model(&models.ResourceVersion{}).
 		Where("resource_id = ? AND version = ?", resourceID, version).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"fetch_status":       models.FetchStatusFailed,
 			"fetch_error":        truncateFetchError(errMsg),
 			"fetch_completed_at": now,

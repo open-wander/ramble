@@ -66,8 +66,8 @@ func PostNewResource(c *fiber.Ctx) error {
 
 	// Parse organization ID from owner field
 	var orgID *uint
-	if strings.HasPrefix(input.Owner, "org:") {
-		id, _ := strconv.ParseUint(strings.TrimPrefix(input.Owner, "org:"), 10, 32)
+	if after, ok := strings.CutPrefix(input.Owner, "org:"); ok {
+		id, _ := strconv.ParseUint(after, 10, 32)
 		val := uint(id)
 		orgID = &val
 	}
@@ -377,7 +377,7 @@ func PostRetryFetch(c *fiber.Ctx) error {
 	}
 
 	// Reset fetch status and clear error
-	reqDB(c).Model(&latest).Updates(map[string]interface{}{
+	reqDB(c).Model(&latest).Updates(map[string]any{
 		"fetch_status": models.FetchStatusPending,
 		"fetch_error":  "",
 	})

@@ -97,7 +97,7 @@ func PostToggleAdmin(c *fiber.Ctx) error {
 	user.IsAdmin = !user.IsAdmin
 	reqDB(c).Save(&user)
 
-	AuditLog(c, "admin.toggle_admin", "user", user.ID, user.Username, map[string]interface{}{
+	AuditLog(c, "admin.toggle_admin", "user", user.ID, user.Username, map[string]any{
 		"new_status": user.IsAdmin,
 	})
 
@@ -406,7 +406,7 @@ func PostUpdateRequestStatus(c *fiber.Ctx) error {
 		}
 	}(request)
 
-	AuditLog(c, "admin.update_request_status", "request", request.ID, request.Title, map[string]interface{}{
+	AuditLog(c, "admin.update_request_status", "request", request.ID, request.Title, map[string]any{
 		"new_status": status,
 	})
 
@@ -515,7 +515,7 @@ func PostAdminAddMember(c *fiber.Ctx) error {
 	// Reload membership with user data for the response
 	reqDB(c).Preload("User").First(&membership, membership.ID)
 
-	AuditLog(c, "admin.add_member", "organization", org.ID, org.Name, map[string]interface{}{
+	AuditLog(c, "admin.add_member", "organization", org.ID, org.Name, map[string]any{
 		"member":   username,
 		"role":     role,
 		"added_by": "admin",
@@ -553,7 +553,7 @@ func PostAdminRemoveMember(c *fiber.Ctx) error {
 		return c.Status(400).SendString("Member does not belong to this organization")
 	}
 
-	AuditLog(c, "admin.remove_member", "organization", org.ID, org.Name, map[string]interface{}{
+	AuditLog(c, "admin.remove_member", "organization", org.ID, org.Name, map[string]any{
 		"member":     membership.User.Username,
 		"removed_by": "admin",
 	})
@@ -598,7 +598,7 @@ func PostAdminChangeMemberRole(c *fiber.Ctx) error {
 	membership.Role = newRole
 	reqDB(c).Save(&membership)
 
-	AuditLog(c, "admin.change_member_role", "organization", org.ID, org.Name, map[string]interface{}{
+	AuditLog(c, "admin.change_member_role", "organization", org.ID, org.Name, map[string]any{
 		"member":   membership.User.Username,
 		"old_role": oldRole,
 		"new_role": newRole,
@@ -637,7 +637,7 @@ func DeleteAdminUserMembership(c *fiber.Ctx) error {
 		return c.Status(404).SendString("Membership not found")
 	}
 
-	AuditLog(c, "admin.remove_user_membership", "user", user.ID, user.Username, map[string]interface{}{
+	AuditLog(c, "admin.remove_user_membership", "user", user.ID, user.Username, map[string]any{
 		"organization": org.Name,
 		"removed_by":   "admin",
 	})

@@ -207,7 +207,7 @@ func AuthCallback(c *fiber.Ctx) error {
 		}
 	}
 
-	AuditLog(c, "auth.oauth_login", "user", user.ID, user.Username, map[string]interface{}{
+	AuditLog(c, "auth.oauth_login", "user", user.ID, user.Username, map[string]any{
 		"provider": gothUser.Provider,
 	})
 
@@ -250,7 +250,7 @@ func PostLogin(c *fiber.Ctx) error {
 	// Check if account is locked
 	if user.LockedUntil.After(time.Now()) {
 		remainingTime := time.Until(user.LockedUntil).Round(time.Minute)
-		AuditLog(c, "auth.login_blocked", "user", user.ID, user.Username, map[string]interface{}{
+		AuditLog(c, "auth.login_blocked", "user", user.ID, user.Username, map[string]any{
 			"reason": "account_locked",
 		})
 		return c.Status(fiber.StatusTooManyRequests).SendString(
@@ -265,14 +265,14 @@ func PostLogin(c *fiber.Ctx) error {
 		// Lock account if threshold reached
 		if user.FailedLoginAttempts >= MaxFailedLoginAttempts {
 			user.LockedUntil = time.Now().Add(AccountLockDuration)
-			AuditLog(c, "auth.account_locked", "user", user.ID, user.Username, map[string]interface{}{
+			AuditLog(c, "auth.account_locked", "user", user.ID, user.Username, map[string]any{
 				"failed_attempts": user.FailedLoginAttempts,
 				"locked_until":    user.LockedUntil,
 			})
 		}
 
 		reqDB(c).Save(&user)
-		AuditLog(c, "auth.login_failed", "user", user.ID, user.Username, map[string]interface{}{
+		AuditLog(c, "auth.login_failed", "user", user.ID, user.Username, map[string]any{
 			"failed_attempts": user.FailedLoginAttempts,
 		})
 		return c.Status(fiber.StatusUnauthorized).SendString("Invalid email or password")
@@ -465,7 +465,7 @@ func PostForgotPassword(c *fiber.Ctx) error {
 	// Invalidate all previous tokens for this user (user decision)
 	reqDB(c).Model(&models.User{}).
 		Where("id = ?", user.ID).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"reset_token":         "",
 			"reset_token_expires": time.Time{},
 			"reset_token_used_at": nil,
@@ -548,7 +548,7 @@ func PostResetPassword(c *fiber.Ctx) error {
 		hashedTokenStr, time.Now(),
 	).First(&user).Error; err != nil {
 		// Log the failure (internal detail, not returned to client)
-		AuditLog(c, "auth.password_reset_failed", "user", 0, "", map[string]interface{}{
+		AuditLog(c, "auth.password_reset_failed", "user", 0, "", map[string]any{
 			"reason": "invalid_expired_or_used_token",
 		})
 		// Generic error message (user decision: prevent enumeration)

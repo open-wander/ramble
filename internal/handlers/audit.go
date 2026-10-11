@@ -58,9 +58,9 @@ func isSensitiveKey(k string) bool {
 // redactValue returns a copy of v with sensitive map entries replaced,
 // recursing into maps and slices; other composites (structs, pointers) are
 // redacted via a JSON round trip. The caller's data is never modified.
-func redactValue(v interface{}) interface{} {
+func redactValue(v any) any {
 	switch t := v.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		return redactDetails(t)
 	case fiber.Map: // named type: does not match the case above
 		return redactDetails(t)
@@ -74,14 +74,14 @@ func redactValue(v interface{}) interface{} {
 			}
 		}
 		return out
-	case []interface{}:
-		out := make([]interface{}, len(t))
+	case []any:
+		out := make([]any, len(t))
 		for i, e := range t {
 			out[i] = redactValue(e)
 		}
 		return out
-	case []map[string]interface{}:
-		out := make([]map[string]interface{}, len(t))
+	case []map[string]any:
+		out := make([]map[string]any, len(t))
 		for i, e := range t {
 			out[i] = redactDetails(e)
 		}
@@ -104,14 +104,14 @@ func redactValue(v interface{}) interface{} {
 // round trip, so fields are matched by the names the sinks would emit. The
 // round trip builds a fresh value; the caller's is untouched. Values that
 // cannot be marshalled become a placeholder.
-func redactComposite(v interface{}) interface{} {
+func redactComposite(v any) any {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return "[UNSERIALIZABLE]"
 	}
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.UseNumber() // keep 64-bit integers exact
-	var decoded interface{}
+	var decoded any
 	if err := dec.Decode(&decoded); err != nil {
 		return "[UNSERIALIZABLE]"
 	}
@@ -120,11 +120,11 @@ func redactComposite(v interface{}) interface{} {
 
 // redactDetails returns a copy of m with values under sensitive keys replaced
 // by "[REDACTED]". nil stays nil.
-func redactDetails(m map[string]interface{}) map[string]interface{} {
+func redactDetails(m map[string]any) map[string]any {
 	if m == nil {
 		return nil
 	}
-	out := make(map[string]interface{}, len(m))
+	out := make(map[string]any, len(m))
 	for k, v := range m {
 		if isSensitiveKey(k) {
 			out[k] = "[REDACTED]"
@@ -136,7 +136,7 @@ func redactDetails(m map[string]interface{}) map[string]interface{} {
 }
 
 // AuditLog records an action to both structured logs and database
-func AuditLog(c *fiber.Ctx, action string, targetType string, targetID uint, targetName string, details map[string]interface{}) {
+func AuditLog(c *fiber.Ctx, action string, targetType string, targetID uint, targetName string, details map[string]any) {
 	var actorID uint
 	var actorName string
 
@@ -197,7 +197,7 @@ func AuditLog(c *fiber.Ctx, action string, targetType string, targetID uint, tar
 }
 
 // AuditLogNoContext records an action without request context (for background jobs)
-func AuditLogNoContext(action string, actorID uint, actorName string, targetType string, targetID uint, targetName string, details map[string]interface{}) {
+func AuditLogNoContext(action string, actorID uint, actorName string, targetType string, targetID uint, targetName string, details map[string]any) {
 	details = redactDetails(details)
 	detailsJSON := ""
 	if details != nil {

@@ -233,7 +233,7 @@ func TestIDHandlers_RejectInjectionPayloads(t *testing.T) {
 	database.DB = orig.Session(&gorm.Session{Logger: database.NewGormLogger(&base, time.Nanosecond)})
 	t.Cleanup(func() { database.DB = orig })
 
-	adminUser := models.User{Model: gorm.Model{ID: admin.ID}, Username: admin.Username, IsAdmin: true}
+	adminUser := models.User{ID: admin.ID, Username: admin.Username, IsAdmin: true}
 	idOf := func(id uint) string { return strconv.FormatUint(uint64(id), 10) }
 
 	// bad is the payload; each case lists URLs with the payload in one param
@@ -307,7 +307,7 @@ func TestIDHandlers_RejectInjectionPayloads(t *testing.T) {
 
 					assert.Contains(t, seen, bad, "handler did not receive the raw payload for %s", u)
 					assert.Equal(t, 404, ctx.Response.StatusCode(), "%s %s: %s", tc.method, u, ctx.Response.Body())
-					for _, line := range strings.Split(buf.String(), "\n") {
+					for line := range strings.SplitSeq(buf.String(), "\n") {
 						var m map[string]any
 						if json.Unmarshal([]byte(line), &m) != nil {
 							continue

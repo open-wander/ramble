@@ -448,7 +448,7 @@ func TestGetUserProfile_WithPagination(t *testing.T) {
 
 	user := createTestUser(t, "paginationuser")
 	// Create multiple packs to test pagination
-	for i := 0; i < 15; i++ {
+	for i := range 15 {
 		createTestPack(t, user.ID, fmt.Sprintf("pagination-pack-%d", i))
 	}
 

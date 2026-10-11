@@ -79,8 +79,7 @@ func TestRunServerCmd(t *testing.T) {
 		if err == nil || !errors.Is(err, boom) {
 			t.Fatalf("err = %v, want wrapping %v", err, boom)
 		}
-		var le loggedError
-		if !errors.As(err, &le) {
+		if _, ok := errors.AsType[loggedError](err); !ok {
 			t.Fatalf("err %T is not loggedError", err)
 		}
 		lines := strings.Split(strings.TrimSpace(buf.String()), "\n")

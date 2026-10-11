@@ -358,7 +358,7 @@ func setVersionFailed(t *testing.T, resourceID uint) {
 	t.Helper()
 	database.DB.Model(&models.ResourceVersion{}).
 		Where("resource_id = ?", resourceID).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"fetch_status": models.FetchStatusFailed,
 			"fetch_error":  "test failure",
 		})

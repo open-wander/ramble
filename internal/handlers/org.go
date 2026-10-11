@@ -166,7 +166,7 @@ func PostAddMember(c *fiber.Ctx) error {
 	case err == nil && !existing.DeletedAt.Valid:
 		return c.Status(400).SendString("User is already a member")
 	case err == nil:
-		err = reqDB(c).Unscoped().Model(&existing).Updates(map[string]interface{}{"deleted_at": nil, "role": role}).Error
+		err = reqDB(c).Unscoped().Model(&existing).Updates(map[string]any{"deleted_at": nil, "role": role}).Error
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		membership := models.Membership{
 			UserID:         user.ID,
@@ -180,7 +180,7 @@ func PostAddMember(c *fiber.Ctx) error {
 		return c.Status(500).SendString("Failed to add member")
 	}
 
-	AuditLog(c, "org.add_member", "organization", org.ID, org.Name, map[string]interface{}{
+	AuditLog(c, "org.add_member", "organization", org.ID, org.Name, map[string]any{
 		"member": username,
 		"role":   role,
 	})
@@ -213,7 +213,7 @@ func PostRemoveMember(c *fiber.Ctx) error {
 		}
 	}
 
-	AuditLog(c, "org.remove_member", "organization", org.ID, org.Name, map[string]interface{}{
+	AuditLog(c, "org.remove_member", "organization", org.ID, org.Name, map[string]any{
 		"member_id": memberID,
 	})
 

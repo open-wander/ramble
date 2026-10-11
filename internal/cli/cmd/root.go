@@ -70,8 +70,7 @@ func wantsUpdateCheck(cmd *cobra.Command) bool {
 // reportExecError prints err in plain text unless it was already logged as
 // structured JSON (see runServerCmd).
 func reportExecError(err error, w io.Writer) {
-	var le loggedError
-	if errors.As(err, &le) {
+	if _, ok := errors.AsType[loggedError](err); ok {
 		return
 	}
 	fmt.Fprintln(w, err)

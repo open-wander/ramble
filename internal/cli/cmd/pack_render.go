@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 
@@ -64,9 +65,7 @@ func runPackRender(cmd *cobra.Command, args []string) error {
 		content, err := os.ReadFile(varsPath) //#nosec G304 -- user-provided CLI path, intentional functionality
 		if err == nil {
 			if defs, err := parseVariablesSimple(string(content)); err == nil {
-				for k, v := range defs {
-					variables[k] = v
-				}
+				maps.Copy(variables, defs)
 			}
 		}
 	}
@@ -77,9 +76,7 @@ func runPackRender(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to load var file: %w", err)
 		}
-		for k, v := range fileVars {
-			variables[k] = v
-		}
+		maps.Copy(variables, fileVars)
 	}
 
 	// Parse CLI var flags

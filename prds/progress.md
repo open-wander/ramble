@@ -556,3 +556,14 @@ to owner/member like the admin handlers (TestPostAddMember_UnknownRoleBecomesMem
 Mutations: role check removed -> red; nameTaken without Unscoped -> both soft-deleted tests red.
 One-off flake seen by the worker: TestDownloadAndFetch_NeverLogRepoURLUserinfo failed once, not
 reproducible (-count=5 green).
+
+## 2026-10-11 — 9.7 go fix + CI checks; Phase 9 collapsed
+
+go fix ./... and go fix -tags=security ./... (Go 1.27 modernizers): 46 files, mostly
+interface{} -> any. CI test job gains go vet (both tags), gofmt -l and go fix -diff gates (it
+had none). staticcheck 2026.2.1 cannot read Go 1.27 export data (v5) -> not added; add it to
+CI once a release supports Go 1.27. Local: vet, gofmt, suite, swagger (no diff), gosec clean.
+Phase 9 (13 tasks incl. 9.0 SQL injection) done and archived.
+Remaining known debt (not in Phase 9): staticcheck in CI (blocked on upstream); a LOWER()
+unique index on users.username / organizations.name after auditing prod for case-variant
+duplicates (SQL in 9.11); optional `go get -u` dependency refresh and pinning alpine:latest.
