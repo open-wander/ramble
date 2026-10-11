@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"errors"
 	"rmbl/internal/models"
 	"rmbl/internal/services/resource"
@@ -125,7 +124,7 @@ func PostNewResource(c *fiber.Ctx) error {
 	}
 
 	// Spawn background fetch for version content
-	go fetchVersionContent(context.Background(), res.ID, input.Version, input.RepositoryURL, string(res.Type), res.Name, res.FilePath)
+	go fetchVersionContent(detachedLogCtx(c), res.ID, input.Version, input.RepositoryURL, string(res.Type), res.Name, res.FilePath)
 
 	// Build redirect path
 	redirectPath := "/"
@@ -183,7 +182,7 @@ func PostNewVersion(c *fiber.Ctx) error {
 	if err := reqDB(c).Create(&version).Error; err != nil {
 		return c.Status(500).SendString("Could not add version")
 	}
-	go fetchVersionContent(context.Background(), res.ID, versionStr, res.RepositoryURL, string(res.Type), res.Name, res.FilePath)
+	go fetchVersionContent(detachedLogCtx(c), res.ID, versionStr, res.RepositoryURL, string(res.Type), res.Name, res.FilePath)
 	SetFlash(c, "success", "Version "+version.Version+" added!")
 	c.Set("HX-Refresh", "true")
 	return c.SendStatus(200)
@@ -378,7 +377,7 @@ func PostRetryFetch(c *fiber.Ctx) error {
 		"fetch_error":  "",
 	})
 
-	go fetchVersionContent(context.Background(), res.ID, latest.Version, res.RepositoryURL, string(res.Type), res.Name, res.FilePath)
+	go fetchVersionContent(detachedLogCtx(c), res.ID, latest.Version, res.RepositoryURL, string(res.Type), res.Name, res.FilePath)
 
 	AuditLog(c, "resource.retry_fetch", "resource", res.ID, res.Name, nil)
 	SetFlash(c, "success", "Fetch retry started for version "+latest.Version)

@@ -3,6 +3,8 @@ package database
 import (
 	"context"
 	"errors"
+	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -19,7 +21,8 @@ const SlowQueryThreshold = 200 * time.Millisecond
 // never logged; slow queries go out at WARN as db.slow_query and failures
 // (other than gorm.ErrRecordNotFound) at ERROR as db.query_error. SQL is
 // logged with placeholders, never with bound values, so user data stays out
-// of the logs.
+// of the logs. Info/Warn/Error args are rendered into text and never
+// serialised.
 type gormLogger struct {
 	base          *zerolog.Logger
 	slowThreshold time.Duration
@@ -43,21 +46,58 @@ func (g *gormLogger) logger(ctx context.Context) *zerolog.Logger {
 	return logger.FromContextOr(ctx, g.base)
 }
 
+// safeArg returns a value that is safe to format: an error's text, a scalar
+// (including named kinds such as time.Duration), or the type name.
+func safeArg(a any) any {
+	if a == nil {
+		return "<nil>"
+	}
+	rv := reflect.ValueOf(a)
+	if rv.Kind() == reflect.Pointer && rv.IsNil() {
+		return "<nil>" // a typed-nil error would panic in Error()
+	}
+	if err, ok := a.(error); ok {
+		return err.Error()
+	}
+	switch rv.Kind() {
+	case reflect.String, reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		return a
+	}
+	return fmt.Sprintf("<%T>", a)
+}
+
+// formatText renders a GORM message with its args. Only errors, strings and
+// scalars are formatted; anything else (structs such as pgconn.Config, which
+// holds the password) is replaced by its type name.
+func formatText(msg string, args []any) string {
+	if len(args) == 0 {
+		return msg
+	}
+	safe := make([]any, len(args))
+	for i, a := range args {
+		safe[i] = safeArg(a)
+	}
+	return fmt.Sprintf(msg, safe...)
+}
+
 func (g *gormLogger) Info(ctx context.Context, msg string, args ...any) {
 	if g.level >= gormlogger.Info {
-		g.logger(ctx).Info().Interface("args", args).Str("text", msg).Msg("db.info")
+		g.logger(ctx).Info().Str("text", formatText(msg, args)).Msg("db.info")
 	}
 }
 
 func (g *gormLogger) Warn(ctx context.Context, msg string, args ...any) {
 	if g.level >= gormlogger.Warn {
-		g.logger(ctx).Warn().Interface("args", args).Str("text", msg).Msg("db.warn")
+		g.logger(ctx).Warn().Str("text", formatText(msg, args)).Msg("db.warn")
 	}
 }
 
 func (g *gormLogger) Error(ctx context.Context, msg string, args ...any) {
 	if g.level >= gormlogger.Error {
-		g.logger(ctx).Error().Interface("args", args).Str("text", msg).Msg("db.error")
+		g.logger(ctx).Error().Str("text", formatText(msg, args)).Msg("db.error")
 	}
 }
 

@@ -1,4 +1,4 @@
-package server
+package logger
 
 import (
 	"time"
@@ -8,7 +8,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// requestLogger logs one http.request line per request through zerolog and
+// RequestLogger logs one http.request line per request through zerolog and
 // attaches a request-scoped logger carrying request_id to the request's user
 // context (read it with logger.FromContext(c.UserContext())). It must run
 // after the requestid middleware.
@@ -16,7 +16,7 @@ import (
 // path is c.Path(), which excludes the query string, so tokens passed in a
 // URL never reach the logs. 5xx responses log at ERROR, everything else at
 // INFO, so scanner 404s stay out of the error stream.
-func requestLogger(base *zerolog.Logger) fiber.Handler {
+func RequestLogger(base *zerolog.Logger) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		start := time.Now()
 

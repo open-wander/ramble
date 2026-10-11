@@ -2,12 +2,56 @@ package email
 
 import (
 	"crypto/tls"
+	"crypto/x509"
+	"errors"
 	"fmt"
 	"net"
 	"net/mail"
 	"net/smtp"
+	"net/url"
 	"os"
+	"regexp"
+	"strings"
 )
+
+// smtpRootCAs is the trust pool for the STARTTLS handshake. nil means the
+// system roots; tests set it to trust an in-process fake server.
+var smtpRootCAs *x509.CertPool
+
+// addrPattern matches addr-spec-like tokens (local@domain) in error text.
+var addrPattern = regexp.MustCompile(`[^\s<>()\[\],;:"@]+@[^\s<>()\[\],;:"]+`)
+
+// redactError returns an error whose text has every email address and every
+// given secret literal (such as the reset link) replaced with [redacted].
+// SMTP servers echo addresses in their replies and callers log the error.
+// The result deliberately does not wrap err: an Unwrap would hand the
+// unredacted *textproto.Error to anything walking the chain, so errors.Is/As
+// on the original are not supported (no caller uses them).
+// sendSecrets lists the literals a send error must not carry: the link, its
+// token on its own (a server may echo only part of the link), and both
+// addresses verbatim (covers forms addrPattern misses, such as quoted local parts).
+func sendSecrets(link, to, from string) []string {
+	secrets := []string{link, to, from}
+	if u, err := url.Parse(link); err == nil {
+		for _, vs := range u.Query() {
+			secrets = append(secrets, vs...)
+		}
+	}
+	return secrets
+}
+
+func redactError(err error, secrets ...string) error {
+	if err == nil {
+		return nil
+	}
+	text := err.Error()
+	for _, s := range secrets {
+		if s != "" {
+			text = strings.ReplaceAll(text, s, "[redacted]")
+		}
+	}
+	return errors.New(addrPattern.ReplaceAllString(text, "[redacted]"))
+}
 
 func SendResetEmail(toEmail string, resetLink string) error {
 	host := os.Getenv("SMTP_HOST")
@@ -27,7 +71,7 @@ func SendResetEmail(toEmail string, resetLink string) error {
 		"\r\n"+
 		"%s\r\n", toEmail, resetLink))
 
-	return sendEmailWithTLS(host, port, user, password, from, []string{toEmail}, msg)
+	return redactError(sendEmailWithTLS(host, port, user, password, from, []string{toEmail}, msg), sendSecrets(resetLink, toEmail, from)...)
 }
 
 func SendVerificationEmail(toEmail string, verificationLink string) error {
@@ -50,7 +94,7 @@ func SendVerificationEmail(toEmail string, verificationLink string) error {
 		"\r\n"+
 		"This link will expire in 24 hours.\r\n", toEmail, verificationLink))
 
-	return sendEmailWithTLS(host, port, user, password, from, []string{toEmail}, msg)
+	return redactError(sendEmailWithTLS(host, port, user, password, from, []string{toEmail}, msg), sendSecrets(verificationLink, toEmail, from)...)
 }
 
 // validateEmail checks that an email address is well-formed and safe for SMTP use.
@@ -85,6 +129,7 @@ func sendEmailWithTLS(host, port, user, password, from string, to []string, msg 
 	tlsConfig := &tls.Config{
 		ServerName: host,
 		MinVersion: tls.VersionTLS12,
+		RootCAs:    smtpRootCAs,
 	}
 
 	// Connect to SMTP server

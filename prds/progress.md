@@ -255,3 +255,111 @@ gormlogger.Default -> red. Both advisor PASS.
 PATTERN: parallel-in-one-checkout - workers sharing a checkout see each other's
 in-flight mutations; tell them to report cross-package failures, and re-run the suite
 after both finish.
+
+## 2026-10-11 — 8.1 real request chain test
+
+Moved requestLogger from internal/server to logger.RequestLogger (git mv requestlog.go ->
+logger/fiber.go, test likewise) so handler tests use the production middleware; the copy
+in handlers/db_test.go now builds on it. New TestRequestChain_QueryErrorSharesRequestIDWithAccessLine
+(one buffer for request and GORM logger, two requests, generated ids). Orchestrator
+mutation: SetUserContext removed -> red. Full suite ok. Advisor MINOR: server.Run's
+middleware wiring/order is only compile-time checked (a no-op swap stays green) -> 8.8;
+logLines helper now exists in three test packages.
+
+## 2026-10-11 — 8.6 SMTP errors carry no addresses or link
+
+email.go: redactError(err, secrets...) wraps the send result of SendResetEmail and
+SendVerificationEmail; regex over addr-spec tokens plus literal secrets. smtpRootCAs
+seam lets email_send_test.go run the real STARTTLS send path against an in-process fake
+server that echoes addresses at MAIL, RCPT and DATA. No Unwrap on purpose.
+Orchestrator follow-up from review: sendSecrets(link, to, from) adds the link's query
+values (token) and both addresses verbatim; new row where the reply echoes only the token.
+Mutations: no redaction -> 4 rows red; token literals dropped -> token row red. Suite ok.
+Known limit: URL-encoded or line-wrapped echoes of the link are not matched.
+
+## 2026-10-11 — 8.7 flag errors as JSON, no FATAL level
+
+internal/cli/cmd/server.go: initLogger seam + serverFlagError set via SetFlagErrorFunc on
+serverCmd only. logger.InitWithWriter exported for tests in other packages.
+database.go: three Fatal() -> Error() + exit(1) + return (exit = os.Exit seam).
+AST guard TestServerCodeHasNoFatalOrPanicEvents. Orchestrator mutations: FlagErrorFunc
+removed -> TestServerCommandBadFlag red; Fatal re-added -> guard red; exit(1) dropped ->
+TestConnectConnectFailed red. Suite ok.
+Advisor MINOR: db.migrate_failed branch only AST-covered; InitWithWriter widens the API;
+level change FATAL -> ERROR may affect external alerts. Reported pre-existing bug:
+gorm logger db.error args fail JSON marshalling (pgconn.DialFunc) -> 8.9. 8.1 review
+-> 8.8 (server.Run middleware wiring untested).
+
+## 2026-10-11 — 8.3 github.webhook_request_* lines tested
+
+webhook_log_test.go TestHandleGitHubIssueWebhook_DBLinesCarryRequestID: signed opened
+(pack-request label) and closed payloads through HandleGitHubIssueWebhook + newRequestLogApp;
+asserts DB row Open -> Completed, exactly one created and one status_updated line, each
+with its own request's id, nothing on the global logger. Mutations (each helper back to
+&logger.Log) red; orchestrator re-ran one. Advisor PASS.
+
+## 2026-10-11 — 8.2 secrets never reach logs
+
+audit.go: redactDetails/redactValue/isSensitiveKey (lowercase, '-' -> '_', substring match
+on password, passwd, secret, token, api_key, apikey, key, authorization, cookie, session,
+csrf, signature), applied before log, stored Details and checksum. Existing audit test
+key "key" renamed "note". Real leak found and fixed: downloadFileWithRetry logged repo_url
+with userinfo (https://user:pw@ / https://token@) on download.* lines -> stripURLUserinfo
+(not url.Redacted, which keeps the username/token). secret_log_test.go captureAllLogs puts
+global, request and GORM (threshold 0) loggers on one buffer; each test asserts the
+expected event line exists and no sentinel appears anywhere. Orchestrator mutations:
+redactDetails returns input -> red; repo_url raw -> 3 rows red. Suite ok.
+Advisor MINOR: struct/pointer detail values are not redacted (no caller passes them);
+substring "key"/"session" over-redacts harmless keys - pick audit detail keys accordingly;
+fetch subtest builds resource.Service before the GORM capture swap.
+
+## 2026-10-11 — 8.5 request-triggered fetches log with request_id
+
+background.go: fetchVersionContent and downloadFileWithRetry take the logger from ctx;
+fetch DB writes (both version updates, RecordFetchFailed on failure and panic paths) bound
+to ctx. detachedLogCtx(c) rebuilds the bare request logger on context.Background() (not
+cancelled with the request, no *fiber.Ctx captured). resource_webhooks.go goroutines and
+resource_crud.go create / add-version / retry fetches pass it. fetch_log_test.go covers
+webhook new-tag and latest-refresh, request-triggered fetches, and the no-context fallback.
+Merged with 8.2 in downloadFileWithRetry (kept FromContextOr + stripURLUserinfo).
+Orchestrator mutation: background.go back to &logger.Log -> 3 tests red. Suite ok.
+Advisor MINOR: three surviving mutants (panic-path WithContext, webhook follow-up First,
+success-path update) and duplicated goroutine bodies -> 8.10.
+
+## 2026-10-11 — 8.8, 8.9, 8.10
+
+8.8: server.go useRequestLogging(app, base) - Run's request-logging wiring is now tested
+(TestUseRequestLogging; four mutations red). Advisor PASS.
+8.9: gormlogger formatText + safeArg (orchestrator extension: typed-nil errors render
+<nil> instead of panicking, named scalar kinds keep their value, TestSafeArg). Raw args no
+longer serialised: fixes the useless `marshaling error` on connect failures and removes
+the risk of serialising pgconn.Config with the DB password. Password-sentinel test is a
+regression guard (ConnectError.Error() omits the password).
+8.10: finishWebhookFetch dedupes the webhook goroutines; fetchVersionHook seam; the three
+previously surviving WithContext mutants now killed. Deslop find-similar unavailable to
+the worker; the helper replaces two copies rather than adding one.
+Orchestrator mutations: 8.8 RequestLogger removed, 8.9 raw args restored, typed-nil guard
+disabled, 8.10 follow-up First without WithContext - all red. Suite ok.
+8.8 review found a real gap -> 8.11: handler panics produce no http.request line, and
+without SENTRY_DSN no middleware recovers them.
+
+## 2026-10-11 — 8.11 panic recovery, 8.4 end-to-end production run
+
+8.11: server.go recoverPanics() registered in useRequestLogging after RequestLogger. Avoids
+Fiber's recover middleware (default ErrorHandler would put the panic value in the body).
+Reports through sentryfiber.GetHubFromContext(c).RecoverWithContext; outer sentryfiber
+(Repanic:false) stays as backstop for panics in requestid/RequestLogger themselves (only
+with SENTRY_DSN). First review REJECT: a worker mutation had been left in the session
+middleware log calls; fixed, re-review PASS. Orchestrator mutation: Sentry report removed
+-> TestRequestLoggingPanicReportedToSentry red.
+8.4: cmd/ramble/e2e_test.go builds and runs the real binary against testcontainers
+Postgres in production mode. Orchestrator mutation: println in handlers.Home -> red
+(stderr). Notes: the ConsoleWriter mutation fails via the 60s readiness timeout; the go
+test cache does not track ./views and ./public, so run with -count=1 after template
+changes. Suite ok.
+8.4 found a production bug outside logging: the global csrf middleware has no exemption
+for POST /resource/:id/webhook and POST /webhooks/github/issues, so webhook deliveries
+get 403 before the handler runs. Not fixed here - reported to the user.
+
+PATTERN: e2e - an end-to-end run of the real binary finds what unit tests with hand-built
+apps cannot (here: middleware order blocking webhooks entirely).

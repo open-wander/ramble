@@ -1,8 +1,10 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -103,17 +105,15 @@ func Run(cfg Config) error {
 	app := fiber.New(fiberConfig(engine))
 
 	// 4. Middleware
-	// Crash reporting (GlitchTip) - outermost, captures panics. Repanic:false
-	// so a panic is reported and the request 500s rather than crashing the app.
+	// Crash reporting (GlitchTip) - outermost. It supplies the hub that
+	// recoverPanics reports through, and backstops panics in the requestid and
+	// RequestLogger middleware. Repanic:false so nothing crashes the app.
 	if os.Getenv("SENTRY_DSN") != "" {
 		app.Use(sentryfiber.New(sentryfiber.Options{Repanic: false}))
 	}
 
-	// Request ID middleware for tracing
-	app.Use(requestid.New())
-
-	// Structured access log (http.request) with request ID
-	app.Use(requestLogger(&logger.Log))
+	// Request ID tracing + structured access log
+	useRequestLogging(app, &logger.Log)
 
 	// HTTPS enforcement middleware (only in production)
 	app.Use(func(c *fiber.Ctx) error {
@@ -427,6 +427,40 @@ func fiberConfig(views fiber.Views) fiber.Config {
 		EnableIPValidation: true,
 		// The text banner breaks one-JSON-object-per-line; server.started replaces it.
 		DisableStartupMessage: true,
+	}
+}
+
+// useRequestLogging registers request ID tracing, the structured access log
+// and panic recovery, in that order. requestid must run first: RequestLogger
+// reads the ID it stores. recoverPanics must sit inside RequestLogger so the
+// access line sees the 500 and the panic line carries the request_id.
+func useRequestLogging(app *fiber.App, base *zerolog.Logger) {
+	app.Use(requestid.New())
+	app.Use(logger.RequestLogger(base))
+	app.Use(recoverPanics())
+}
+
+// recoverPanics turns a handler panic into a 500, logs one http.panic line
+// and reports it to Sentry when a hub is present (SENTRY_DSN set). The panic
+// value stays out of the response body. Fiber's recover middleware is avoided:
+// the default ErrorHandler would write the panic value into the body.
+func recoverPanics() fiber.Handler {
+	return func(c *fiber.Ctx) (err error) {
+		defer func() {
+			r := recover()
+			if r == nil {
+				return
+			}
+			logger.FromContext(c.UserContext()).Error().
+				Str("panic", fmt.Sprint(r)).
+				Str("stack", string(debug.Stack())).
+				Msg("http.panic")
+			if hub := sentryfiber.GetHubFromContext(c); hub != nil {
+				hub.RecoverWithContext(context.WithValue(c.UserContext(), sentry.RequestContextKey, c), r)
+			}
+			err = fiber.ErrInternalServerError
+		}()
+		return c.Next()
 	}
 }
 

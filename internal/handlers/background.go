@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/gofiber/fiber/v2"
 	"golang.org/x/sync/errgroup"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
@@ -45,10 +47,21 @@ func isPermanentError(err error) bool {
 	return false
 }
 
+// stripURLUserinfo removes any user:password@ or token@ from a URL so it is
+// safe to log. Unparseable input yields a placeholder, never the raw string.
+func stripURLUserinfo(s string) string {
+	u, err := url.Parse(s)
+	if err != nil {
+		return "[unparseable url]"
+	}
+	u.User = nil
+	return u.String()
+}
+
 // downloadFileWithRetry wraps downloadFile with exponential backoff retry logic
 func downloadFileWithRetry(ctx context.Context, repoURL, fileName string) (string, error) {
-	log := logger.Log.With().
-		Str("repo_url", repoURL).
+	log := logger.FromContextOr(ctx, &logger.Log).With().
+		Str("repo_url", stripURLUserinfo(repoURL)).
 		Str("file_name", fileName).
 		Logger()
 
@@ -101,10 +114,24 @@ func downloadFileWithRetry(ctx context.Context, repoURL, fileName string) (strin
 	return result, nil
 }
 
+// detachedLogCtx returns a context carrying the request logger (and so its
+// request_id) for a goroutine that outlives the request. It is rebuilt on
+// context.Background() so request cancellation never reaches the goroutine,
+// and it never captures c.
+func detachedLogCtx(c *fiber.Ctx) context.Context {
+	return logger.FromContext(c.UserContext()).WithContext(context.Background())
+}
+
+// fetchVersionHook, when set by tests, runs inside fetchVersionContent after the
+// fetching status is written. Nil in production.
+var fetchVersionHook func()
+
 // fetchVersionContent handles the complete lifecycle of fetching resource version content
 // This function is spawned as a goroutine and handles all file downloads for a version
+// ctx carries the logger of the request that triggered the fetch (see
+// detachedLogCtx); with none, the global logger is used.
 func fetchVersionContent(ctx context.Context, resID uint, versionStr, repoURL, resType, resName, filePath string) {
-	log := logger.Log.With().
+	log := logger.FromContextOr(ctx, &logger.Log).With().
 		Str("operation", "version_fetch").
 		Uint("resource_id", resID).
 		Str("version", versionStr).
@@ -119,7 +146,7 @@ func fetchVersionContent(ctx context.Context, resID uint, versionStr, repoURL, r
 				Msg("version_fetch.panic")
 
 			// Persist panic as failure
-			if err := resource.Service.RecordFetchFailed(resID, versionStr, fmt.Sprintf("panic: %v", r)); err != nil {
+			if err := resource.Service.WithContext(ctx).RecordFetchFailed(resID, versionStr, fmt.Sprintf("panic: %v", r)); err != nil {
 				log.Error().Err(err).Msg("version_fetch.panic_record_failed")
 			}
 		}
@@ -129,12 +156,16 @@ func fetchVersionContent(ctx context.Context, resID uint, versionStr, repoURL, r
 
 	// Set status to fetching
 	now := time.Now()
-	database.DB.Model(&models.ResourceVersion{}).
+	database.DB.WithContext(ctx).Model(&models.ResourceVersion{}).
 		Where("resource_id = ? AND version = ?", resID, versionStr).
 		Updates(map[string]interface{}{
 			"fetch_status":     models.FetchStatusFetching,
 			"fetch_started_at": now,
 		})
+
+	if fetchVersionHook != nil {
+		fetchVersionHook()
+	}
 
 	// Use errgroup for parallel file downloads
 	g, gctx := errgroup.WithContext(ctx)
@@ -201,7 +232,7 @@ func fetchVersionContent(ctx context.Context, resID uint, versionStr, repoURL, r
 			Dur("duration", duration).
 			Msg("version_fetch.failed")
 
-		if recErr := resource.Service.RecordFetchFailed(resID, versionStr, err.Error()); recErr != nil {
+		if recErr := resource.Service.WithContext(ctx).RecordFetchFailed(resID, versionStr, err.Error()); recErr != nil {
 			log.Error().Err(recErr).Msg("version_fetch.failure_record_failed")
 		}
 		return
@@ -217,7 +248,7 @@ func fetchVersionContent(ctx context.Context, resID uint, versionStr, repoURL, r
 		Msg("version_fetch.completed")
 
 	now = time.Now()
-	database.DB.Model(&models.ResourceVersion{}).
+	database.DB.WithContext(ctx).Model(&models.ResourceVersion{}).
 		Where("resource_id = ? AND version = ?", resID, versionStr).
 		Updates(map[string]interface{}{
 			"readme":             readme,

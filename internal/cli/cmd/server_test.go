@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	stdlog "log"
 	"strings"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 	"rmbl/internal/services/logger"
 
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -155,5 +157,116 @@ func TestServerCommandEndToEnd(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), `"msg":"server.exit_error"`) {
 		t.Errorf("missing log line: %q", buf.String())
+	}
+}
+
+// restoreLoggerGlobals snapshots every global logger.Init touches and
+// restores it in Cleanup.
+func restoreLoggerGlobals(t *testing.T) {
+	t.Helper()
+	prevLog := logger.Log
+	prevGlobal := log.Logger
+	prevMsg := zerolog.MessageFieldName
+	prevLevel := zerolog.LevelFieldMarshalFunc
+	prevTimeFmt := zerolog.TimeFieldFormat
+	prevOut := stdlog.Writer()
+	prevFlags := stdlog.Flags()
+	t.Cleanup(func() {
+		logger.Log = prevLog
+		log.Logger = prevGlobal
+		zerolog.MessageFieldName = prevMsg
+		zerolog.LevelFieldMarshalFunc = prevLevel
+		zerolog.TimeFieldFormat = prevTimeFmt
+		stdlog.SetOutput(prevOut)
+		stdlog.SetFlags(prevFlags)
+	})
+}
+
+// driveRoot runs rootCmd with args, capturing cobra's output, and restores
+// the shared command state afterwards.
+func driveRoot(t *testing.T, args ...string) (*bytes.Buffer, error) {
+	t.Helper()
+	var out bytes.Buffer
+	updateCheck = nil
+	rootCmd.SetOut(&out)
+	rootCmd.SetErr(&out)
+	rootCmd.SetArgs(args)
+	t.Cleanup(func() {
+		rootCmd.SetArgs(nil)
+		rootCmd.SetOut(nil)
+		rootCmd.SetErr(nil)
+		updateCheck = nil
+	})
+	_, err := rootCmd.ExecuteC()
+	return &out, err
+}
+
+func TestServerCommandBadFlag(t *testing.T) {
+	t.Setenv("ENV", "production")
+	restoreLoggerGlobals(t)
+
+	var buf bytes.Buffer
+	oldInit, oldRun := initLogger, runServer
+	// The real production Init path, pointed at a buffer instead of stdout.
+	initLogger = func() { logger.InitWithWriter(&buf) }
+	runServer = func(server.Config) error {
+		t.Error("server ran despite a bad flag")
+		return nil
+	}
+	t.Cleanup(func() { initLogger, runServer = oldInit, oldRun })
+
+	out, err := driveRoot(t, "server", "--bogus")
+
+	var le loggedError
+	if err == nil || !errors.As(err, &le) {
+		t.Fatalf("err = %v (%T), want loggedError", err, err)
+	}
+	var rep bytes.Buffer
+	reportExecError(err, &rep)
+	if rep.Len() != 0 {
+		t.Errorf("Execute would reprint the error: %q", rep.String())
+	}
+	if out.Len() != 0 {
+		t.Errorf("cobra wrote output: %q", out.String())
+	}
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 1 || lines[0] == "" {
+		t.Fatalf("got %d log lines, want 1: %q", len(lines), buf.String())
+	}
+	var rec map[string]any
+	if e := json.Unmarshal([]byte(lines[0]), &rec); e != nil {
+		t.Fatalf("log line is not JSON: %v: %q", e, lines[0])
+	}
+	if rec["level"] != "ERROR" {
+		t.Errorf("level = %v, want ERROR", rec["level"])
+	}
+	if rec["msg"] != "server.flag_error" {
+		t.Errorf("msg = %v", rec["msg"])
+	}
+	if s, _ := rec["error"].(string); !strings.Contains(s, "unknown flag: --bogus") {
+		t.Errorf("error = %v", rec["error"])
+	}
+}
+
+func TestOtherCommandBadFlagIsPlainText(t *testing.T) {
+	buf := captureLog(t)
+	out, err := driveRoot(t, "pack", "list", "--bogus")
+
+	var le loggedError
+	if err == nil || errors.As(err, &le) {
+		t.Fatalf("err = %v (%T), want a plain error", err, err)
+	}
+	for _, want := range []string{"Error: unknown flag: --bogus", "Usage:"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("cobra output missing %q: %q", want, out.String())
+		}
+	}
+	if buf.Len() != 0 {
+		t.Errorf("unexpected JSON log output: %q", buf.String())
+	}
+	var rep bytes.Buffer
+	reportExecError(err, &rep)
+	if !strings.Contains(rep.String(), "unknown flag: --bogus") {
+		t.Errorf("reportExecError wrote %q", rep.String())
 	}
 }

@@ -25,6 +25,9 @@ func upperLevelMarshal(l zerolog.Level) string { return strings.ToUpper(l.String
 // console writer is used.
 func Init() { initWithWriter(os.Stdout) }
 
+// InitWithWriter is Init with an injectable output, for tests in other packages.
+func InitWithWriter(w io.Writer) { initWithWriter(w) }
+
 // initWithWriter is Init with an injectable output, for tests.
 func initWithWriter(w io.Writer) {
 	zerolog.TimeFieldFormat = time.RFC3339Nano
