@@ -2,9 +2,13 @@ package server
 
 import (
 	"fmt"
+	"io"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 // Template helper function tests
@@ -258,3 +262,43 @@ func TestSessionInvalidatedOnPasswordChange(t *testing.T) {
 var _ = fmt.Sprintf
 var _ = strings.ToUpper
 var _ = time.Now
+
+func TestIsWebhookRequest(t *testing.T) {
+	app := fiber.New()
+	app.All("/*", func(c *fiber.Ctx) error {
+		return c.SendString(fmt.Sprint(isWebhookRequest(c)))
+	})
+
+	tests := []struct {
+		method, path string
+		want         bool
+	}{
+		{"POST", "/resource/42/webhook", true},
+		{"POST", "/webhooks/github/issues", true},
+		{"POST", "/resource/42/webhook/reset", false},
+		{"POST", "/login", false},
+		{"GET", "/resource/42/webhook", false},
+		{"GET", "/webhooks/github/issues", false},
+		{"POST", "/resource/abc/webhook", false},
+		{"POST", "/resource/id%3E0/webhook", false},
+		{"POST", "/resource//webhook", false},
+		{"POST", "/xresource/1/webhook", false},
+		// Fiber routes these to the handler, but they stay under CSRF (fails closed).
+		{"POST", "/resource/42/webhook/", false},
+		{"POST", "/webhooks/github/issues/", false},
+		{"POST", "/webhooks/github/issues/x", false},
+		{"POST", "/Webhooks/github/issues", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			resp, err := app.Test(httptest.NewRequest(tt.method, tt.path, nil))
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, _ := io.ReadAll(resp.Body)
+			if got := string(b) == "true"; got != tt.want {
+				t.Errorf("isWebhookRequest(%s %s) = %v, want %v", tt.method, tt.path, got, tt.want)
+			}
+		})
+	}
+}

@@ -190,11 +190,16 @@ func FetchInfo(c *fiber.Ctx) error {
 // @Router /resource/{id}/webhook [post]
 func HandleWebhook(c *fiber.Ctx) error {
 	id := c.Params("id")
+	// Parse before querying: GORM treats a non-numeric string as raw SQL.
+	idNum, err := strconv.ParseUint(id, 10, 64)
+	if err != nil {
+		return c.SendStatus(404)
+	}
 
 	var resource models.NomadResource
 	if err := reqDB(c).Preload("Versions", func(db *gorm.DB) *gorm.DB {
 		return db.Order("resource_versions.created_at DESC")
-	}).First(&resource, id).Error; err != nil {
+	}).First(&resource, idNum).Error; err != nil {
 		return c.SendStatus(404)
 	}
 

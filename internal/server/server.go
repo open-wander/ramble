@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -156,6 +157,8 @@ func Run(cfg Config) error {
 		CookieHTTPOnly: true,
 		Expiration:     1 * time.Hour,
 		SingleUseToken: false,
+		// Signature-authenticated webhooks are called by external services without cookies.
+		Next: isWebhookRequest,
 		Extractor: func(c *fiber.Ctx) (string, error) {
 			// Check header first (for HTMX requests)
 			if token := c.Get("X-CSRF-Token"); token != "" {
@@ -487,4 +490,19 @@ func trustedProxies(env string) []string {
 		return defaultTrustedProxies
 	}
 	return out
+}
+
+// resourceWebhookPath matches exactly /resource/<digits>/webhook; the digit
+// check keeps non-numeric ids out of the CSRF exemption.
+var resourceWebhookPath = regexp.MustCompile(`^/resource/[0-9]+/webhook$`)
+
+// isWebhookRequest reports whether the request is one of the two
+// signature-authenticated webhook POSTs that skip CSRF. Exact path shapes only:
+// /resource/:id/webhook/reset is a logged-in form action and keeps CSRF.
+func isWebhookRequest(c *fiber.Ctx) bool {
+	if c.Method() != fiber.MethodPost {
+		return false
+	}
+	p := c.Path()
+	return p == "/webhooks/github/issues" || resourceWebhookPath.MatchString(p)
 }

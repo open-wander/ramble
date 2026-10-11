@@ -390,3 +390,25 @@ SSRF host allowlist and the 1 MiB read cap already bound the download; (2) downl
 builds its client and hosts internally, so wiring it testably needs a new seam;
 (3) GitLab raw files go through Workhorse and can return application/octet-stream or
 sniffed types, and the case-sensitive prefix check would reject valid responses.
+
+## 2026-10-11 — 9.1 webhook CSRF exemption; SQL injection found (9.0)
+
+9.1: server.go isWebhookRequest (POST + exact path, resource id digits only via regexp) as
+csrf Next; HandleWebhook parses the id with ParseUint before querying. e2e seeds a user and
+resource with a sentinel webhook secret via database/sql (pgx stdlib, now a direct dep) and
+proves signed resource and GitHub webhooks reach their handlers, bad signatures get the
+handler's 401, /login without a token gets 403. Orchestrator mutations: predicate false ->
+unit + e2e red (403 on signed webhooks, i.e. the original bug); predicate true -> unit red;
+ParseUint removed -> TestHandleWebhook_NonNumericID red.
+SECURITY (advisor on 9.1, confirmed by the orchestrator with a DryRun probe): GORM's
+First(&x, idString) treats a non-numeric string as a raw WHERE condition
+(statement.go BuildCondition). ~30 handlers pass c.Params("id") strings. Public:
+GET /requests/:id, GET /resource/:id/fetch-readme; the rest need a login (open registration)
+or admin. Loki (~14 days, ramble + traefik JSON and CLF) shows no probes. Since ~January.
+User chose to fix it as 9.0 inside Phase 9's PR.
+
+PATTERN: gorm - never pass a request string as the primary-key argument of First/Find/
+Delete/Take; parse to uint first or constrain the route (:id<int>). GORM only treats the
+string as a key if strconv.Atoi succeeds; otherwise it is raw SQL.
+PATTERN: review - exempting a route from a middleware (CSRF) can remove an accidental
+guard; check what the handler does with untrusted input before widening exposure.
