@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"rmbl/internal/models"
-	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -147,13 +146,15 @@ func PostAddMember(c *fiber.Ctx) error {
 
 func PostRemoveMember(c *fiber.Ctx) error {
 	orgID := c.Locals("OrgID").(uint)
-	memberIDStr := c.Params("member_id")
-	memberID, _ := strconv.ParseUint(memberIDStr, 10, 32)
+	memberID, idErr := paramID(c, "member_id")
+	if idErr != nil {
+		return c.Status(404).SendString("Member not found")
+	}
 
 	// Don't allow removing yourself if you're the only owner
 	sess, _ := Store.Get(c)
 	currentUserID := sess.Get("user_id").(uint)
-	if uint(memberID) == currentUserID {
+	if memberID == currentUserID {
 		var ownerCount int64
 		reqDB(c).Model(&models.Membership{}).Where("organization_id = ? AND role = 'owner'", orgID).Count(&ownerCount)
 		if ownerCount <= 1 {
@@ -167,7 +168,7 @@ func PostRemoveMember(c *fiber.Ctx) error {
 		"member_id": memberID,
 	})
 
-	reqDB(c).Where("user_id = ? AND organization_id = ?", uint(memberID), orgID).Delete(&models.Membership{})
+	reqDB(c).Where("user_id = ? AND organization_id = ?", memberID, orgID).Delete(&models.Membership{})
 
 	SetFlash(c, "success", "Member removed.")
 	c.Set("HX-Refresh", "true")

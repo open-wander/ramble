@@ -8,7 +8,6 @@ import (
 	"rmbl/internal/models"
 	"rmbl/internal/services/logger"
 	"rmbl/internal/services/resource"
-	"strconv"
 	"strings"
 	"time"
 
@@ -189,9 +188,8 @@ func FetchInfo(c *fiber.Ctx) error {
 // @Failure 403 {string} string "Forbidden"
 // @Router /resource/{id}/webhook [post]
 func HandleWebhook(c *fiber.Ctx) error {
-	id := c.Params("id")
 	// Parse before querying: GORM treats a non-numeric string as raw SQL.
-	idNum, err := strconv.ParseUint(id, 10, 64)
+	idNum, err := paramID(c, "id")
 	if err != nil {
 		return c.SendStatus(404)
 	}
@@ -206,7 +204,7 @@ func HandleWebhook(c *fiber.Ctx) error {
 	// Create webhook logger
 	webhookLog := logger.FromContext(c.UserContext()).With().
 		Str("operation", "webhook").
-		Str("resource_id", id).
+		Uint("resource_id", idNum).
 		Logger()
 
 	// Extract authentication headers and query params
@@ -336,16 +334,12 @@ func finishWebhookFetch(ctx context.Context, log zerolog.Logger, resID uint, vSt
 }
 
 func PostResetWebhookSecret(c *fiber.Ctx) error {
-	id := c.Params("id")
-	sess, _ := Store.Get(c)
-	currentUserID := sess.Get("user_id").(uint)
-
-	// Parse resource ID
-	resourceIDUint64, err := strconv.ParseUint(id, 10, 32)
+	resourceID, err := paramID(c, "id")
 	if err != nil {
 		return c.Status(404).SendString("Resource not found")
 	}
-	resourceID := uint(resourceIDUint64)
+	sess, _ := Store.Get(c)
+	currentUserID := sess.Get("user_id").(uint)
 
 	// Reset webhook secret via service
 	if err := resource.Service.WithContext(c.UserContext()).ResetWebhookSecret(resourceID, currentUserID); err != nil {

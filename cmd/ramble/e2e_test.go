@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/hmac"
@@ -9,6 +10,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -296,6 +298,55 @@ func TestE2EProductionLogging(t *testing.T) {
 		t.Errorf("POST %s/reset = %d, want 403", resPath, s)
 	}
 
+	// SQL injection through id path params must 404 without running the payload.
+	// Go's client sends '>' as %3E, so the literal form goes over a raw socket.
+	// A non-numeric id fails the <int> route constraint and falls through to the
+	// catch-all /:username/:resourcename (user "requests" does not exist), which is
+	// what answers 404 for the /requests/ URLs; /resource/abc/fetch-readme matches
+	// no route at all.
+	rawGet := func(name, requestTarget string) int {
+		t.Helper()
+		conn, err := net.DialTimeout("tcp", "127.0.0.1:"+portStr, 5*time.Second)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		defer conn.Close()
+		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		if _, err := fmt.Fprintf(conn, "GET %s HTTP/1.1\r\nHost: x\r\nX-Forwarded-Proto: https\r\nConnection: close\r\n\r\n", requestTarget); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+		if err != nil {
+			t.Fatalf("%s: %v\n%s", name, err, dump())
+		}
+		_ = resp.Body.Close()
+		reqs = append(reqs, e2eRequest{name, resp.Header.Get("X-Request-ID"), resp.StatusCode})
+		return resp.StatusCode
+	}
+	for _, tc := range []struct {
+		name string
+		get  func() int
+	}{
+		{"inject-gt-escaped", func() int { return do("inject-gt-escaped", "GET", "/requests/id>0", nil, nil) }},
+		{"inject-gt-literal", func() int { return rawGet("inject-gt-literal", "/requests/id>0") }},
+		{"inject-or-literal", func() int { return rawGet("inject-or-literal", "/requests/1%20or%201=1") }},
+		{"inject-sleep", func() int { return do("inject-sleep", "GET", "/requests/(select(pg_sleep(5)))is(null)", nil, nil) }},
+		{"inject-sleep-literal", func() int { return rawGet("inject-sleep-literal", "/requests/(select(pg_sleep(5)))is(null)") }},
+		{"inject-readme", func() int { return do("inject-readme", "GET", "/resource/abc/fetch-readme", nil, nil) }},
+		{"inject-readme-sleep", func() int {
+			return rawGet("inject-readme-sleep", "/resource/(select(pg_sleep(5)))is(null)/fetch-readme")
+		}},
+	} {
+		start := time.Now()
+		s := tc.get()
+		if elapsed := time.Since(start); elapsed > 3*time.Second {
+			t.Errorf("%s took %v; the payload may have run (pg_sleep(5))", tc.name, elapsed)
+		}
+		if s != 404 {
+			t.Errorf("%s = %d, want 404\n%s", tc.name, s, dump())
+		}
+	}
+
 	// Stop: SIGTERM, then kill. The exit code is not asserted (no graceful handler).
 	_ = cmd.Process.Signal(syscall.SIGTERM)
 	select {
@@ -413,6 +464,11 @@ func seedResource(t *testing.T, hostPort, user, pass, name, secret string) uint6
 	var id uint64
 	if err := db.QueryRow(`INSERT INTO nomad_resources (created_at, updated_at, name, type, webhook_secret, user_id) VALUES (now(), now(), 'e2e-res', 'pack', $1, $2) RETURNING id`, secret, userID).Scan(&id); err != nil {
 		t.Fatalf("seed resource: %v", err)
+	}
+	// A pack_requests row, so an injected id predicate has a row to evaluate
+	// against: on an empty table Postgres may never run pg_sleep.
+	if _, err := db.Exec(`INSERT INTO pack_requests (created_at, updated_at, title, user_id) VALUES (now(), now(), 'e2e-req', $1)`, userID); err != nil {
+		t.Fatalf("seed request: %v", err)
 	}
 	return id
 }

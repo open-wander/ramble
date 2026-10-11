@@ -537,7 +537,10 @@ func GetRawResource(c *fiber.Ctx) error {
 }
 
 func FetchReadme(c *fiber.Ctx) error {
-	id := c.Params("id")
+	id, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("Resource not found")
+	}
 	var resource models.NomadResource
 	if err := reqDB(c).Preload("Versions", func(db *gorm.DB) *gorm.DB {
 		return db.Order("resource_versions.created_at DESC")

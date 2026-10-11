@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"errors"
-	"strconv"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -19,16 +18,12 @@ import (
 // @Failure 401 {string} string "Unauthorized"
 // @Router /resource/{id}/star [post]
 func ToggleStar(c *fiber.Ctx) error {
-	id := c.Params("id")
-	sess, _ := Store.Get(c)
-	userID := sess.Get("user_id").(uint)
-
-	// Parse resource ID
-	resourceIDUint64, err := strconv.ParseUint(id, 10, 32)
+	resourceID, err := paramID(c, "id")
 	if err != nil {
 		return c.Status(404).SendString("Resource not found")
 	}
-	resourceID := uint(resourceIDUint64)
+	sess, _ := Store.Get(c)
+	userID := sess.Get("user_id").(uint)
 
 	// Toggle star via service
 	isStarred, starCount, err := resource.Service.WithContext(c.UserContext()).ToggleStar(resourceID, userID)

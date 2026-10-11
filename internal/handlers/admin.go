@@ -76,7 +76,10 @@ func GetAdminResources(c *fiber.Ctx) error {
 
 // PostToggleAdmin toggles a user's admin status
 func PostToggleAdmin(c *fiber.Ctx) error {
-	userID := c.Params("id")
+	userID, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("User not found")
+	}
 
 	var user models.User
 	if err := reqDB(c).First(&user, userID).Error; err != nil {
@@ -106,7 +109,10 @@ func PostToggleAdmin(c *fiber.Ctx) error {
 
 // DeleteUser deletes a user account
 func DeleteUser(c *fiber.Ctx) error {
-	userID := c.Params("id")
+	userID, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("User not found")
+	}
 
 	var user models.User
 	if err := reqDB(c).First(&user, userID).Error; err != nil {
@@ -130,7 +136,10 @@ func DeleteUser(c *fiber.Ctx) error {
 
 // GetEditUser returns the edit modal for a user
 func GetEditUser(c *fiber.Ctx) error {
-	userID := c.Params("id")
+	userID, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("User not found")
+	}
 
 	var user models.User
 	if err := reqDB(c).Preload("Memberships.Organization").First(&user, userID).Error; err != nil {
@@ -145,7 +154,10 @@ func GetEditUser(c *fiber.Ctx) error {
 
 // PostEditUser saves user edits
 func PostEditUser(c *fiber.Ctx) error {
-	userID := c.Params("id")
+	userID, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("User not found")
+	}
 
 	var user models.User
 	if err := reqDB(c).First(&user, userID).Error; err != nil {
@@ -195,7 +207,10 @@ func GetAdminOrganizations(c *fiber.Ctx) error {
 
 // GetEditOrganization returns the edit modal for an organization
 func GetEditOrganization(c *fiber.Ctx) error {
-	orgID := c.Params("id")
+	orgID, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("Organization not found")
+	}
 
 	var org models.Organization
 	if err := reqDB(c).Preload("Memberships.User").Preload("Resources").First(&org, orgID).Error; err != nil {
@@ -210,7 +225,10 @@ func GetEditOrganization(c *fiber.Ctx) error {
 
 // PostEditOrganization saves organization edits
 func PostEditOrganization(c *fiber.Ctx) error {
-	orgID := c.Params("id")
+	orgID, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("Organization not found")
+	}
 
 	var org models.Organization
 	if err := reqDB(c).Preload("Memberships").Preload("Resources").First(&org, orgID).Error; err != nil {
@@ -245,7 +263,10 @@ func PostEditOrganization(c *fiber.Ctx) error {
 
 // DeleteOrganization deletes an organization and all its resources
 func DeleteOrganization(c *fiber.Ctx) error {
-	orgID := c.Params("id")
+	orgID, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("Organization not found")
+	}
 
 	var org models.Organization
 	if err := reqDB(c).First(&org, orgID).Error; err != nil {
@@ -320,7 +341,10 @@ func GetAdminRequests(c *fiber.Ctx) error {
 
 // PostUpdateRequestStatus updates a request's status
 func PostUpdateRequestStatus(c *fiber.Ctx) error {
-	id := c.Params("id")
+	id, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("Request not found")
+	}
 	status := c.FormValue("status")
 
 	// Validate status value
@@ -361,7 +385,10 @@ func PostUpdateRequestStatus(c *fiber.Ctx) error {
 
 // DeleteRequest deletes a pack/job request (admin only)
 func DeleteRequest(c *fiber.Ctx) error {
-	id := c.Params("id")
+	id, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("Request not found")
+	}
 
 	var request models.PackRequest
 	if err := reqDB(c).First(&request, id).Error; err != nil {
@@ -418,7 +445,10 @@ func GetAdminAudit(c *fiber.Ctx) error {
 
 // PostAdminAddMember adds a user to an organization (admin only)
 func PostAdminAddMember(c *fiber.Ctx) error {
-	orgID := c.Params("id")
+	orgID, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("Organization not found")
+	}
 	username := c.FormValue("username")
 	role := c.FormValue("role")
 
@@ -467,8 +497,14 @@ func PostAdminAddMember(c *fiber.Ctx) error {
 
 // PostAdminRemoveMember removes a member from an organization (admin only)
 func PostAdminRemoveMember(c *fiber.Ctx) error {
-	orgID := c.Params("id")
-	memberID := c.Params("member_id")
+	orgID, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("Organization not found")
+	}
+	memberID, idErr := paramID(c, "member_id")
+	if idErr != nil {
+		return c.Status(404).SendString("Member not found")
+	}
 
 	var org models.Organization
 	if err := reqDB(c).First(&org, orgID).Error; err != nil {
@@ -497,8 +533,14 @@ func PostAdminRemoveMember(c *fiber.Ctx) error {
 
 // PostAdminChangeMemberRole changes a member's role in an organization (admin only)
 func PostAdminChangeMemberRole(c *fiber.Ctx) error {
-	orgID := c.Params("id")
-	memberID := c.Params("member_id")
+	orgID, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("Organization not found")
+	}
+	memberID, idErr := paramID(c, "member_id")
+	if idErr != nil {
+		return c.Status(404).SendString("Member not found")
+	}
 	newRole := c.FormValue("role")
 
 	if newRole != "member" && newRole != "owner" {
@@ -538,8 +580,14 @@ func PostAdminChangeMemberRole(c *fiber.Ctx) error {
 
 // DeleteAdminUserMembership removes a user from an organization (from user edit modal)
 func DeleteAdminUserMembership(c *fiber.Ctx) error {
-	userID := c.Params("id")
-	orgID := c.Params("org_id")
+	userID, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("User not found")
+	}
+	orgID, idErr := paramID(c, "org_id")
+	if idErr != nil {
+		return c.Status(404).SendString("Organization not found")
+	}
 
 	var user models.User
 	if err := reqDB(c).First(&user, userID).Error; err != nil {

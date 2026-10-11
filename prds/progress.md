@@ -412,3 +412,25 @@ Delete/Take; parse to uint first or constrain the route (:id<int>). GORM only tr
 string as a key if strconv.Atoi succeeds; otherwise it is raw SQL.
 PATTERN: review - exempting a route from a middleware (CSRF) can remove an accidental
 guard; check what the handler does with untrusted input before widening exposure.
+
+## 2026-10-11 — 9.0 SQL injection fixed
+
+internal/handlers/params.go: paramID(c, name) -> parseID(s): ParseUint base 10, 64-bit,
+rejects 0. All 31 id-like c.Params sites (28 "id", 3 "member_id", 1 "org_id"; admin 16,
+requests 6, web FetchReadme, resource_crud 5, resource_social, resource_webhooks 2, org 1)
+use it and return their existing not-found response. registerRoutes(app) extracted from
+Run (static files through catch-all, limiters, dev route); 30 params carry <int>.
+Guards: TestRegisterRoutes_IDParamsAreIntConstrained (route table), TestParamsIDOnlyInParamID
+(AST; flags id-like literal, non-literal names, ParamsInt, AllParams outside paramID),
+TestIDHandlers_RejectInjectionPayloads (8 handlers incl. two-param admin routes, payloads
+id>0 / 1 or 1=1 / pg_sleep / -1 / +1 / abc, GORM capture at 1ns threshold, payload never in
+SQL), TestIDHandlers_BadIDIs404BeforeAnyWork, e2e probes (404, fast). Before the fix the
+handler test showed WHERE id>0 returning a row.
+Orchestrator: suite, gosec and staticcheck clean; mutations <int> dropped -> route guard red;
+GetRequest back to raw string -> AST guard + injection test red; zero accepted ->
+TestParamID/0 red. Orchestrator tidy: parseID extracted so TestParamID tests the parse
+directly (the " 1" and "" rows previously never reached the handler); dead valid/control
+case fields removed; section comments fixed.
+Review notes: scanParamsCalls inspects FuncDecl bodies only (package-level func literals
+not covered; none exist); idLike/idParamName duplicated across two test packages; /requests/abc
+now 404s via the catch-all falling through -> 9.9 (no reserved usernames).
