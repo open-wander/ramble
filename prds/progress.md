@@ -312,3 +312,16 @@ redactDetails returns input -> red; repo_url raw -> 3 rows red. Suite ok.
 Advisor MINOR: struct/pointer detail values are not redacted (no caller passes them);
 substring "key"/"session" over-redacts harmless keys - pick audit detail keys accordingly;
 fetch subtest builds resource.Service before the GORM capture swap.
+
+## 2026-10-11 — 8.5 request-triggered fetches log with request_id
+
+background.go: fetchVersionContent and downloadFileWithRetry take the logger from ctx;
+fetch DB writes (both version updates, RecordFetchFailed on failure and panic paths) bound
+to ctx. detachedLogCtx(c) rebuilds the bare request logger on context.Background() (not
+cancelled with the request, no *fiber.Ctx captured). resource_webhooks.go goroutines and
+resource_crud.go create / add-version / retry fetches pass it. fetch_log_test.go covers
+webhook new-tag and latest-refresh, request-triggered fetches, and the no-context fallback.
+Merged with 8.2 in downloadFileWithRetry (kept FromContextOr + stripURLUserinfo).
+Orchestrator mutation: background.go back to &logger.Log -> 3 tests red. Suite ok.
+Advisor MINOR: three surviving mutants (panic-path WithContext, webhook follow-up First,
+success-path update) and duplicated goroutine bodies -> 8.10.
