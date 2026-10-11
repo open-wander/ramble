@@ -271,3 +271,122 @@ func TestFetchVersionContent_NoContextLoggerUsesGlobal(t *testing.T) {
 	require.NotNil(t, line, "version_fetch.failed not on the global logger: %s", buf.String())
 	assert.NotContains(t, line, "request_id")
 }
+
+// requireSQLOnRequestLogger asserts that the db.slow_query line for the
+// statement matching sqlParts is on the request logger with rid, and that no
+// such statement went through the global logger (which is where it lands when
+// WithContext(ctx) is dropped).
+func requireSQLOnRequestLogger(t *testing.T, reqBuf, baseBuf *lockedBuffer, rid string, sqlParts ...string) {
+	t.Helper()
+	line := reqBuf.findLogLine("db.slow_query", sqlParts...)
+	require.NotNil(t, line, "%v not on the request logger:\nreq: %s\nbase: %s", sqlParts, reqBuf.String(), baseBuf.String())
+	assert.Equal(t, rid, line["request_id"], "%v", sqlParts)
+	assert.Nil(t, baseBuf.findLogLine("db.slow_query", sqlParts...), "%v leaked to the global logger", sqlParts)
+}
+
+// The webhook goroutine's follow-up lookup of the fetched version is bound to
+// the request context (both webhook paths share finishWebhookFetch).
+func TestHandleWebhook_FollowUpLookupCarriesRequestID(t *testing.T) {
+	tests := []struct {
+		name     string
+		event    string
+		body     string
+		versions []string
+	}{
+		{name: "latest refresh", versions: []string{"v1.0.0"}},
+		{name: "new tag", event: "create", body: `{"ref":"v9.9.9","ref_type":"tag"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer cleanupTestData(t)
+
+			user := createTestUser(t, "fetchlogfu-"+strings.ReplaceAll(tt.name, " ", "-"))
+			const secret = "fetch-log-secret"
+			res := models.NomadResource{
+				Name:          "fetch-log-fu",
+				Type:          models.ResourceTypePack,
+				UserID:        user.ID,
+				WebhookSecret: secret,
+				RepositoryURL: failFastRepoURL,
+			}
+			require.NoError(t, database.DB.Create(&res).Error)
+			for _, v := range tt.versions {
+				require.NoError(t, database.DB.Create(&models.ResourceVersion{ResourceID: res.ID, Version: v}).Error)
+			}
+
+			reqBuf, baseBuf := fetchLogHarness(t)
+			app := newRequestLogApp(zerolog.New(reqBuf))
+			app.Post("/webhook/:id", HandleWebhook)
+
+			ts := fmt.Sprintf("%d", time.Now().Unix())
+			req := httptest.NewRequest("POST", "/webhook/"+toString(res.ID), strings.NewReader(tt.body))
+			req.Header.Set("X-Request-ID", "rid-810-fu")
+			req.Header.Set("X-Webhook-Timestamp", ts)
+			req.Header.Set("X-Hub-Signature-256", computeExpectedSignature([]byte(tt.body), ts, secret))
+			if tt.event != "" {
+				req.Header.Set("X-GitHub-Event", tt.event)
+				req.Header.Set("Content-Type", "application/json")
+			}
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+
+			// webhook.fetch_failed is the helper's last line: the goroutine is done.
+			require.True(t, eventually(func() bool {
+				return reqBuf.findLogLine("webhook.fetch_failed") != nil
+			}), "goroutine did not finish: %s", reqBuf.String())
+
+			requireSQLOnRequestLogger(t, reqBuf, baseBuf, "rid-810-fu",
+				`SELECT * FROM "resource_versions"`, "(resource_id = ", "AND version = ", "LIMIT")
+		})
+	}
+}
+
+// The panic path persists the failure through the request context, so the
+// RecordFetchFailed UPDATE carries the request_id.
+func TestFetchVersionContent_PanicRecordCarriesRequestID(t *testing.T) {
+	defer cleanupTestData(t)
+	user := createTestUser(t, "fetchlogpanic")
+	res := models.NomadResource{Name: "fetch-log-panic", Type: models.ResourceTypePack, UserID: user.ID, RepositoryURL: failFastRepoURL}
+	require.NoError(t, database.DB.Create(&res).Error)
+	require.NoError(t, database.DB.Create(&models.ResourceVersion{ResourceID: res.ID, Version: "v1.0.0"}).Error)
+
+	reqBuf, baseBuf := fetchLogHarness(t)
+	fetchVersionHook = func() { panic("boom") }
+	t.Cleanup(func() { fetchVersionHook = nil })
+
+	ctx := zerolog.New(reqBuf).With().Str("request_id", "rid-810-panic").Logger().WithContext(context.Background())
+	fetchVersionContent(ctx, res.ID, "v1.0.0", failFastRepoURL, string(res.Type), res.Name, "")
+
+	line := reqBuf.findLogLine("version_fetch.panic")
+	require.NotNil(t, line, "version_fetch.panic not on the request logger: %s", reqBuf.String())
+	assert.Equal(t, "rid-810-panic", line["request_id"])
+	requireSQLOnRequestLogger(t, reqBuf, baseBuf, "rid-810-panic", `UPDATE "resource_versions"`, "fetch_completed_at")
+
+	var v models.ResourceVersion
+	require.NoError(t, database.DB.Where("resource_id = ? AND version = ?", res.ID, "v1.0.0").First(&v).Error)
+	assert.Equal(t, models.FetchStatusFailed, v.FetchStatus)
+}
+
+// The success path's final content UPDATE carries the request_id. An empty
+// repository URL makes every download succeed with no network.
+func TestFetchVersionContent_SuccessUpdateCarriesRequestID(t *testing.T) {
+	defer cleanupTestData(t)
+	user := createTestUser(t, "fetchlogok")
+	res := models.NomadResource{Name: "fetch-log-ok", Type: models.ResourceTypePack, UserID: user.ID}
+	require.NoError(t, database.DB.Create(&res).Error)
+	require.NoError(t, database.DB.Create(&models.ResourceVersion{ResourceID: res.ID, Version: "v1.0.0"}).Error)
+
+	reqBuf, baseBuf := fetchLogHarness(t)
+	ctx := zerolog.New(reqBuf).With().Str("request_id", "rid-810-ok").Logger().WithContext(context.Background())
+	fetchVersionContent(ctx, res.ID, "v1.0.0", "", string(res.Type), res.Name, "")
+
+	line := reqBuf.findLogLine("version_fetch.completed")
+	require.NotNil(t, line, "version_fetch.completed not on the request logger: %s", reqBuf.String())
+	assert.Equal(t, "rid-810-ok", line["request_id"])
+	requireSQLOnRequestLogger(t, reqBuf, baseBuf, "rid-810-ok", `UPDATE "resource_versions"`, `"readme"`, "fetch_completed_at")
+
+	var v models.ResourceVersion
+	require.NoError(t, database.DB.Where("resource_id = ? AND version = ?", res.ID, "v1.0.0").First(&v).Error)
+	assert.Equal(t, models.FetchStatusCompleted, v.FetchStatus)
+}

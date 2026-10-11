@@ -122,6 +122,10 @@ func detachedLogCtx(c *fiber.Ctx) context.Context {
 	return logger.FromContext(c.UserContext()).WithContext(context.Background())
 }
 
+// fetchVersionHook, when set by tests, runs inside fetchVersionContent after the
+// fetching status is written. Nil in production.
+var fetchVersionHook func()
+
 // fetchVersionContent handles the complete lifecycle of fetching resource version content
 // This function is spawned as a goroutine and handles all file downloads for a version
 // ctx carries the logger of the request that triggered the fetch (see
@@ -158,6 +162,10 @@ func fetchVersionContent(ctx context.Context, resID uint, versionStr, repoURL, r
 			"fetch_status":     models.FetchStatusFetching,
 			"fetch_started_at": now,
 		})
+
+	if fetchVersionHook != nil {
+		fetchVersionHook()
+	}
 
 	// Use errgroup for parallel file downloads
 	g, gctx := errgroup.WithContext(ctx)

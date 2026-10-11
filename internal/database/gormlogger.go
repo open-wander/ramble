@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -19,7 +20,8 @@ const SlowQueryThreshold = 200 * time.Millisecond
 // never logged; slow queries go out at WARN as db.slow_query and failures
 // (other than gorm.ErrRecordNotFound) at ERROR as db.query_error. SQL is
 // logged with placeholders, never with bound values, so user data stays out
-// of the logs.
+// of the logs. Info/Warn/Error args are rendered into text and never
+// serialised.
 type gormLogger struct {
 	base          *zerolog.Logger
 	slowThreshold time.Duration
@@ -43,21 +45,45 @@ func (g *gormLogger) logger(ctx context.Context) *zerolog.Logger {
 	return logger.FromContextOr(ctx, g.base)
 }
 
+// formatText renders a GORM message with its args. Only errors, strings and
+// scalars are formatted; anything else (structs such as pgconn.Config, which
+// holds the password) is replaced by its type name.
+func formatText(msg string, args []any) string {
+	if len(args) == 0 {
+		return msg
+	}
+	safe := make([]any, len(args))
+	for i, a := range args {
+		switch v := a.(type) {
+		case error:
+			safe[i] = v.Error()
+		case string, bool,
+			int, int8, int16, int32, int64,
+			uint, uint8, uint16, uint32, uint64,
+			float32, float64:
+			safe[i] = v
+		default:
+			safe[i] = fmt.Sprintf("<%T>", a)
+		}
+	}
+	return fmt.Sprintf(msg, safe...)
+}
+
 func (g *gormLogger) Info(ctx context.Context, msg string, args ...any) {
 	if g.level >= gormlogger.Info {
-		g.logger(ctx).Info().Interface("args", args).Str("text", msg).Msg("db.info")
+		g.logger(ctx).Info().Str("text", formatText(msg, args)).Msg("db.info")
 	}
 }
 
 func (g *gormLogger) Warn(ctx context.Context, msg string, args ...any) {
 	if g.level >= gormlogger.Warn {
-		g.logger(ctx).Warn().Interface("args", args).Str("text", msg).Msg("db.warn")
+		g.logger(ctx).Warn().Str("text", formatText(msg, args)).Msg("db.warn")
 	}
 }
 
 func (g *gormLogger) Error(ctx context.Context, msg string, args ...any) {
 	if g.level >= gormlogger.Error {
-		g.logger(ctx).Error().Interface("args", args).Str("text", msg).Msg("db.error")
+		g.logger(ctx).Error().Str("text", formatText(msg, args)).Msg("db.error")
 	}
 }
 

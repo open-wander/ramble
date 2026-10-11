@@ -316,26 +316,7 @@ func HandleWebhook(c *fiber.Ctx) error {
 			webhookLog.Info().Str("version", newVersion).Msg("webhook.version_received")
 
 			// Background Fetch for the NEW version with error propagation to webhook status
-			go func(ctx context.Context, log zerolog.Logger, resID uint, vStr, repoURL, resType, resName, filePath string) {
-				fetchVersionContent(ctx, resID, vStr, repoURL, resType, resName, filePath)
-
-				// Check if the fetch failed and update webhook error status
-				var version models.ResourceVersion
-				if err := database.DB.WithContext(ctx).Where("resource_id = ? AND version = ?", resID, vStr).First(&version).Error; err == nil {
-					if version.FetchStatus == models.FetchStatusFailed {
-						database.DB.WithContext(ctx).Model(&models.NomadResource{}).
-							Where("id = ?", resID).
-							Updates(map[string]interface{}{
-								"last_webhook_status": "failure",
-								"last_webhook_error":  "Fetch failed: " + version.FetchError,
-							})
-						log.Warn().
-							Str("version", vStr).
-							Str("fetch_error", version.FetchError).
-							Msg("webhook.fetch_failed")
-					}
-				}
-			}(detachedLogCtx(c), webhookLog, resource.ID, newVersion, resource.RepositoryURL, string(resource.Type), resource.Name, resource.FilePath)
+			go finishWebhookFetch(detachedLogCtx(c), webhookLog, resource.ID, newVersion, resource.RepositoryURL, string(resource.Type), resource.Name, resource.FilePath)
 
 			return c.SendStatus(200)
 		}
@@ -348,29 +329,32 @@ func HandleWebhook(c *fiber.Ctx) error {
 		webhookLog.Info().Str("version", latest.Version).Msg("webhook.latest_version_refresh")
 
 		// Background Fetch for refresh with error propagation to webhook status
-		go func(ctx context.Context, log zerolog.Logger, resID uint, vStr, repoURL, resType, resName, filePath string) {
-			fetchVersionContent(ctx, resID, vStr, repoURL, resType, resName, filePath)
-
-			// Check if the fetch failed and update webhook error status
-			var version models.ResourceVersion
-			if err := database.DB.WithContext(ctx).Where("resource_id = ? AND version = ?", resID, vStr).First(&version).Error; err == nil {
-				if version.FetchStatus == models.FetchStatusFailed {
-					database.DB.WithContext(ctx).Model(&models.NomadResource{}).
-						Where("id = ?", resID).
-						Updates(map[string]interface{}{
-							"last_webhook_status": "failure",
-							"last_webhook_error":  "Fetch failed: " + version.FetchError,
-						})
-					log.Warn().
-						Str("version", vStr).
-						Str("fetch_error", version.FetchError).
-						Msg("webhook.fetch_failed")
-				}
-			}
-		}(detachedLogCtx(c), webhookLog, resource.ID, latest.Version, resource.RepositoryURL, string(resource.Type), resource.Name, resource.FilePath)
+		go finishWebhookFetch(detachedLogCtx(c), webhookLog, resource.ID, latest.Version, resource.RepositoryURL, string(resource.Type), resource.Name, resource.FilePath)
 	}
 
 	return c.SendStatus(200)
+}
+
+// finishWebhookFetch runs the version fetch for a webhook, then records a failed fetch on the resource's webhook status.
+func finishWebhookFetch(ctx context.Context, log zerolog.Logger, resID uint, vStr, repoURL, resType, resName, filePath string) {
+	fetchVersionContent(ctx, resID, vStr, repoURL, resType, resName, filePath)
+
+	// Check if the fetch failed and update webhook error status
+	var version models.ResourceVersion
+	if err := database.DB.WithContext(ctx).Where("resource_id = ? AND version = ?", resID, vStr).First(&version).Error; err == nil {
+		if version.FetchStatus == models.FetchStatusFailed {
+			database.DB.WithContext(ctx).Model(&models.NomadResource{}).
+				Where("id = ?", resID).
+				Updates(map[string]interface{}{
+					"last_webhook_status": "failure",
+					"last_webhook_error":  "Fetch failed: " + version.FetchError,
+				})
+			log.Warn().
+				Str("version", vStr).
+				Str("fetch_error", version.FetchError).
+				Msg("webhook.fetch_failed")
+		}
+	}
 }
 
 func PostResetWebhookSecret(c *fiber.Ctx) error {

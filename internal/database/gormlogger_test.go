@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -205,5 +207,100 @@ func TestGormConfigUsesZerologAdapter(t *testing.T) {
 	}
 	if sql, _ := l["sql"].(string); !strings.Contains(sql, "$1") {
 		t.Errorf("sql = %q, want bound placeholder $1", sql)
+	}
+}
+
+func TestGormLoggerMessageArgsNotSerialised(t *testing.T) {
+	type unserialisable struct {
+		F      func()
+		Secret string
+	}
+	tests := []struct {
+		name     string
+		msg      string
+		args     []any
+		wantText func(string) bool
+	}{
+		{
+			name: "struct and error args",
+			msg:  "failed %v got %v",
+			args: []any{unserialisable{Secret: "STRUCTSENTINEL"}, errors.New("boom")},
+			wantText: func(s string) bool {
+				return strings.Contains(s, "boom") && strings.Contains(s, "failed")
+			},
+		},
+		{
+			name:     "no args keeps literal percent",
+			msg:      "100% literal %v",
+			wantText: func(s string) bool { return s == "100% literal %v" },
+		},
+	}
+	levels := []struct {
+		call  func(gormlogger.Interface, string, ...any)
+		msg   string
+		level string
+	}{
+		{func(g gormlogger.Interface, m string, a ...any) { g.Info(context.Background(), m, a...) }, "db.info", "info"},
+		{func(g gormlogger.Interface, m string, a ...any) { g.Warn(context.Background(), m, a...) }, "db.warn", "warn"},
+		{func(g gormlogger.Interface, m string, a ...any) { g.Error(context.Background(), m, a...) }, "db.error", "error"},
+	}
+	for _, tt := range tests {
+		for _, lv := range levels {
+			t.Run(tt.name+"/"+lv.level, func(t *testing.T) {
+				l, buf := bufLogger()
+				g := NewGormLogger(l, SlowQueryThreshold).LogMode(gormlogger.Info)
+				lv.call(g, tt.msg, tt.args...)
+
+				raw := buf.String()
+				if strings.Contains(raw, "marshaling error") || strings.Contains(raw, "STRUCTSENTINEL") {
+					t.Fatalf("raw output leaks or fails to marshal: %s", raw)
+				}
+				lines := decodeLines(t, buf)
+				if len(lines) != 1 {
+					t.Fatalf("want 1 line, got %d", len(lines))
+				}
+				m := lines[0]
+				if _, ok := m["args"]; ok {
+					t.Errorf("args key present: %v", m)
+				}
+				if m["message"] != lv.msg || m["level"] != lv.level {
+					t.Errorf("got message=%v level=%v, want %s/%s", m["message"], m["level"], lv.msg, lv.level)
+				}
+				if text, _ := m["text"].(string); !tt.wantText(text) {
+					t.Errorf("unexpected text %q", text)
+				}
+			})
+		}
+	}
+}
+
+func TestGormOpenConnectFailureKeepsPasswordOut(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+
+	l, buf := bufLogger()
+	dsn := fmt.Sprintf("host=127.0.0.1 port=%d user=ramble password=PWSENTINEL dbname=ramble sslmode=disable connect_timeout=2", port)
+	_, err = gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: NewGormLogger(l, SlowQueryThreshold)})
+	if err == nil {
+		t.Fatal("expected connect failure")
+	}
+
+	raw := buf.String()
+	if strings.Contains(raw, "PWSENTINEL") || strings.Contains(raw, "marshaling error") {
+		t.Fatalf("output leaks password or fails to marshal: %s", raw)
+	}
+	lines := decodeLines(t, buf)
+	if len(lines) != 1 {
+		t.Fatalf("want 1 line, got %d: %s", len(lines), raw)
+	}
+	m := lines[0]
+	text, _ := m["text"].(string)
+	if m["message"] != "db.error" || m["level"] != "error" ||
+		!strings.Contains(text, "failed to initialize database") || !strings.Contains(text, "failed to connect") {
+		t.Errorf("unexpected line: %v", m)
 	}
 }

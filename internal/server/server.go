@@ -109,11 +109,8 @@ func Run(cfg Config) error {
 		app.Use(sentryfiber.New(sentryfiber.Options{Repanic: false}))
 	}
 
-	// Request ID middleware for tracing
-	app.Use(requestid.New())
-
-	// Structured access log (http.request) with request ID
-	app.Use(logger.RequestLogger(&logger.Log))
+	// Request ID tracing + structured access log
+	useRequestLogging(app, &logger.Log)
 
 	// HTTPS enforcement middleware (only in production)
 	app.Use(func(c *fiber.Ctx) error {
@@ -428,6 +425,13 @@ func fiberConfig(views fiber.Views) fiber.Config {
 		// The text banner breaks one-JSON-object-per-line; server.started replaces it.
 		DisableStartupMessage: true,
 	}
+}
+
+// useRequestLogging registers request ID tracing and the structured access
+// log. requestid must run first: RequestLogger reads the ID it stores.
+func useRequestLogging(app *fiber.App, base *zerolog.Logger) {
+	app.Use(requestid.New())
+	app.Use(logger.RequestLogger(base))
 }
 
 // logStarted emits the single startup line that replaces Fiber's banner.
