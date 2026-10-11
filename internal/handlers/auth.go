@@ -100,16 +100,22 @@ var errOAuthEmailCollision = errors.New("existing account")
 // verified for GitHub/GitLab. A future task may add a separate verification
 // step for OAuth-created accounts.
 func processOAuthUser(gothUser goth.User) (models.User, error) {
+	return processOAuthUserDB(database.DB, gothUser)
+}
+
+// processOAuthUserDB is processOAuthUser on a caller-supplied handle, so the
+// callback handler can pass a request-bound one.
+func processOAuthUserDB(tx *gorm.DB, gothUser goth.User) (models.User, error) {
 	// Encrypt token; use empty string on failure so the rest can proceed.
 	encryptedToken, _ := crypto.EncryptToken(gothUser.AccessToken)
 
 	// Step 1: look up by provider + providerID (the safe, stable identifier).
 	var user models.User
-	result := database.DB.Where("provider = ? AND provider_id = ?", gothUser.Provider, gothUser.UserID).First(&user)
+	result := tx.Where("provider = ? AND provider_id = ?", gothUser.Provider, gothUser.UserID).First(&user)
 	if result.Error == nil {
 		// Already linked — refresh the access token and return.
 		user.AccessToken = encryptedToken
-		database.DB.Save(&user)
+		tx.Save(&user)
 		return user, nil
 	}
 
@@ -127,7 +133,7 @@ func processOAuthUser(gothUser goth.User) (models.User, error) {
 	// flash + /login redirect.
 	if gothUser.Email != "" {
 		var collision models.User
-		collResult := database.DB.Where("email = ?", gothUser.Email).First(&collision)
+		collResult := tx.Where("email = ?", gothUser.Email).First(&collision)
 		if collResult.Error == nil {
 			// An existing local account owns this email. Reject silently linking
 			// without verified proof of ownership.
@@ -161,7 +167,7 @@ func processOAuthUser(gothUser goth.User) (models.User, error) {
 		// that the email address is confirmed. A future link-from-settings
 		// flow will handle verified linkage.
 	}
-	if err := database.DB.Create(&newUser).Error; err != nil {
+	if err := tx.Create(&newUser).Error; err != nil {
 		return models.User{}, fmt.Errorf("failed to create oauth user: %w", err)
 	}
 	return newUser, nil
@@ -174,7 +180,7 @@ func AuthCallback(c *fiber.Ctx) error {
 		return c.Redirect("/login")
 	}
 
-	user, err := processOAuthUser(gothUser)
+	user, err := processOAuthUserDB(reqDB(c), gothUser)
 	if err != nil {
 		if errors.Is(err, errOAuthEmailCollision) {
 			SetFlash(c, "error", "An account with this email already exists. Please log in with your existing account, then link "+gothUser.Provider+" from your account settings.")
@@ -230,7 +236,7 @@ func PostLogin(c *fiber.Ctx) error {
 	dummyHash := "$2a$10$dummyHashForTimingAttackPreventionXXXXXXXXXXXXXXXXXXXXX"
 
 	var user models.User
-	result := database.DB.Where("email = ?", input.Email).First(&user)
+	result := reqDB(c).Where("email = ?", input.Email).First(&user)
 	if result.Error != nil {
 		// Always perform bcrypt comparison to prevent timing-based username enumeration
 		// Result intentionally ignored - we only need to consume the same time as a real comparison
@@ -263,7 +269,7 @@ func PostLogin(c *fiber.Ctx) error {
 			})
 		}
 
-		database.DB.Save(&user)
+		reqDB(c).Save(&user)
 		AuditLog(c, "auth.login_failed", "user", user.ID, user.Username, map[string]interface{}{
 			"failed_attempts": user.FailedLoginAttempts,
 		})
@@ -274,7 +280,7 @@ func PostLogin(c *fiber.Ctx) error {
 	if user.FailedLoginAttempts > 0 {
 		user.FailedLoginAttempts = 0
 		user.LockedUntil = time.Time{}
-		database.DB.Save(&user)
+		reqDB(c).Save(&user)
 	}
 
 	// Set Session
@@ -323,13 +329,13 @@ func PostSignup(c *fiber.Ctx) error {
 
 	// Check if username or email exists
 	var existingUser models.User
-	if err := database.DB.Where("username = ? OR email = ?", input.Username, input.Email).First(&existingUser).Error; err == nil {
+	if err := reqDB(c).Where("username = ? OR email = ?", input.Username, input.Email).First(&existingUser).Error; err == nil {
 		return c.Status(fiber.StatusBadRequest).SendString("Username or Email already registered")
 	}
 
 	// Check if username is taken by an Org
 	var count int64
-	database.DB.Model(&models.Organization{}).Where("name ILIKE ?", input.Username).Count(&count)
+	reqDB(c).Model(&models.Organization{}).Where("name ILIKE ?", input.Username).Count(&count)
 	if count > 0 {
 		return c.Status(fiber.StatusBadRequest).SendString("Username is already taken by an organization")
 	}
@@ -360,7 +366,7 @@ func PostSignup(c *fiber.Ctx) error {
 		VerificationTokenExpires: time.Now().Add(24 * time.Hour),
 	}
 
-	if err := database.DB.Create(&user).Error; err != nil {
+	if err := reqDB(c).Create(&user).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString("Could not create user")
 	}
 
@@ -435,7 +441,7 @@ func PostForgotPassword(c *fiber.Ctx) error {
 	AuditLog(c, "auth.password_reset_requested", "user", 0, emailAddr, nil)
 
 	var user models.User
-	if err := database.DB.Where("email = ?", emailAddr).First(&user).Error; err != nil {
+	if err := reqDB(c).Where("email = ?", emailAddr).First(&user).Error; err != nil {
 		// Return success even if user not found (prevent email enumeration)
 		// User decision: "Unknown email requests show same success message"
 		SetFlash(c, "success", "If an account exists, we sent a reset link.")
@@ -449,7 +455,7 @@ func PostForgotPassword(c *fiber.Ctx) error {
 	}
 
 	// Invalidate all previous tokens for this user (user decision)
-	database.DB.Model(&models.User{}).
+	reqDB(c).Model(&models.User{}).
 		Where("id = ?", user.ID).
 		Updates(map[string]interface{}{
 			"reset_token":         "",
@@ -469,7 +475,7 @@ func PostForgotPassword(c *fiber.Ctx) error {
 	user.ResetToken = hex.EncodeToString(hashedToken[:])
 	user.ResetTokenExpires = time.Now().Add(1 * time.Hour)
 	user.ResetTokenUsedAt = nil // Ensure it's marked as unused
-	database.DB.Save(&user)
+	reqDB(c).Save(&user)
 
 	// Send Email
 	baseURL := os.Getenv("BASE_URL")
@@ -499,7 +505,7 @@ func GetResetPassword(c *fiber.Ctx) error {
 
 	// Query includes single-use check: reset_token_used_at IS NULL
 	var user models.User
-	if err := database.DB.Where(
+	if err := reqDB(c).Where(
 		"reset_token = ? AND reset_token_expires > ? AND reset_token_used_at IS NULL",
 		hashedTokenStr, time.Now(),
 	).First(&user).Error; err != nil {
@@ -529,7 +535,7 @@ func PostResetPassword(c *fiber.Ctx) error {
 	// Query includes single-use check: reset_token_used_at IS NULL
 	// Note: SQL comparison of hashed tokens is acceptable - see objective security note
 	var user models.User
-	if err := database.DB.Where(
+	if err := reqDB(c).Where(
 		"reset_token = ? AND reset_token_expires > ? AND reset_token_used_at IS NULL",
 		hashedTokenStr, time.Now(),
 	).First(&user).Error; err != nil {
@@ -544,7 +550,7 @@ func PostResetPassword(c *fiber.Ctx) error {
 	// Mark token as used IMMEDIATELY (TOCTOU protection: prevents race condition)
 	now := time.Now()
 	user.ResetTokenUsedAt = &now
-	if err := database.DB.Save(&user).Error; err != nil {
+	if err := reqDB(c).Save(&user).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString("Failed to process request")
 	}
 
@@ -558,7 +564,7 @@ func PostResetPassword(c *fiber.Ctx) error {
 	user.PasswordHash = string(hashedPassword)
 	user.PasswordChangedAt = time.Now()
 	user.ResetToken = "" // Clear token
-	database.DB.Save(&user)
+	reqDB(c).Save(&user)
 
 	AuditLog(c, "auth.password_reset_completed", "user", user.ID, user.Username, nil)
 
@@ -580,7 +586,7 @@ func GetVerifyEmail(c *fiber.Ctx) error {
 	hashedTokenStr := hex.EncodeToString(hashedToken[:])
 
 	var user models.User
-	if err := database.DB.Where("verification_token = ? AND verification_token_expires > ?", hashedTokenStr, time.Now()).First(&user).Error; err != nil {
+	if err := reqDB(c).Where("verification_token = ? AND verification_token_expires > ?", hashedTokenStr, time.Now()).First(&user).Error; err != nil {
 		SetFlash(c, "error", "Invalid or expired verification token.")
 		return c.Redirect("/")
 	}
@@ -588,7 +594,7 @@ func GetVerifyEmail(c *fiber.Ctx) error {
 	// Mark email as verified
 	user.EmailVerified = true
 	user.VerificationToken = "" // Clear token
-	database.DB.Save(&user)
+	reqDB(c).Save(&user)
 
 	AuditLog(c, "auth.email_verified", "user", user.ID, user.Username, nil)
 
@@ -605,7 +611,7 @@ func PostResendVerification(c *fiber.Ctx) error {
 
 	userID := sess.Get("user_id").(uint)
 	var user models.User
-	if err := database.DB.First(&user, userID).Error; err != nil {
+	if err := reqDB(c).First(&user, userID).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).SendString("User not found")
 	}
 
@@ -624,7 +630,7 @@ func PostResendVerification(c *fiber.Ctx) error {
 	hashedToken := sha256.Sum256([]byte(verificationToken))
 	user.VerificationToken = hex.EncodeToString(hashedToken[:])
 	user.VerificationTokenExpires = time.Now().Add(24 * time.Hour)
-	database.DB.Save(&user)
+	reqDB(c).Save(&user)
 
 	// Send verification email
 	baseURL := os.Getenv("BASE_URL")

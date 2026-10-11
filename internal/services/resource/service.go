@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -75,6 +76,12 @@ type ResourceService struct {
 // NewResourceService creates a new resource service
 func NewResourceService(db *gorm.DB) *ResourceService {
 	return &ResourceService{db: db}
+}
+
+// WithContext returns a service whose queries and transactions run on ctx, so
+// SQL log lines carry the request logger (and request_id) stored in it.
+func (s *ResourceService) WithContext(ctx context.Context) *ResourceService {
+	return &ResourceService{db: s.db.WithContext(ctx)}
 }
 
 // Package-level service variable for global access

@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"strconv"
 
@@ -31,7 +30,7 @@ func GetPacks(c *fiber.Ctx) error {
 	offset := (page - 1) * pageSize
 
 	// Build Query
-	dbQuery := database.DB.Preload("User").Preload("Tags").
+	dbQuery := reqDB(c).Preload("User").Preload("Tags").
 		Where("type = ?", models.ResourceTypePack)
 
 	if query != "" {
@@ -72,7 +71,7 @@ func GetPacks(c *fiber.Ctx) error {
 		"Tag":         tag,
 		"Sort":        sort,
 		"NextPage":    nextPage,
-		"PopularTags": GetPopularTags(),
+		"PopularTags": popularTags(reqDB(c)),
 	}), "layouts/main")
 }
 
@@ -99,7 +98,7 @@ func GetJobs(c *fiber.Ctx) error {
 	offset := (page - 1) * pageSize
 
 	// Build Query
-	dbQuery := database.DB.Preload("User").Preload("Tags").
+	dbQuery := reqDB(c).Preload("User").Preload("Tags").
 		Where("type = ?", models.ResourceTypeJob)
 
 	if query != "" {
@@ -140,6 +139,6 @@ func GetJobs(c *fiber.Ctx) error {
 		"Tag":         tag,
 		"Sort":        sort,
 		"NextPage":    nextPage,
-		"PopularTags": GetPopularTags(),
+		"PopularTags": popularTags(reqDB(c)),
 	}), "layouts/main")
 }

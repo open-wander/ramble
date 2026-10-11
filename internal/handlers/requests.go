@@ -61,7 +61,7 @@ func GetRequests(c *fiber.Ctx) error {
 	pageSize := 12
 
 	var requests []models.PackRequest
-	dbQuery := database.DB.Model(&models.PackRequest{}).
+	dbQuery := reqDB(c).Model(&models.PackRequest{}).
 		Preload("User").
 		Preload("Voters")
 
@@ -95,7 +95,7 @@ func GetRequests(c *fiber.Ctx) error {
 	var votedRequestIDs []uint
 	if c.Locals("UserID") != nil {
 		userID := c.Locals("UserID").(uint)
-		database.DB.Table("request_votes").
+		reqDB(c).Table("request_votes").
 			Where("user_id = ?", userID).
 			Pluck("pack_request_id", &votedRequestIDs)
 	}
@@ -186,14 +186,14 @@ func PostNewRequest(c *fiber.Ctx) error {
 		Status:      models.RequestStatusOpen,
 	}
 
-	if err := database.DB.Create(&request).Error; err != nil {
+	if err := reqDB(c).Create(&request).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString("Could not create request")
 	}
 
 	AuditLog(c, "request.create", "request", request.ID, request.Title, nil)
 
 	// Create GitHub issue in background
-	go createGitHubIssueForRequest(request.ID)
+	go createGitHubIssueForRequest(database.DB, request.ID)
 
 	SetFlash(c, "success", "Request submitted successfully!")
 	requestIDInt, err := safeUintToInt(request.ID)
@@ -205,7 +205,7 @@ func PostNewRequest(c *fiber.Ctx) error {
 }
 
 // createGitHubIssueForRequest creates a GitHub issue for the request
-func createGitHubIssueForRequest(requestID uint) {
+func createGitHubIssueForRequest(db *gorm.DB, requestID uint) {
 	// Get token from environment variable (like other GitHub/GitLab secrets)
 	token := os.Getenv("GITHUB_REQUESTS_TOKEN")
 	if token == "" {
@@ -214,14 +214,14 @@ func createGitHubIssueForRequest(requestID uint) {
 	}
 
 	var request models.PackRequest
-	if err := database.DB.Preload("User").First(&request, requestID).Error; err != nil {
+	if err := db.Preload("User").First(&request, requestID).Error; err != nil {
 		logger.Log.Error().Err(err).Str("operation", "github_issue_create").Uint("pack_request_id", requestID).Msg("request.load_failed")
 		return
 	}
 
 	// Get repo from database settings (not a secret, can be configured in admin)
 	var repoSetting models.SiteSetting
-	if err := database.DB.Where("key = ?", "github_requests_repo").First(&repoSetting).Error; err != nil {
+	if err := db.Where("key = ?", "github_requests_repo").First(&repoSetting).Error; err != nil {
 		logger.Log.Warn().Str("operation", "github_issue_create").Msg("github.requests_repo_missing")
 		return
 	}
@@ -254,7 +254,7 @@ func createGitHubIssueForRequest(requestID uint) {
 		return
 	}
 
-	database.DB.Model(&request).Updates(map[string]interface{}{
+	db.Model(&request).Updates(map[string]interface{}{
 		"github_issue_url": resp.HTMLURL,
 		"github_issue_num": resp.Number,
 	})
@@ -265,7 +265,7 @@ func GetRequest(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	var request models.PackRequest
-	if err := database.DB.Preload("User").Preload("Voters").First(&request, id).Error; err != nil {
+	if err := reqDB(c).Preload("User").Preload("Voters").First(&request, id).Error; err != nil {
 		return c.Status(404).SendString("Request not found")
 	}
 
@@ -294,7 +294,7 @@ func ToggleRequestVote(c *fiber.Ctx) error {
 	userID := sess.Get("user_id").(uint)
 
 	var request models.PackRequest
-	if err := database.DB.Preload("Voters").First(&request, id).Error; err != nil {
+	if err := reqDB(c).Preload("Voters").First(&request, id).Error; err != nil {
 		return c.Status(404).SendString("Request not found")
 	}
 
@@ -307,20 +307,20 @@ func ToggleRequestVote(c *fiber.Ctx) error {
 	}
 
 	if hasVoted {
-		if err := database.DB.Model(&request).Association("Voters").Delete(&models.User{Model: gorm.Model{ID: userID}}); err != nil {
+		if err := reqDB(c).Model(&request).Association("Voters").Delete(&models.User{Model: gorm.Model{ID: userID}}); err != nil {
 			return c.Status(fiber.StatusInternalServerError).SendString("Failed to remove vote")
 		}
-		database.DB.Model(&request).Update("vote_count", gorm.Expr("vote_count - ?", 1))
+		reqDB(c).Model(&request).Update("vote_count", gorm.Expr("vote_count - ?", 1))
 	} else {
-		if err := database.DB.Model(&request).Association("Voters").Append(&models.User{Model: gorm.Model{ID: userID}}); err != nil {
+		if err := reqDB(c).Model(&request).Association("Voters").Append(&models.User{Model: gorm.Model{ID: userID}}); err != nil {
 			return c.Status(fiber.StatusInternalServerError).SendString("Failed to add vote")
 		}
-		database.DB.Model(&request).Update("vote_count", gorm.Expr("vote_count + ?", 1))
+		reqDB(c).Model(&request).Update("vote_count", gorm.Expr("vote_count + ?", 1))
 	}
 
 	// Refetch count
 	var count int64
-	database.DB.Table("request_votes").Where("pack_request_id = ?", request.ID).Count(&count)
+	reqDB(c).Table("request_votes").Where("pack_request_id = ?", request.ID).Count(&count)
 
 	return c.Render("partials/vote_button", fiber.Map{
 		"Request":   request,
@@ -336,7 +336,7 @@ func GetEditRequest(c *fiber.Ctx) error {
 	userID := sess.Get("user_id").(uint)
 
 	var request models.PackRequest
-	if err := database.DB.First(&request, id).Error; err != nil {
+	if err := reqDB(c).First(&request, id).Error; err != nil {
 		return c.Status(404).SendString("Request not found")
 	}
 
@@ -363,7 +363,7 @@ func PostEditRequest(c *fiber.Ctx) error {
 	userID := sess.Get("user_id").(uint)
 
 	var request models.PackRequest
-	if err := database.DB.First(&request, id).Error; err != nil {
+	if err := reqDB(c).First(&request, id).Error; err != nil {
 		return c.Status(404).SendString("Request not found")
 	}
 
@@ -417,7 +417,7 @@ func PostEditRequest(c *fiber.Ctx) error {
 	request.Description = description
 	request.Type = reqType
 
-	if err := database.DB.Save(&request).Error; err != nil {
+	if err := reqDB(c).Save(&request).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString("Could not update request")
 	}
 
@@ -439,7 +439,7 @@ func DeleteUserRequest(c *fiber.Ctx) error {
 	userID := sess.Get("user_id").(uint)
 
 	var request models.PackRequest
-	if err := database.DB.First(&request, id).Error; err != nil {
+	if err := reqDB(c).First(&request, id).Error; err != nil {
 		return c.Status(404).SendString("Request not found")
 	}
 
@@ -455,7 +455,7 @@ func DeleteUserRequest(c *fiber.Ctx) error {
 
 	AuditLog(c, "request.delete", "request", request.ID, request.Title, nil)
 
-	database.DB.Delete(&request)
+	reqDB(c).Delete(&request)
 
 	SetFlash(c, "success", "Request deleted successfully.")
 	c.Set("HX-Redirect", "/requests")
@@ -469,7 +469,7 @@ func RetryGitHubIssue(c *fiber.Ctx) error {
 	userID := sess.Get("user_id").(uint)
 
 	var request models.PackRequest
-	if err := database.DB.First(&request, id).Error; err != nil {
+	if err := reqDB(c).First(&request, id).Error; err != nil {
 		return c.Status(404).SendString("Request not found")
 	}
 
@@ -488,10 +488,10 @@ func RetryGitHubIssue(c *fiber.Ctx) error {
 	}
 
 	// Try to create the GitHub issue (synchronously so we can report the result)
-	createGitHubIssueForRequest(request.ID)
+	createGitHubIssueForRequest(reqDB(c), request.ID)
 
 	// Reload to check if it worked
-	database.DB.First(&request, id)
+	reqDB(c).First(&request, id)
 	if request.GitHubIssueURL == "" {
 		return c.Status(500).SendString("Failed to create GitHub issue. Check that GitHub integration is configured.")
 	}

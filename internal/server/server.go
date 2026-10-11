@@ -194,7 +194,7 @@ func Run(cfg Config) error {
 
 			if userID := sess.Get("user_id"); userID != nil {
 				var user models.User
-				if err := database.DB.Preload("Memberships.Organization").First(&user, userID).Error; err == nil {
+				if err := database.DB.WithContext(c.UserContext()).Preload("Memberships.Organization").First(&user, userID).Error; err == nil {
 					// Check if password was changed after session was created
 					// If so, invalidate this session (force logout on password reset)
 					if createdAt := sess.Get("session_created_at"); createdAt != nil {

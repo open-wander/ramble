@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"errors"
-	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"rmbl/internal/services/resource"
 	"strconv"
@@ -18,7 +17,7 @@ func GetNewResource(c *fiber.Ctx) error {
 	var user models.User
 	if isLoggedIn {
 		userID := c.Locals("UserID").(uint)
-		database.DB.Preload("Memberships.Organization").First(&user, userID)
+		reqDB(c).Preload("Memberships.Organization").First(&user, userID)
 	}
 	var orgs []models.Organization
 	for _, m := range user.Memberships {
@@ -78,11 +77,11 @@ func PostNewResource(c *fiber.Ctx) error {
 	// authenticated user is a member (role 'member' or 'owner').
 	if orgID != nil {
 		var org models.Organization
-		if err := database.DB.First(&org, *orgID).Error; err != nil {
+		if err := reqDB(c).First(&org, *orgID).Error; err != nil {
 			return fiber.NewError(fiber.StatusForbidden, "organization not found")
 		}
 		var membership models.Membership
-		if err := database.DB.Where(
+		if err := reqDB(c).Where(
 			"user_id = ? AND organization_id = ? AND role IN ('member','owner')",
 			userID, *orgID,
 		).First(&membership).Error; err != nil {
@@ -120,7 +119,7 @@ func PostNewResource(c *fiber.Ctx) error {
 		Tags:          input.Tags,
 	}
 
-	res, err := resource.Service.CreateResource(serviceInput, userID, orgID)
+	res, err := resource.Service.WithContext(c.UserContext()).CreateResource(serviceInput, userID, orgID)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).SendString(err.Error())
 	}
@@ -131,10 +130,10 @@ func PostNewResource(c *fiber.Ctx) error {
 	// Build redirect path
 	redirectPath := "/"
 	var user models.User
-	database.DB.First(&user, userID)
+	reqDB(c).First(&user, userID)
 	if orgID != nil {
 		var org models.Organization
-		database.DB.First(&org, *orgID)
+		reqDB(c).First(&org, *orgID)
 		redirectPath = "/" + org.Name + "/" + res.Name
 	} else {
 		redirectPath = "/" + user.Username + "/" + res.Name
@@ -169,7 +168,7 @@ func PostNewVersion(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
 	}
 
-	if authErr := resource.Service.AuthorizeResourceAction(uint(id), currentUserID, false); authErr != nil {
+	if authErr := resource.Service.WithContext(c.UserContext()).AuthorizeResourceAction(uint(id), currentUserID, false); authErr != nil {
 		if errors.Is(authErr, resource.ErrResourceNotFound) {
 			return c.Status(404).SendString("Resource not found")
 		}
@@ -177,11 +176,11 @@ func PostNewVersion(c *fiber.Ctx) error {
 	}
 
 	var res models.NomadResource
-	if err := database.DB.First(&res, uint(id)).Error; err != nil {
+	if err := reqDB(c).First(&res, uint(id)).Error; err != nil {
 		return c.Status(404).SendString("Resource not found")
 	}
 	version := models.ResourceVersion{ResourceID: uint(id), Version: versionStr}
-	if err := database.DB.Create(&version).Error; err != nil {
+	if err := reqDB(c).Create(&version).Error; err != nil {
 		return c.Status(500).SendString("Could not add version")
 	}
 	go fetchVersionContent(context.Background(), res.ID, versionStr, res.RepositoryURL, string(res.Type), res.Name, res.FilePath)
@@ -198,11 +197,11 @@ func GetEditResource(c *fiber.Ctx) error {
 	var userID uint
 	var orgID *uint
 	var user models.User
-	if err := database.DB.Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
+	if err := reqDB(c).Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
 		userID = user.ID
 	} else {
 		var org models.Organization
-		if err := database.DB.Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
+		if err := reqDB(c).Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
 			orgID = &org.ID
 		} else {
 			return c.Status(404).SendString("Namespace not found")
@@ -211,7 +210,7 @@ func GetEditResource(c *fiber.Ctx) error {
 	var isAllowed bool
 	if orgID != nil {
 		var m models.Membership
-		if err := database.DB.Where("user_id = ? AND organization_id = ?", currentUserID, *orgID).First(&m).Error; err == nil {
+		if err := reqDB(c).Where("user_id = ? AND organization_id = ?", currentUserID, *orgID).First(&m).Error; err == nil {
 			isAllowed = true
 		}
 	} else {
@@ -221,7 +220,7 @@ func GetEditResource(c *fiber.Ctx) error {
 		return c.Status(403).SendString("You don't have permission to edit this resource")
 	}
 	var resource models.NomadResource
-	dbQuery := database.DB.Preload("User").Preload("Tags")
+	dbQuery := reqDB(c).Preload("User").Preload("Tags")
 	if orgID != nil {
 		dbQuery = dbQuery.Where("organization_id = ? AND name ILIKE ?", *orgID, resourcename)
 	} else {
@@ -231,7 +230,7 @@ func GetEditResource(c *fiber.Ctx) error {
 		return c.Status(404).SendString("Resource not found")
 	}
 	var currentUser models.User
-	database.DB.Preload("Memberships.Organization").First(&currentUser, currentUserID)
+	reqDB(c).Preload("Memberships.Organization").First(&currentUser, currentUserID)
 	var orgs []models.Organization
 	for _, m := range currentUser.Memberships {
 		orgs = append(orgs, m.Organization)
@@ -292,7 +291,7 @@ func PostEditResource(c *fiber.Ctx) error {
 		Tags:          input.Tags,
 	}
 
-	if err := resource.Service.UpdateResource(uint(id), serviceInput, currentUserID); err != nil {
+	if err := resource.Service.WithContext(c.UserContext()).UpdateResource(uint(id), serviceInput, currentUserID); err != nil {
 		if errors.Is(err, resource.ErrUnauthorized) {
 			return c.Status(403).SendString("Unauthorized")
 		}
@@ -304,16 +303,16 @@ func PostEditResource(c *fiber.Ctx) error {
 
 	// Get updated resource for redirect
 	var res models.NomadResource
-	database.DB.First(&res, uint(id))
+	reqDB(c).First(&res, uint(id))
 
 	newNamespace := ""
 	if res.OrganizationID != nil {
 		var o models.Organization
-		database.DB.First(&o, *res.OrganizationID)
+		reqDB(c).First(&o, *res.OrganizationID)
 		newNamespace = o.Name
 	} else {
 		var u models.User
-		database.DB.First(&u, res.UserID)
+		reqDB(c).First(&u, res.UserID)
 		newNamespace = u.Username
 	}
 
@@ -345,7 +344,7 @@ func PostRetryFetch(c *fiber.Ctx) error {
 	}
 
 	var res models.NomadResource
-	if err := database.DB.Preload("Versions", func(db *gorm.DB) *gorm.DB {
+	if err := reqDB(c).Preload("Versions", func(db *gorm.DB) *gorm.DB {
 		return db.Order("created_at DESC")
 	}).First(&res, uint(id)).Error; err != nil {
 		return c.Status(404).SendString("Resource not found")
@@ -353,10 +352,10 @@ func PostRetryFetch(c *fiber.Ctx) error {
 
 	// Check ownership: admin bypass preserved; otherwise use centralized authorization.
 	var currentUser models.User
-	database.DB.First(&currentUser, currentUserID)
+	reqDB(c).First(&currentUser, currentUserID)
 
 	if !currentUser.IsAdmin {
-		if authErr := resource.Service.AuthorizeResourceAction(uint(id), currentUserID, false); authErr != nil {
+		if authErr := resource.Service.WithContext(c.UserContext()).AuthorizeResourceAction(uint(id), currentUserID, false); authErr != nil {
 			if errors.Is(authErr, resource.ErrResourceNotFound) {
 				return c.Status(404).SendString("Resource not found")
 			}
@@ -374,7 +373,7 @@ func PostRetryFetch(c *fiber.Ctx) error {
 	}
 
 	// Reset fetch status and clear error
-	database.DB.Model(&latest).Updates(map[string]interface{}{
+	reqDB(c).Model(&latest).Updates(map[string]interface{}{
 		"fetch_status": models.FetchStatusPending,
 		"fetch_error":  "",
 	})
@@ -401,13 +400,13 @@ func DeleteResource(c *fiber.Ctx) error {
 
 	// Get resource name before deletion for audit log
 	var res models.NomadResource
-	if err := database.DB.First(&res, resourceID).Error; err != nil {
+	if err := reqDB(c).First(&res, resourceID).Error; err != nil {
 		return c.Status(404).SendString("Resource not found")
 	}
 	resourceName := res.Name
 
 	// Delete via service
-	if err := resource.Service.DeleteResource(resourceID, userID); err != nil {
+	if err := resource.Service.WithContext(c.UserContext()).DeleteResource(resourceID, userID); err != nil {
 		if errors.Is(err, resource.ErrUnauthorized) {
 			return c.Status(403).SendString("Unauthorized")
 		}

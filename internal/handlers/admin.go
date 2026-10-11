@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"time"
 
-	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"rmbl/internal/services/logger"
 
@@ -33,16 +32,16 @@ func GetAdminDashboard(c *fiber.Ctx) error {
 	var resourceCount int64
 	var starCount int64
 
-	database.DB.Model(&models.User{}).Count(&userCount)
-	database.DB.Model(&models.Organization{}).Count(&orgCount)
-	database.DB.Model(&models.NomadResource{}).Count(&resourceCount)
-	database.DB.Table("user_stars").Count(&starCount)
+	reqDB(c).Model(&models.User{}).Count(&userCount)
+	reqDB(c).Model(&models.Organization{}).Count(&orgCount)
+	reqDB(c).Model(&models.NomadResource{}).Count(&resourceCount)
+	reqDB(c).Table("user_stars").Count(&starCount)
 
 	var latestUsers []models.User
-	database.DB.Order("created_at desc").Limit(5).Find(&latestUsers)
+	reqDB(c).Order("created_at desc").Limit(5).Find(&latestUsers)
 
 	var latestResources []models.NomadResource
-	database.DB.Preload("User").Preload("Tags").Order("created_at desc").Limit(5).Find(&latestResources)
+	reqDB(c).Preload("User").Preload("Tags").Order("created_at desc").Limit(5).Find(&latestResources)
 
 	return c.Render("admin/dashboard", MergeContext(BaseContext(c), fiber.Map{
 		"UserCount":       userCount,
@@ -57,7 +56,7 @@ func GetAdminDashboard(c *fiber.Ctx) error {
 
 func GetAdminUsers(c *fiber.Ctx) error {
 	var users []models.User
-	database.DB.Order("id asc").Find(&users)
+	reqDB(c).Order("id asc").Find(&users)
 
 	return c.Render("admin/users", MergeContext(BaseContext(c), fiber.Map{
 		"Users": users,
@@ -67,7 +66,7 @@ func GetAdminUsers(c *fiber.Ctx) error {
 
 func GetAdminResources(c *fiber.Ctx) error {
 	var resources []models.NomadResource
-	database.DB.Preload("User").Preload("Tags").Order("id asc").Find(&resources)
+	reqDB(c).Preload("User").Preload("Tags").Order("id asc").Find(&resources)
 
 	return c.Render("admin/resources", MergeContext(BaseContext(c), fiber.Map{
 		"Resources": resources,
@@ -80,7 +79,7 @@ func PostToggleAdmin(c *fiber.Ctx) error {
 	userID := c.Params("id")
 
 	var user models.User
-	if err := database.DB.First(&user, userID).Error; err != nil {
+	if err := reqDB(c).First(&user, userID).Error; err != nil {
 		return c.Status(404).SendString("User not found")
 	}
 
@@ -92,7 +91,7 @@ func PostToggleAdmin(c *fiber.Ctx) error {
 
 	// Toggle admin status
 	user.IsAdmin = !user.IsAdmin
-	database.DB.Save(&user)
+	reqDB(c).Save(&user)
 
 	AuditLog(c, "admin.toggle_admin", "user", user.ID, user.Username, map[string]interface{}{
 		"new_status": user.IsAdmin,
@@ -110,7 +109,7 @@ func DeleteUser(c *fiber.Ctx) error {
 	userID := c.Params("id")
 
 	var user models.User
-	if err := database.DB.First(&user, userID).Error; err != nil {
+	if err := reqDB(c).First(&user, userID).Error; err != nil {
 		return c.Status(404).SendString("User not found")
 	}
 
@@ -123,7 +122,7 @@ func DeleteUser(c *fiber.Ctx) error {
 	AuditLog(c, "admin.delete_user", "user", user.ID, user.Username, nil)
 
 	// Delete user (this will cascade delete resources, memberships, etc. if configured in the model)
-	database.DB.Delete(&user)
+	reqDB(c).Delete(&user)
 
 	// Return empty response (HTMX will swap with empty content, removing the row)
 	return c.SendString("")
@@ -134,7 +133,7 @@ func GetEditUser(c *fiber.Ctx) error {
 	userID := c.Params("id")
 
 	var user models.User
-	if err := database.DB.Preload("Memberships.Organization").First(&user, userID).Error; err != nil {
+	if err := reqDB(c).Preload("Memberships.Organization").First(&user, userID).Error; err != nil {
 		return c.Status(404).SendString("User not found")
 	}
 
@@ -149,7 +148,7 @@ func PostEditUser(c *fiber.Ctx) error {
 	userID := c.Params("id")
 
 	var user models.User
-	if err := database.DB.First(&user, userID).Error; err != nil {
+	if err := reqDB(c).First(&user, userID).Error; err != nil {
 		return c.Status(404).SendString("User not found")
 	}
 
@@ -170,7 +169,7 @@ func PostEditUser(c *fiber.Ctx) error {
 	user.Email = input.Email
 	user.EmailVerified = input.EmailVerified == "on"
 
-	if err := database.DB.Save(&user).Error; err != nil {
+	if err := reqDB(c).Save(&user).Error; err != nil {
 		return c.Status(500).SendString("Failed to update user")
 	}
 
@@ -186,7 +185,7 @@ func PostEditUser(c *fiber.Ctx) error {
 // GetAdminOrganizations lists all organizations
 func GetAdminOrganizations(c *fiber.Ctx) error {
 	var orgs []models.Organization
-	database.DB.Preload("Memberships.User").Preload("Resources").Order("id asc").Find(&orgs)
+	reqDB(c).Preload("Memberships.User").Preload("Resources").Order("id asc").Find(&orgs)
 
 	return c.Render("admin/organizations", MergeContext(BaseContext(c), fiber.Map{
 		"Organizations": orgs,
@@ -199,7 +198,7 @@ func GetEditOrganization(c *fiber.Ctx) error {
 	orgID := c.Params("id")
 
 	var org models.Organization
-	if err := database.DB.Preload("Memberships.User").Preload("Resources").First(&org, orgID).Error; err != nil {
+	if err := reqDB(c).Preload("Memberships.User").Preload("Resources").First(&org, orgID).Error; err != nil {
 		return c.Status(404).SendString("Organization not found")
 	}
 
@@ -214,7 +213,7 @@ func PostEditOrganization(c *fiber.Ctx) error {
 	orgID := c.Params("id")
 
 	var org models.Organization
-	if err := database.DB.Preload("Memberships").Preload("Resources").First(&org, orgID).Error; err != nil {
+	if err := reqDB(c).Preload("Memberships").Preload("Resources").First(&org, orgID).Error; err != nil {
 		return c.Status(404).SendString("Organization not found")
 	}
 
@@ -231,7 +230,7 @@ func PostEditOrganization(c *fiber.Ctx) error {
 	org.Name = input.Name
 	org.Description = input.Description
 
-	if err := database.DB.Save(&org).Error; err != nil {
+	if err := reqDB(c).Save(&org).Error; err != nil {
 		return c.Status(500).SendString("Failed to update organization")
 	}
 
@@ -249,14 +248,14 @@ func DeleteOrganization(c *fiber.Ctx) error {
 	orgID := c.Params("id")
 
 	var org models.Organization
-	if err := database.DB.First(&org, orgID).Error; err != nil {
+	if err := reqDB(c).First(&org, orgID).Error; err != nil {
 		return c.Status(404).SendString("Organization not found")
 	}
 
 	AuditLog(c, "admin.delete_org", "organization", org.ID, org.Name, nil)
 
 	// Delete organization (cascade deletes resources and memberships)
-	database.DB.Delete(&org)
+	reqDB(c).Delete(&org)
 
 	// Return empty response (HTMX will swap with empty content, removing the row)
 	return c.SendString("")
@@ -265,7 +264,7 @@ func DeleteOrganization(c *fiber.Ctx) error {
 // GetAdminSettings shows the site settings page
 func GetAdminSettings(c *fiber.Ctx) error {
 	var settings []models.SiteSetting
-	database.DB.Find(&settings)
+	reqDB(c).Find(&settings)
 
 	settingsMap := make(map[string]string)
 	for _, s := range settings {
@@ -296,7 +295,7 @@ func PostAdminSettings(c *fiber.Ctx) error {
 	}
 
 	for key, value := range settings {
-		database.DB.Where(models.SiteSetting{Key: key}).
+		reqDB(c).Where(models.SiteSetting{Key: key}).
 			Assign(models.SiteSetting{Value: value}).
 			FirstOrCreate(&models.SiteSetting{})
 	}
@@ -311,7 +310,7 @@ func PostAdminSettings(c *fiber.Ctx) error {
 // GetAdminRequests lists all pack/job requests for admin management
 func GetAdminRequests(c *fiber.Ctx) error {
 	var requests []models.PackRequest
-	database.DB.Preload("User").Order("created_at desc").Find(&requests)
+	reqDB(c).Preload("User").Order("created_at desc").Find(&requests)
 
 	return c.Render("admin/requests", MergeContext(BaseContext(c), fiber.Map{
 		"Requests": requests,
@@ -336,12 +335,12 @@ func PostUpdateRequestStatus(c *fiber.Ctx) error {
 	}
 
 	var request models.PackRequest
-	if err := database.DB.Preload("User").First(&request, id).Error; err != nil {
+	if err := reqDB(c).Preload("User").First(&request, id).Error; err != nil {
 		return c.Status(404).SendString("Request not found")
 	}
 
 	request.Status = models.RequestStatus(status)
-	database.DB.Save(&request)
+	reqDB(c).Save(&request)
 
 	// Sync status to GitHub in background
 	go func(req models.PackRequest) {
@@ -365,13 +364,13 @@ func DeleteRequest(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	var request models.PackRequest
-	if err := database.DB.First(&request, id).Error; err != nil {
+	if err := reqDB(c).First(&request, id).Error; err != nil {
 		return c.Status(404).SendString("Request not found")
 	}
 
 	AuditLog(c, "admin.delete_request", "request", request.ID, request.Title, nil)
 
-	database.DB.Delete(&request)
+	reqDB(c).Delete(&request)
 
 	return c.SendString("")
 }
@@ -386,7 +385,7 @@ func GetAdminAudit(c *fiber.Ctx) error {
 	pageSize := 50
 
 	var logs []models.AuditLog
-	query := database.DB.Order("created_at desc").Limit(pageSize).Offset((page - 1) * pageSize)
+	query := reqDB(c).Order("created_at desc").Limit(pageSize).Offset((page - 1) * pageSize)
 
 	if actionFilter != "" {
 		escapedFilter := escapeLikeString(actionFilter)
@@ -397,7 +396,7 @@ func GetAdminAudit(c *fiber.Ctx) error {
 
 	// Check if there are more pages
 	var totalCount int64
-	countQuery := database.DB.Model(&models.AuditLog{})
+	countQuery := reqDB(c).Model(&models.AuditLog{})
 	if actionFilter != "" {
 		escapedFilter := escapeLikeString(actionFilter)
 		countQuery = countQuery.Where("action LIKE ? ESCAPE '\\'", escapedFilter+"%")
@@ -428,18 +427,18 @@ func PostAdminAddMember(c *fiber.Ctx) error {
 	}
 
 	var org models.Organization
-	if err := database.DB.First(&org, orgID).Error; err != nil {
+	if err := reqDB(c).First(&org, orgID).Error; err != nil {
 		return c.Status(404).SendString("Organization not found")
 	}
 
 	var user models.User
-	if err := database.DB.Where("username = ?", username).First(&user).Error; err != nil {
+	if err := reqDB(c).Where("username = ?", username).First(&user).Error; err != nil {
 		return c.Status(404).SendString("User not found")
 	}
 
 	// Check if already a member
 	var existing models.Membership
-	if err := database.DB.Where("user_id = ? AND organization_id = ?", user.ID, org.ID).First(&existing).Error; err == nil {
+	if err := reqDB(c).Where("user_id = ? AND organization_id = ?", user.ID, org.ID).First(&existing).Error; err == nil {
 		return c.Status(400).SendString("User is already a member")
 	}
 
@@ -448,10 +447,10 @@ func PostAdminAddMember(c *fiber.Ctx) error {
 		OrganizationID: org.ID,
 		Role:           role,
 	}
-	database.DB.Create(&membership)
+	reqDB(c).Create(&membership)
 
 	// Reload membership with user data for the response
-	database.DB.Preload("User").First(&membership, membership.ID)
+	reqDB(c).Preload("User").First(&membership, membership.ID)
 
 	AuditLog(c, "admin.add_member", "organization", org.ID, org.Name, map[string]interface{}{
 		"member":   username,
@@ -472,12 +471,12 @@ func PostAdminRemoveMember(c *fiber.Ctx) error {
 	memberID := c.Params("member_id")
 
 	var org models.Organization
-	if err := database.DB.First(&org, orgID).Error; err != nil {
+	if err := reqDB(c).First(&org, orgID).Error; err != nil {
 		return c.Status(404).SendString("Organization not found")
 	}
 
 	var membership models.Membership
-	if err := database.DB.Preload("User").First(&membership, memberID).Error; err != nil {
+	if err := reqDB(c).Preload("User").First(&membership, memberID).Error; err != nil {
 		return c.Status(404).SendString("Member not found")
 	}
 
@@ -490,7 +489,7 @@ func PostAdminRemoveMember(c *fiber.Ctx) error {
 		"removed_by": "admin",
 	})
 
-	database.DB.Delete(&membership)
+	reqDB(c).Delete(&membership)
 
 	// Return empty string for HTMX to remove the row
 	return c.SendString("")
@@ -507,12 +506,12 @@ func PostAdminChangeMemberRole(c *fiber.Ctx) error {
 	}
 
 	var org models.Organization
-	if err := database.DB.First(&org, orgID).Error; err != nil {
+	if err := reqDB(c).First(&org, orgID).Error; err != nil {
 		return c.Status(404).SendString("Organization not found")
 	}
 
 	var membership models.Membership
-	if err := database.DB.Preload("User").First(&membership, memberID).Error; err != nil {
+	if err := reqDB(c).Preload("User").First(&membership, memberID).Error; err != nil {
 		return c.Status(404).SendString("Member not found")
 	}
 
@@ -522,7 +521,7 @@ func PostAdminChangeMemberRole(c *fiber.Ctx) error {
 
 	oldRole := membership.Role
 	membership.Role = newRole
-	database.DB.Save(&membership)
+	reqDB(c).Save(&membership)
 
 	AuditLog(c, "admin.change_member_role", "organization", org.ID, org.Name, map[string]interface{}{
 		"member":   membership.User.Username,
@@ -543,17 +542,17 @@ func DeleteAdminUserMembership(c *fiber.Ctx) error {
 	orgID := c.Params("org_id")
 
 	var user models.User
-	if err := database.DB.First(&user, userID).Error; err != nil {
+	if err := reqDB(c).First(&user, userID).Error; err != nil {
 		return c.Status(404).SendString("User not found")
 	}
 
 	var org models.Organization
-	if err := database.DB.First(&org, orgID).Error; err != nil {
+	if err := reqDB(c).First(&org, orgID).Error; err != nil {
 		return c.Status(404).SendString("Organization not found")
 	}
 
 	var membership models.Membership
-	if err := database.DB.Where("user_id = ? AND organization_id = ?", user.ID, org.ID).First(&membership).Error; err != nil {
+	if err := reqDB(c).Where("user_id = ? AND organization_id = ?", user.ID, org.ID).First(&membership).Error; err != nil {
 		return c.Status(404).SendString("Membership not found")
 	}
 
@@ -562,7 +561,7 @@ func DeleteAdminUserMembership(c *fiber.Ctx) error {
 		"removed_by":   "admin",
 	})
 
-	database.DB.Delete(&membership)
+	reqDB(c).Delete(&membership)
 
 	// Return empty string for HTMX to remove the row
 	return c.SendString("")
@@ -592,7 +591,7 @@ func GetAdminErrors(c *fiber.Ctx) error {
 	// Query failed downloads
 	if operationType == "" || operationType == "download" {
 		var versions []models.ResourceVersion
-		database.DB.Where("fetch_status = ?", models.FetchStatusFailed).
+		reqDB(c).Where("fetch_status = ?", models.FetchStatusFailed).
 			Order("fetch_completed_at desc").
 			Find(&versions)
 
@@ -605,7 +604,7 @@ func GetAdminErrors(c *fiber.Ctx) error {
 		resourceMap := make(map[uint]models.NomadResource)
 		if len(resourceIDs) > 0 {
 			var resources []models.NomadResource
-			database.DB.Preload("User").Where("id IN ?", resourceIDs).Find(&resources)
+			reqDB(c).Preload("User").Where("id IN ?", resourceIDs).Find(&resources)
 			for _, r := range resources {
 				resourceMap[r.ID] = r
 			}
@@ -630,7 +629,7 @@ func GetAdminErrors(c *fiber.Ctx) error {
 	// Query webhook errors
 	if operationType == "" || operationType == "webhook" {
 		var resources []models.NomadResource
-		database.DB.Preload("User").
+		reqDB(c).Preload("User").
 			Where("last_webhook_error != '' AND last_webhook_error IS NOT NULL").
 			Order("last_webhook_delivery desc").
 			Find(&resources)

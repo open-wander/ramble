@@ -56,7 +56,7 @@ func GetMyRepos(c *fiber.Ctx) error {
 	}
 	userID := sess.Get("user_id").(uint)
 	var user models.User
-	database.DB.First(&user, userID)
+	reqDB(c).First(&user, userID)
 	if user.AccessToken == "" {
 		return c.SendString("<p class='text-sm text-red-500'>No access token found. Please logout and login again.</p>")
 	}
@@ -110,7 +110,7 @@ func FetchInfo(c *fiber.Ctx) error {
 	if err == nil {
 		if uID := sess.Get("user_id"); uID != nil {
 			var user models.User
-			database.DB.First(&user, uID.(uint))
+			reqDB(c).First(&user, uID.(uint))
 			if user.AccessToken != "" {
 				decryptedToken, _ := crypto.DecryptToken(user.AccessToken)
 				token = decryptedToken
@@ -218,7 +218,7 @@ func HandleWebhook(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	var resource models.NomadResource
-	if err := database.DB.Preload("Versions", func(db *gorm.DB) *gorm.DB {
+	if err := reqDB(c).Preload("Versions", func(db *gorm.DB) *gorm.DB {
 		return db.Order("resource_versions.created_at DESC")
 	}).First(&resource, id).Error; err != nil {
 		return c.SendStatus(404)
@@ -248,7 +248,7 @@ func HandleWebhook(c *fiber.Ctx) error {
 		resource.LastWebhookDelivery = time.Now()
 		resource.LastWebhookStatus = "failure"
 		resource.LastWebhookError = "Invalid or missing secret"
-		database.DB.Save(&resource)
+		reqDB(c).Save(&resource)
 
 		// Return generic error to client (401 with no details)
 		return c.Status(401).SendString("Invalid webhook signature")
@@ -266,7 +266,7 @@ func HandleWebhook(c *fiber.Ctx) error {
 	resource.LastWebhookDelivery = time.Now()
 	resource.LastWebhookStatus = "success"
 	resource.LastWebhookError = ""
-	database.DB.Save(&resource)
+	reqDB(c).Save(&resource)
 
 	type GitHubPayload struct {
 		Ref     string `json:"ref"`
@@ -303,14 +303,14 @@ func HandleWebhook(c *fiber.Ctx) error {
 	if isTagEvent && newVersion != "" {
 		// Check if version already exists
 		var exists int64
-		database.DB.Model(&models.ResourceVersion{}).Where("resource_id = ? AND version = ?", resource.ID, newVersion).Count(&exists)
+		reqDB(c).Model(&models.ResourceVersion{}).Where("resource_id = ? AND version = ?", resource.ID, newVersion).Count(&exists)
 		if exists == 0 {
 			// Create new version
 			version := models.ResourceVersion{
 				ResourceID: resource.ID,
 				Version:    newVersion,
 			}
-			database.DB.Create(&version)
+			reqDB(c).Create(&version)
 
 			webhookLog.Info().Str("version", newVersion).Msg("webhook.version_received")
 
@@ -385,7 +385,7 @@ func PostResetWebhookSecret(c *fiber.Ctx) error {
 	resourceID := uint(resourceIDUint64)
 
 	// Reset webhook secret via service
-	if err := resource.Service.ResetWebhookSecret(resourceID, currentUserID); err != nil {
+	if err := resource.Service.WithContext(c.UserContext()).ResetWebhookSecret(resourceID, currentUserID); err != nil {
 		if errors.Is(err, resource.ErrUnauthorized) {
 			return c.Status(403).SendString("Unauthorized")
 		}

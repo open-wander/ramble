@@ -168,3 +168,26 @@ PATTERN: logging - guard log-key conventions with a go/parser walk, not grep: gr
 multi-line chained zerolog calls.
 PATTERN: tooling - BSD sed ignores GNU `0,/re/`; a "mutation" that silently didn't apply
 looks like a surviving mutant. Confirm the mutation landed before trusting the result.
+
+## 2026-10-11 — 6.3 request context into DB calls
+
+reqDB(c) = database.DB.WithContext(c.UserContext()) in internal/handlers/db.go, used on
+all request paths (14 handler files). resource.Service gained WithContext(ctx); all 7
+handler-side service calls use it, so service transactions inherit the request logger.
+Session middleware in server.go inlines database.DB.WithContext(c.UserContext()).
+github_sync internals and createGitHubIssueForRequest now take a *gorm.DB; goroutines
+and the CLI pass database.DB, request paths pass reqDB(c). Unchanged on purpose:
+startup, AuditLogNoContext, background.go fetches, goroutine bodies in admin.go,
+requests.go, resource_webhooks.go. No c.Context() and no goroutine captures *fiber.Ctx.
+Tests: internal/handlers/db_test.go (query against a missing table -> db.query_error in
+the request logger buffer with the request's X-Request-ID; base buffer empty) and
+internal/services/resource/withcontext_test.go. Orchestrator mutation: reqDB returning
+database.DB -> red; go vet, go test -tags=security ./... ok.
+Advisor: first review REJECT (service calls not context-bound, WithContext unused), one
+fix round, re-review MINOR. Follow-ups (not blocking): SyncGitHubToRequest has no
+callers; processOAuthUser, handleNewIssue, handleIssueStateChange and GetPopularTags
+are now database.DB wrappers used only by tests - point tests at the *DB variants and
+delete the wrappers in a later cleanup.
+
+PATTERN: context-threading - a global service built at startup with the global DB hides
+from a grep for `database.DB`; give it WithContext(ctx) and bind at each handler call.

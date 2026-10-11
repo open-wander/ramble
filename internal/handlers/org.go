@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"strconv"
 	"strings"
@@ -34,11 +33,11 @@ func PostCreateOrg(c *fiber.Ctx) error {
 
 	// Check if name is taken by a User or another Org
 	var count int64
-	database.DB.Model(&models.User{}).Where("username ILIKE ?", orgName).Count(&count)
+	reqDB(c).Model(&models.User{}).Where("username ILIKE ?", orgName).Count(&count)
 	if count > 0 {
 		return c.Status(400).SendString("This name is already taken by a user")
 	}
-	database.DB.Model(&models.Organization{}).Where("name ILIKE ?", orgName).Count(&count)
+	reqDB(c).Model(&models.Organization{}).Where("name ILIKE ?", orgName).Count(&count)
 	if count > 0 {
 		return c.Status(400).SendString("This organization name is already taken")
 	}
@@ -49,7 +48,7 @@ func PostCreateOrg(c *fiber.Ctx) error {
 		Description: input.Description,
 	}
 
-	if err := database.DB.Create(&org).Error; err != nil {
+	if err := reqDB(c).Create(&org).Error; err != nil {
 		return c.Status(500).SendString("Could not create organization")
 	}
 
@@ -59,7 +58,7 @@ func PostCreateOrg(c *fiber.Ctx) error {
 		OrganizationID: org.ID,
 		Role:           "owner",
 	}
-	database.DB.Create(&membership)
+	reqDB(c).Create(&membership)
 
 	AuditLog(c, "org.create", "organization", org.ID, org.Name, nil)
 
@@ -75,12 +74,12 @@ func RequireOrgOwner(c *fiber.Ctx) error {
 	userID := sess.Get("user_id").(uint)
 
 	var org models.Organization
-	if err := database.DB.Where("name ILIKE ?", orgName).First(&org).Error; err != nil {
+	if err := reqDB(c).Where("name ILIKE ?", orgName).First(&org).Error; err != nil {
 		return c.Status(404).SendString("Organization not found")
 	}
 
 	var membership models.Membership
-	if err := database.DB.Where("user_id = ? AND organization_id = ? AND role = 'owner'", userID, org.ID).First(&membership).Error; err != nil {
+	if err := reqDB(c).Where("user_id = ? AND organization_id = ? AND role = 'owner'", userID, org.ID).First(&membership).Error; err != nil {
 		return c.Status(403).SendString("You must be an owner of this organization")
 	}
 
@@ -91,7 +90,7 @@ func RequireOrgOwner(c *fiber.Ctx) error {
 func GetOrgSettings(c *fiber.Ctx) error {
 	orgName := c.Params("orgname")
 	var org models.Organization
-	database.DB.Preload("Memberships.User").Where("name ILIKE ?", orgName).First(&org)
+	reqDB(c).Preload("Memberships.User").Where("name ILIKE ?", orgName).First(&org)
 
 	return c.Render("org_settings", MergeContext(BaseContext(c), fiber.Map{
 		"Organization": org,
@@ -101,10 +100,10 @@ func GetOrgSettings(c *fiber.Ctx) error {
 func PostUpdateOrg(c *fiber.Ctx) error {
 	orgID := c.Locals("OrgID").(uint)
 	var org models.Organization
-	database.DB.First(&org, orgID)
+	reqDB(c).First(&org, orgID)
 
 	org.Description = c.FormValue("description")
-	database.DB.Save(&org)
+	reqDB(c).Save(&org)
 
 	SetFlash(c, "success", "Organization settings updated.")
 	c.Set("HX-Redirect", "/"+org.Name+"/settings")
@@ -117,13 +116,13 @@ func PostAddMember(c *fiber.Ctx) error {
 	role := c.FormValue("role")
 
 	var user models.User
-	if err := database.DB.Where("username = ?", username).First(&user).Error; err != nil {
+	if err := reqDB(c).Where("username = ?", username).First(&user).Error; err != nil {
 		return c.Status(404).SendString("User not found")
 	}
 
 	// Check if already a member
 	var existing models.Membership
-	if err := database.DB.Where("user_id = ? AND organization_id = ?", user.ID, orgID).First(&existing).Error; err == nil {
+	if err := reqDB(c).Where("user_id = ? AND organization_id = ?", user.ID, orgID).First(&existing).Error; err == nil {
 		return c.Status(400).SendString("User is already a member")
 	}
 
@@ -132,10 +131,10 @@ func PostAddMember(c *fiber.Ctx) error {
 		OrganizationID: orgID,
 		Role:           role,
 	}
-	database.DB.Create(&membership)
+	reqDB(c).Create(&membership)
 
 	var org models.Organization
-	database.DB.First(&org, orgID)
+	reqDB(c).First(&org, orgID)
 	AuditLog(c, "org.add_member", "organization", org.ID, org.Name, map[string]interface{}{
 		"member": username,
 		"role":   role,
@@ -156,19 +155,19 @@ func PostRemoveMember(c *fiber.Ctx) error {
 	currentUserID := sess.Get("user_id").(uint)
 	if uint(memberID) == currentUserID {
 		var ownerCount int64
-		database.DB.Model(&models.Membership{}).Where("organization_id = ? AND role = 'owner'", orgID).Count(&ownerCount)
+		reqDB(c).Model(&models.Membership{}).Where("organization_id = ? AND role = 'owner'", orgID).Count(&ownerCount)
 		if ownerCount <= 1 {
 			return c.Status(400).SendString("You cannot remove yourself as you are the only owner")
 		}
 	}
 
 	var org models.Organization
-	database.DB.First(&org, orgID)
+	reqDB(c).First(&org, orgID)
 	AuditLog(c, "org.remove_member", "organization", org.ID, org.Name, map[string]interface{}{
 		"member_id": memberID,
 	})
 
-	database.DB.Where("user_id = ? AND organization_id = ?", uint(memberID), orgID).Delete(&models.Membership{})
+	reqDB(c).Where("user_id = ? AND organization_id = ?", uint(memberID), orgID).Delete(&models.Membership{})
 
 	SetFlash(c, "success", "Member removed.")
 	c.Set("HX-Refresh", "true")
