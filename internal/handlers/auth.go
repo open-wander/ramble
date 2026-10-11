@@ -701,10 +701,10 @@ func usernameFree(tx *gorm.DB, name string) (bool, error) {
 // renamed as exceptUserID or exceptOrgID to exclude it; 0 excludes nothing.
 func nameTaken(tx *gorm.DB, name string, exceptUserID, exceptOrgID uint) (bool, error) {
 	var users, orgs int64
-	if err := tx.Model(&models.User{}).Where(iEq("username"), name).Where("id <> ?", exceptUserID).Count(&users).Error; err != nil {
+	if err := tx.Unscoped().Model(&models.User{}).Where(iEq("username"), name).Where("id <> ?", exceptUserID).Count(&users).Error; err != nil {
 		return false, fmt.Errorf("database error checking username: %w", err)
 	}
-	if err := tx.Model(&models.Organization{}).Where(iEq("name"), name).Where("id <> ?", exceptOrgID).Count(&orgs).Error; err != nil {
+	if err := tx.Unscoped().Model(&models.Organization{}).Where(iEq("name"), name).Where("id <> ?", exceptOrgID).Count(&orgs).Error; err != nil {
 		return false, fmt.Errorf("database error checking organization name: %w", err)
 	}
 	return users > 0 || orgs > 0, nil

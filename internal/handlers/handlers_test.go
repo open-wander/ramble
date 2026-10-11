@@ -98,7 +98,12 @@ func TestSignupAndLogin(t *testing.T) {
 
 	// 1. Test Signup (using strong password meeting all requirements)
 	username := fmt.Sprintf("user%d", os.Getpid()) // Unique username per run if needed
-	strongPassword := "SecurePass123!"             // Meets all requirements: 12+ chars, upper, lower, number, special
+	t.Cleanup(func() {
+		if err := database.DB.Exec("DELETE FROM users WHERE username = ?", username).Error; err != nil {
+			t.Errorf("cleanup user: %v", err)
+		}
+	})
+	strongPassword := "SecurePass123!" // Meets all requirements: 12+ chars, upper, lower, number, special
 	payload := strings.NewReader(fmt.Sprintf("username=%s&name=Test+User&email=%s@example.com&password=%s", username, username, strongPassword))
 	req := httptest.NewRequest("POST", "/signup", payload)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

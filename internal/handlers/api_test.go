@@ -65,9 +65,20 @@ func createTestJob(t *testing.T, userID uint, name string) models.NomadResource 
 
 // cleanupTestData removes test data created during tests
 func cleanupTestData(t *testing.T) {
-	database.DB.Exec("DELETE FROM resource_versions")
-	database.DB.Exec("DELETE FROM nomad_resources")
-	database.DB.Exec("DELETE FROM users WHERE email LIKE '%@test.com'")
+	t.Helper()
+	for _, q := range []string{
+		"DELETE FROM resource_tags",
+		"DELETE FROM user_stars",
+		"DELETE FROM memberships WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%@test.com')",
+		"DELETE FROM resource_versions",
+		"DELETE FROM nomad_resources",
+		"DELETE FROM tags WHERE name = 'popular-tag'",
+		"DELETE FROM users WHERE email LIKE '%@test.com'",
+	} {
+		if err := database.DB.Exec(q).Error; err != nil {
+			t.Errorf("cleanup %q: %v", q, err)
+		}
+	}
 }
 
 func TestContentNegotiation_UserProfile_JSON(t *testing.T) {

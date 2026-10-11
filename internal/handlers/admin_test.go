@@ -645,7 +645,7 @@ func TestPostEditOrganization_Success(t *testing.T) {
 
 	app.Post("/admin/organizations/:id/edit", RequireAdmin, PostEditOrganization)
 
-	payload := strings.NewReader("name=updatedorg&description=Updated+Description")
+	payload := strings.NewReader("name=testupdatedorg&description=Updated+Description")
 	req := httptest.NewRequest("POST", "/admin/organizations/"+toString(org.ID)+"/edit", payload)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := app.Test(req)
@@ -656,7 +656,7 @@ func TestPostEditOrganization_Success(t *testing.T) {
 	// Verify org was updated
 	var updated models.Organization
 	database.DB.First(&updated, org.ID)
-	assert.Equal(t, "updatedorg", updated.Name)
+	assert.Equal(t, "testupdatedorg", updated.Name)
 	assert.Equal(t, "Updated Description", updated.Description)
 }
 

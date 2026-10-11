@@ -536,3 +536,23 @@ name, deleted_at FROM organizations) x GROUP BY LOWER(name) HAVING COUNT(*) > 1 
 Review REJECT: cleanupOrgTestData missed mixed-case test orgs (fixed: LOWER(name) LIKE 'test%').
 Orchestrator mutations: admin user rename check removed -> red; signup nameTaken removed ->
 both signup tests red. Suite ok. Leftovers -> 9.12.
+
+## 2026-10-11 — 9.12 review leftovers
+
+org.go orgLoadError: 404 only for gorm.ErrRecordNotFound, else 500 + ERROR org.load_failed
+(RequireOrgOwner membership lookup: 403 / 500 org.membership_load_failed). PostAddMember: user
+lookup via iEq; DB errors 500 (org.member_lookup_failed / org.member_add_failed). Real bug fixed:
+idx_user_org includes soft-deleted memberships, so remove + re-add hit the index and returned 200
+with no membership; the pre-check is now Unscoped and restores a soft-deleted membership.
+nameTaken counts Unscoped (soft-deleted names now give 400, not a 500 at Save).
+Test idempotency: cleanupTestData deletes resource_tags, user_stars, test memberships and the
+popular-tag tag, and reports every Exec error; four tests fixed (org rename into test% namespace,
+signup user cleanup, sitemap hard deletes). go test -count=2 ./internal/handlers/ passes.
+Forced DB errors are tested with a separately opened gorm.DB on the shared pool with a failing
+callback (never registered on database.DB, never closing the pool).
+Orchestrator: gofmt fixes (org.go imports, handlers_test.go alignment); fixture cleanup now reports
+errors; addMemberApp unused param removed, t.Helper added; role from the add-member form limited
+to owner/member like the admin handlers (TestPostAddMember_UnknownRoleBecomesMember).
+Mutations: role check removed -> red; nameTaken without Unscoped -> both soft-deleted tests red.
+One-off flake seen by the worker: TestDownloadAndFetch_NeverLogRepoURLUserinfo failed once, not
+reproducible (-count=5 green).
