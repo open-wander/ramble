@@ -442,3 +442,15 @@ setup-go 1.27.x in ci, release and security-nightly. GOTOOLCHAIN=auto switched t
 toolchain to 1.27.2. go test -tags=security ./..., govulncheck (latest; vulns present in
 required modules but none called), gosec clean; `docker build --target builder` ok.
 Not done (offered to the user): `go get -u` dependency refresh; pinning alpine:latest.
+
+## 2026-10-11 — 9.6 coverage gaps
+
+TestConnectMigrateFailed: SetupTestDB, users table replaced by a view -> AutoMigrate fails
+(42P07); asserts exit codes [1], ERROR db.migrate_failed with error, no migrate_completed.
+Orchestrator fix: restore the caller's DB handle (SetupTestDB had left database.DB pointing
+at the closed test handle). e2e trackAssets opens every file under views/ and public/ in the
+test process. Note: in practice the e2e test is never served from the go test cache here
+(two consecutive runs both executed), so the stale-cache risk was not observed; trackAssets
+is kept as cheap insurance. msgkey guard now rejects stdlib log.Print*/Fatal*/Panic* in
+server code. Orchestrator mutations: exit(1) removed on migrate branch -> red; log.Printf
+added to a handler -> guard red. Advisor PASS.

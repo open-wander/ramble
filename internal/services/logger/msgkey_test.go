@@ -250,3 +250,106 @@ func f(l L, t T) {
 		t.Fatalf("got %d hits, want 2: %v", len(got), got)
 	}
 }
+
+// scanStdlibLog returns "file:line: call" for stdlib log.Print*, log.Fatal*
+// and log.Panic* calls. The package is resolved by import path, so the local
+// name may be an alias (stdlog), while github.com/rs/zerolog/log and a local
+// variable named log do not match.
+func scanStdlibLog(fset *token.FileSet, f *ast.File) []string {
+	names := map[string]bool{}
+	for _, imp := range f.Imports {
+		if p, err := strconv.Unquote(imp.Path.Value); err != nil || p != "log" {
+			continue
+		}
+		name := "log"
+		if imp.Name != nil {
+			name = imp.Name.Name
+		}
+		if name != "_" && name != "." {
+			names[name] = true
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	var hits []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		// Obj is nil for package names and non-nil for locals the parser resolved.
+		pkg, ok := sel.X.(*ast.Ident)
+		if !ok || pkg.Obj != nil || !names[pkg.Name] {
+			return true
+		}
+		for _, prefix := range []string{"Print", "Fatal", "Panic"} {
+			if strings.HasPrefix(sel.Sel.Name, prefix) {
+				hits = append(hits, fset.Position(call.Pos()).String()+": log."+sel.Sel.Name)
+				break
+			}
+		}
+		return true
+	})
+	return hits
+}
+
+func TestServerCodeDoesNotUseStdlibLog(t *testing.T) {
+	var hits []string
+	// cmd/nomad-vars is an operator CLI that reports to the terminal on purpose.
+	checked := walkServerFiles(t, []string{"../../../internal", "../../../cmd"}, []string{"cmd/nomad-vars"}, func(fset *token.FileSet, f *ast.File) {
+		// test_helper.go is test-only scaffolding called from other packages'
+		// tests; its log.Fatalf runs before any testing.T exists.
+		if strings.HasSuffix(filepath.ToSlash(fset.Position(f.Pos()).Filename), "internal/database/test_helper.go") {
+			return
+		}
+		hits = append(hits, scanStdlibLog(fset, f)...)
+	})
+	if checked < 40 {
+		t.Fatalf("only %d files inspected; walk roots are wrong", checked)
+	}
+	for _, h := range hits {
+		t.Errorf("stdlib log in server code (use logger.Log with an event key): %s", h)
+	}
+}
+
+func TestScanStdlibLog(t *testing.T) {
+	hit := `package x
+import ("log";stdlog "log")
+func f() {
+	log.Printf("a")
+	log.Fatal("x")
+	log.Panicln("x")
+	stdlog.Println("x")
+}`
+	miss := `package x
+import ("github.com/rs/zerolog/log";stdlog "log")
+type L struct{}
+func (L) Printf(string) {}
+func f() {
+	log.Print("a")
+	stdlog.SetFlags(0)
+	stdlog.SetOutput(nil)
+	var log L
+	log.Printf("a")
+}`
+	for _, tc := range []struct {
+		name, src string
+		want      int
+	}{{"hit", hit, 4}, {"miss", miss, 0}} {
+		t.Run(tc.name, func(t *testing.T) {
+			fset := token.NewFileSet()
+			file, err := parser.ParseFile(fset, "x.go", tc.src, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := scanStdlibLog(fset, file); len(got) != tc.want {
+				t.Fatalf("got %d hits, want %d: %v", len(got), tc.want, got)
+			}
+		})
+	}
+}

@@ -53,6 +53,33 @@ func (s *syncBuffer) String() string {
 	return s.b.String()
 }
 
+// trackAssets opens every file under views and public. The child binary reads
+// them, but the go test cache only records files the test process itself
+// opens, so without this an edited template would still give a cached pass.
+func trackAssets(t *testing.T, repoRoot string) {
+	t.Helper()
+	files := 0
+	for _, dir := range []string{"views", "public"} {
+		err := filepath.WalkDir(filepath.Join(repoRoot, dir), func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			f, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			files++
+			return f.Close()
+		})
+		if err != nil {
+			t.Fatalf("track %s: %v", dir, err)
+		}
+	}
+	if files == 0 {
+		t.Fatal("no files found under views and public; repo root is wrong")
+	}
+}
+
 type e2eRequest struct {
 	name      string
 	requestID string
@@ -120,6 +147,7 @@ func TestE2EProductionLogging(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	trackAssets(t, repoRoot)
 
 	// Free port.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

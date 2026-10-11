@@ -11,6 +11,7 @@ import (
 	"rmbl/internal/services/logger"
 
 	"github.com/rs/zerolog"
+	postgresDriver "gorm.io/driver/postgres"
 )
 
 func TestGetSSLMode_Default(t *testing.T) {
@@ -159,5 +160,72 @@ func TestConnectCredentialsMissing(t *testing.T) {
 	}
 	if DB != nil {
 		t.Error("DB was assigned after credentials_missing")
+	}
+}
+
+// TestConnectMigrateFailed makes AutoMigrate fail against a real Postgres: a
+// view named users stops the users table being created (gorm only treats a
+// BASE TABLE as existing), so CREATE TABLE fails with "already exists".
+func TestConnectMigrateFailed(t *testing.T) {
+	// SetupTestDB assigns the global DB; restore the caller's handle last
+	// (cleanups run in reverse), not the closed test handle.
+	origDB := DB
+	t.Cleanup(func() { DB = origDB })
+	db, cleanup := SetupTestDB()
+	t.Cleanup(cleanup)
+	dsn := db.Dialector.(*postgresDriver.Dialector).DSN
+	if err := db.Exec(`DROP TABLE users CASCADE`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`CREATE VIEW users AS SELECT 1 AS id`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if sqlDB, err := db.DB(); err == nil {
+		sqlDB.Close()
+	}
+
+	t.Setenv("ENV", "development")
+	t.Setenv("DATABASE_URL", dsn)
+	buf, codes := swapFailSeams(t)
+
+	Connect()
+
+	// Close the connection Connect opened before the container goes (cleanup is LIFO).
+	if opened := DB; opened != nil {
+		t.Cleanup(func() {
+			if sqlDB, err := opened.DB(); err == nil {
+				sqlDB.Close()
+			}
+		})
+	}
+
+	if len(*codes) != 1 || (*codes)[0] != 1 {
+		t.Fatalf("exit calls = %v, want exactly [1]", *codes)
+	}
+	// gorm's logger emits db.query_error first, so look for the migrate line.
+	var found bool
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("non-JSON line %q: %v", line, err)
+		}
+		if rec["msg"] == "db.migrate_completed" {
+			t.Errorf("migrate_completed logged after a failed migration: %v", rec)
+		}
+		if rec["msg"] != "db.migrate_failed" {
+			continue
+		}
+		found = true
+		if rec["level"] != "error" {
+			t.Errorf("level = %v, want error", rec["level"])
+		}
+		if s, _ := rec["error"].(string); s == "" {
+			t.Errorf("error field missing: %v", rec)
+		} else {
+			t.Logf("migrate error: %s", s)
+		}
+	}
+	if !found {
+		t.Errorf("no db.migrate_failed line in %q", buf.String())
 	}
 }
