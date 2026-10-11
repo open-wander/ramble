@@ -191,3 +191,10 @@ delete the wrappers in a later cleanup.
 
 PATTERN: context-threading - a global service built at startup with the global DB hides
 from a grep for `database.DB`; give it WithContext(ctx) and bind at each handler call.
+
+## 2026-10-11 — 6.5 closed; Phase 6 collapsed
+
+6.5 (static-asset access lines) closed without a change on measurement: over 12h,
+59 of 904 http.request lines were /public/* (6.5%, ~5/h, against ~1,390 lines/h before
+6.2). Lowering them to DEBUG would hide asset 404s for negligible volume. Decision by
+the user. Phase 6 fully DONE and moved to TASKS-archive.md.

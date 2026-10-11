@@ -1,6 +1,6 @@
 # Tasks
 
-All phases complete (prd-security-bugfix). Full history in [TASKS-archive.md](TASKS-archive.md);
+All phases complete (prd-security-bugfix; Phase 6 from infra `docs/prod-logging.md`). Full history in [TASKS-archive.md](TASKS-archive.md);
 verification in [verification.md](verification.md). PRD: [done/prd-security-bugfix.md](done/prd-security-bugfix.md).
 
 ## Phase 1: Authorization — 2 tasks completed 2026-05-31 (see [TASKS-archive.md](TASKS-archive.md))
@@ -9,19 +9,4 @@ verification in [verification.md](verification.md). PRD: [done/prd-security-bugf
 ## Phase 4: Cleanup — 1 task completed 2026-05-31 (see [TASKS-archive.md](TASKS-archive.md))
 ## Phase 5: Review Follow-ups — 5 tasks completed 2026-05-31 (see [TASKS-archive.md](TASKS-archive.md))
 
-## Phase 6: Structured logging
-
-Source: infra `docs/prod-logging.md` item 2 (TydeWhatMay/infra, surveyed 2026-10-09). Prod
-logged ~37,000 text lines/day: GORM printed every query with ANSI colours, Fiber's text
-access log, stdlib `log.Printf`. Standard: one JSON object per line, `time`/`level`/`msg`,
-`msg` a stable event key, no SQL at INFO, no secrets or query strings.
-
-| # | Task | PRD | Status | Notes |
-|---|------|-----|--------|-------|
-| 6.1 | JSON logging: GORM through a zerolog adapter (silent <200ms, `db.slow_query` WARN, `db.query_error` ERROR, `$n` placeholders only), `http.request` middleware replacing fiberlogger, all server-side `log.*` calls to event keys, stdlib `log` redirected, upper-case `level` + `msg` | infra `docs/prod-logging.md` | DONE on branch (2026-10-09) | Branch `feat/structured-logging` (bb1c408..c59d669), not merged. Tests/vet/gosec clean, re-run independently. Mutation-tested. |
-| 6.2 | Merge 6.1, release, deploy; then verify in Loki that `{container="ramble"} !~ "^\\{"` returns only panic traces, and that line volume dropped | infra `docs/prod-logging.md` | DONE | Released v0.5.17, deployed 2026-10-10 21:00. Loki: only the Fiber startup banner is non-JSON (6.6); line volume ~1,390/h to ~220/h. |
-| 6.3 | Thread the request context into DB calls (`database.DB.WithContext(c.UserContext())` or a helper) so `db.slow_query`/`db.query_error` lines carry `request_id` | infra `docs/prod-logging.md` | DONE (2026-10-11) | `reqDB(c)` helper (internal/handlers/db.go) on every request path; `resource.Service.WithContext(ctx)` so service transactions inherit it; session middleware inlined. Goroutines, background fetches, startup keep `database.DB`. `TestReqDB_QueryErrorCarriesRequestID` (mutation-checked). Advisor REJECT then MINOR after fix round. |
-| 6.4 | Convert remaining sentence-style zerolog messages to stable event keys (`github_sync.go`, `background.go`, `audit.go`, e.g. "webhook validation failed" -> `webhook.validation_failed`), variable data in fields | infra `docs/prod-logging.md` | DONE (2026-10-11) | 34 messages in github_sync.go, background.go, resource_webhooks.go, audit.go converted (github.*, webhook.*, download.*, version_fetch.*). `msg="audit"` is now `audit.recorded`. AST guard `TestServerLogMessagesAreEventKeys` (internal/services/logger/msgkey_test.go) blocks regressions; CLI excluded. Advisor MINOR. |
-| 6.5 | Decide on static-asset access lines: log `/public/*` at DEBUG or skip them | infra `docs/prod-logging.md` | TODO | Optional. Measure share of `http.request` lines with `path=~"/public/.*"` after 6.2 first. (needs: 6.2) |
-| 6.6 | Disable Fiber's startup banner (`fiber.Config{DisableStartupMessage: true}`) and log one `server.started` JSON line with addr and version instead | infra `docs/prod-logging.md` | DONE (2026-10-11) | fiberConfig() sets DisableStartupMessage; logStarted() writes `server.started` with `addr`, `version` before Listen. Tests pin the proxy settings too. Advisor PASS. |
-
+## Phase 6: Structured logging — 6 tasks completed 2026-10-11 (see [TASKS-archive.md](TASKS-archive.md))
