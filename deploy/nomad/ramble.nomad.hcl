@@ -90,6 +90,7 @@ job "ramble" {
           GITHUB_KEY={{ .github_key }}
           GITHUB_SECRET={{ .github_secret }}
           GITHUB_REQUESTS_TOKEN={{ .github_requests_token }}
+          {{ if .github_webhook_secret }}GITHUB_WEBHOOK_SECRET={{ .github_webhook_secret }}{{ end }}
           GITLAB_KEY={{ .gitlab_key }}
           GITLAB_SECRET={{ .gitlab_secret }}
           SMTP_HOST={{ .smtp_host }}
