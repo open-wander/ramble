@@ -80,7 +80,7 @@ func TestAuditLog_WithUser(t *testing.T) {
 	var auditCalled bool
 	app.Get("/test", func(c *fiber.Ctx) error {
 		AuditLog(c, "test.action", "resource", 456, "test-resource", map[string]interface{}{
-			"key": "value",
+			"note": "value",
 		})
 		auditCalled = true
 		return c.SendStatus(200)

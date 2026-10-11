@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -45,10 +46,21 @@ func isPermanentError(err error) bool {
 	return false
 }
 
+// stripURLUserinfo removes any user:password@ or token@ from a URL so it is
+// safe to log. Unparseable input yields a placeholder, never the raw string.
+func stripURLUserinfo(s string) string {
+	u, err := url.Parse(s)
+	if err != nil {
+		return "[unparseable url]"
+	}
+	u.User = nil
+	return u.String()
+}
+
 // downloadFileWithRetry wraps downloadFile with exponential backoff retry logic
 func downloadFileWithRetry(ctx context.Context, repoURL, fileName string) (string, error) {
 	log := logger.Log.With().
-		Str("repo_url", repoURL).
+		Str("repo_url", stripURLUserinfo(repoURL)).
 		Str("file_name", fileName).
 		Logger()
 

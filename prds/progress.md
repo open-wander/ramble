@@ -297,3 +297,18 @@ webhook_log_test.go TestHandleGitHubIssueWebhook_DBLinesCarryRequestID: signed o
 asserts DB row Open -> Completed, exactly one created and one status_updated line, each
 with its own request's id, nothing on the global logger. Mutations (each helper back to
 &logger.Log) red; orchestrator re-ran one. Advisor PASS.
+
+## 2026-10-11 — 8.2 secrets never reach logs
+
+audit.go: redactDetails/redactValue/isSensitiveKey (lowercase, '-' -> '_', substring match
+on password, passwd, secret, token, api_key, apikey, key, authorization, cookie, session,
+csrf, signature), applied before log, stored Details and checksum. Existing audit test
+key "key" renamed "note". Real leak found and fixed: downloadFileWithRetry logged repo_url
+with userinfo (https://user:pw@ / https://token@) on download.* lines -> stripURLUserinfo
+(not url.Redacted, which keeps the username/token). secret_log_test.go captureAllLogs puts
+global, request and GORM (threshold 0) loggers on one buffer; each test asserts the
+expected event line exists and no sentinel appears anywhere. Orchestrator mutations:
+redactDetails returns input -> red; repo_url raw -> 3 rows red. Suite ok.
+Advisor MINOR: struct/pointer detail values are not redacted (no caller passes them);
+substring "key"/"session" over-redacts harmless keys - pick audit detail keys accordingly;
+fetch subtest builds resource.Service before the GORM capture swap.
