@@ -241,3 +241,17 @@ worktree based on main (cli untouched by the branch, applied cleanly).
 Orchestrator mutation: drop "server" from wantsUpdateCheck -> red. Suite ok.
 Advisor MINOR: predicate matches by name (a future `x server` subcommand would also
 skip); flag parse errors stay plain text; tests mutate package-level cobra state.
+
+## 2026-10-11 — 7.4 and 7.5 test the production logging wiring
+
+7.4: logger.Init -> initWithWriter(os.Stdout). TestInit_ProductionFormat no longer swaps
+the writer with Log.Output, snapshots and restores every global Init touches.
+7.5: database.gormConfig() used by Connect; TestGormConfigUsesZerologAdapter.
+Run in parallel in the main checkout (different packages, no worktrees). The 7.5 worker
+saw a transient TestInit_ProductionFormat failure from 7.4's mutation in progress.
+Orchestrator: full suite ok; mutations ConsoleWriter in prod branch -> red,
+gormlogger.Default -> red. Both advisor PASS.
+
+PATTERN: parallel-in-one-checkout - workers sharing a checkout see each other's
+in-flight mutations; tell them to report cross-package failures, and re-run the suite
+after both finish.

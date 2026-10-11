@@ -12,8 +12,10 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 
 	"rmbl/internal/models"
+	"rmbl/internal/services/logger"
 )
 
 func bufLogger() (*zerolog.Logger, *bytes.Buffer) {
@@ -157,5 +159,51 @@ func TestGormLoggerKeepsBindValuesOut(t *testing.T) {
 	}
 	if !strings.Contains(out, "$") {
 		t.Errorf("expected placeholders in logged SQL: %s", out)
+	}
+}
+
+// TestGormConfigUsesZerologAdapter guards the production wiring: Connect must
+// open the database with the zerolog adapter, not GORM's default logger.
+func TestGormConfigUsesZerologAdapter(t *testing.T) {
+	cfg := gormConfig()
+	gl, ok := cfg.Logger.(*gormLogger)
+	if !ok {
+		t.Fatalf("gormConfig().Logger is %T, want *gormLogger", cfg.Logger)
+	}
+	if gl.slowThreshold != SlowQueryThreshold {
+		t.Errorf("slowThreshold = %v, want %v", gl.slowThreshold, SlowQueryThreshold)
+	}
+	if gl.level != gormlogger.Warn {
+		t.Errorf("level = %v, want Warn", gl.level)
+	}
+	if gl.base != &logger.Log {
+		t.Error("adapter base is not the global logger.Log")
+	}
+
+	// Swaps a global: no t.Parallel.
+	orig := logger.Log
+	t.Cleanup(func() { logger.Log = orig })
+	var buf bytes.Buffer
+	logger.Log = zerolog.New(&buf)
+
+	ctx := context.Background()
+	query := func() (string, int64) { return "SELECT 1 WHERE id = $1", 0 }
+
+	cfg.Logger.Trace(ctx, time.Now().Add(-time.Millisecond), query, nil)
+	if buf.Len() != 0 {
+		t.Fatalf("fast successful query was logged: %s", buf.String())
+	}
+
+	cfg.Logger.Trace(ctx, time.Now(), query, errors.New("boom"))
+	lines := decodeLines(t, &buf)
+	if len(lines) != 1 {
+		t.Fatalf("got %d lines, want 1: %v", len(lines), lines)
+	}
+	l := lines[0]
+	if l["message"] != "db.query_error" || l["level"] != "error" || l["error"] != "boom" {
+		t.Errorf("unexpected line: %v", l)
+	}
+	if sql, _ := l["sql"].(string); !strings.Contains(sql, "$1") {
+		t.Errorf("sql = %q, want bound placeholder $1", sql)
 	}
 }
