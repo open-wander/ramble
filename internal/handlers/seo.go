@@ -119,11 +119,11 @@ func generateResourceStructuredData(resource models.NomadResource, displayName, 
 		data["keywords"] = strings.Join(keywords, ", ")
 	}
 
-	if resource.CreatedAt.IsZero() == false {
+	if !resource.CreatedAt.IsZero() {
 		data["datePublished"] = resource.CreatedAt.Format("2006-01-02")
 	}
 
-	if resource.UpdatedAt.IsZero() == false {
+	if !resource.UpdatedAt.IsZero() {
 		data["dateModified"] = resource.UpdatedAt.Format("2006-01-02")
 	}
 

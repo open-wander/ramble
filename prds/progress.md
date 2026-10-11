@@ -363,3 +363,14 @@ get 403 before the handler runs. Not fixed here - reported to the user.
 
 PATTERN: e2e - an end-to-end run of the real binary finds what unit tests with hand-built
 apps cannot (here: middleware order blocking webhooks entirely).
+
+## 2026-10-11 — Phase 9 started; 9.3 staticcheck findings
+
+Phase 9 scope: webhook CSRF bug (8.4 finding), review debt from Phases 6-8, staticcheck
+(latest via go run; installed binary too old for go1.26), go fix modernizers, Go 1.27 bump
+(user request, 9.8). gosec clean.
+9.3: pages.go titleWords replaces deprecated strings.Title; TestGetPageTitle written and
+passing against the old code first. Orchestrator mutation ToTitle -> ToLower red. Suite ok.
+
+PATTERN: tooling - the installed staticcheck (go1.25 build) cannot load go1.26+ modules;
+use `go run honnef.co/go/tools/cmd/staticcheck@latest ./...`.

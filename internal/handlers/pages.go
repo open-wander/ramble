@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -177,7 +179,22 @@ func getPageTitle(page string) string {
 	// Convert path to title
 	parts := strings.Split(page, "/")
 	last := parts[len(parts)-1]
-	return strings.Title(strings.ReplaceAll(last, "-", " ")) + " - Documentation"
+	return titleWords(last) + " - Documentation"
+}
+
+// titleWords turns a hyphenated slug into space-separated words with the first
+// rune of each uppercased (strings.Title is deprecated). The rest of each word
+// is left untouched.
+func titleWords(s string) string {
+	words := strings.Split(s, "-")
+	for i, w := range words {
+		if w == "" {
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(w)
+		words[i] = string(unicode.ToTitle(r)) + w[size:]
+	}
+	return strings.Join(words, " ")
 }
 
 // GetAbout godoc

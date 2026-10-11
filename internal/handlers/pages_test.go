@@ -571,3 +571,24 @@ func TestGetResource_JSON(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
 }
+
+func TestGetPageTitle(t *testing.T) {
+	tests := []struct {
+		page string
+		want string
+	}{
+		{"getting-started", "Getting Started - Documentation"},
+		{"cli/pack", "Pack Commands - Documentation"},
+		{"deployment", "Deployment - Documentation"},
+		{"cli/foo-bar", "Foo Bar - Documentation"},
+		{"a-b-c", "A B C - Documentation"},
+		{"API-keys", "API Keys - Documentation"},
+		{"x", "X - Documentation"},
+		{"foo--bar", "Foo  Bar - Documentation"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.page, func(t *testing.T) {
+			assert.Equal(t, tt.want, getPageTitle(tt.page))
+		})
+	}
+}
