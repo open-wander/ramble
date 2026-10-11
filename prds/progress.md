@@ -603,3 +603,13 @@ create these indexes (two tests seed legacy case-duplicates on purpose).
 Tests: TestCaseInsensitiveNameIndexes (idempotent, Alice/alice and Acme/ACME rejected),
 TestConnectNameIndexFailureIsNotFatal. Mutations: plain-column index -> red; exit(1) on failure
 -> red. vet, gofmt, go fix check, suite, gosec (exit 0) ok.
+
+## 2026-10-11 — staticcheck back in CI; analyser pins in one place
+
+User asked to stay current with gosec and staticcheck. Neither tagged release reads Go 1.27
+export data (gosec v2.29.0, staticcheck 2026.2.1); both masters do: gosec 7b1b5ce and
+staticcheck 452d5bb (both 2026-10-09) exit 0 with no findings. Makefile now owns the pins
+(GOSEC_VERSION, STATICCHECK_VERSION) with `make staticcheck` (both tag sets) and `make gosec`;
+CI calls them; bootstrap and `make security` use the same pins. The weekly security workflow
+runs both at master (plus govulncheck@latest) so new checks and toolchain breaks surface there
+first; bump the Makefile pins when it passes.

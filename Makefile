@@ -26,11 +26,26 @@ test:
 swagger:
 	go run github.com/swaggo/swag/cmd/swag@latest init -g main.go --output api-docs --dir ./cmd/ramble,./internal/handlers,./internal/models --parseDependency --parseInternal
 
+# Static analysis tools. Pinned so a PR never fails because a tool changed
+# overnight; the weekly security workflow runs both at master so new checks and
+# toolchain breaks show up early - bump these when it passes. Both are master
+# commits because no tagged release reads Go 1.27 export data yet.
+GOSEC_VERSION ?= v2.29.1-0.20261009120814-7b1b5cebe007
+STATICCHECK_VERSION ?= v0.7.0-0.dev.0.20261009230814-452d5bb86b45
+
+staticcheck:
+	go run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION) ./...
+	go run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION) -tags=security ./...
+
+gosec:
+	go run github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION) ./...
+
 # Bootstrap development environment
 bootstrap: tailwind-install
 	go install github.com/air-verse/air@latest
 	go install github.com/swaggo/swag/cmd/swag@latest
-	go install github.com/securego/gosec/v2/cmd/gosec@latest
+	go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
+	go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
 	go install golang.org/x/vuln/cmd/govulncheck@latest
 	go mod tidy
 	git config core.hooksPath .githooks
@@ -53,7 +68,7 @@ security:
 	@echo "Running govulncheck..."
 	govulncheck ./...
 	@echo "\nRunning gosec..."
-	gosec -exclude-dir=legacy ./...
+	go run github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION) -exclude-dir=legacy ./...
 
 # Download Tailwind CLI (Darwin ARM64 for local dev)
 tailwind-install:
@@ -130,4 +145,4 @@ release:
 		*) echo "Invalid choice" ;; \
 	esac
 
-.PHONY: build run dev migrate test swagger bootstrap update security docker-build docker-push nomad-vars tailwind-install css-build css-watch deploy release release-patch release-minor release-major release-cli
+.PHONY: build run dev migrate test swagger bootstrap update security staticcheck gosec docker-build docker-push nomad-vars tailwind-install css-build css-watch deploy release release-patch release-minor release-major release-cli
