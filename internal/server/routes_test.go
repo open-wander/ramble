@@ -1,6 +1,7 @@
 package server
 
 import (
+	"rmbl/internal/handlers"
 	"strings"
 	"testing"
 
@@ -43,5 +44,31 @@ func TestRegisterRoutes_IDParamsAreIntConstrained(t *testing.T) {
 	}
 	if constrained == 0 {
 		t.Fatal("no <int>-constrained id routes seen; the guard is not inspecting anything")
+	}
+}
+
+// TestRegisterRoutes_TopLevelSegmentsAreReserved fails when a top-level static
+// route segment is not in the reserved-name list, so /:username pages cannot
+// shadow or impersonate it.
+func TestRegisterRoutes_TopLevelSegmentsAreReserved(t *testing.T) {
+	// /api/dev is skipped in production; pin the environment.
+	t.Setenv("ENV", "test")
+	app := fiber.New()
+	registerRoutes(app)
+
+	seen := map[string]struct{}{}
+	for _, r := range app.GetRoutes() {
+		seg := strings.Split(strings.TrimPrefix(r.Path, "/"), "/")[0]
+		seg = strings.TrimRight(seg, "*")
+		if seg == "" || strings.HasPrefix(seg, ":") {
+			continue
+		}
+		seen[seg] = struct{}{}
+		if !handlers.IsReservedName(seg) {
+			t.Errorf("%s %s: top-level segment %q is not in the reserved names list", r.Method, r.Path, seg)
+		}
+	}
+	if len(seen) < 20 {
+		t.Fatalf("only %d distinct top-level segments seen; the guard is not inspecting the router", len(seen))
 	}
 }

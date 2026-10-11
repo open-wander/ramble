@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"rmbl/internal/models"
@@ -175,6 +176,12 @@ func PostEditUser(c *fiber.Ctx) error {
 		return c.Status(400).SendString("Invalid input")
 	}
 
+	// A stored name that is already reserved stays editable; only a change
+	// to a reserved name is rejected.
+	if !strings.EqualFold(input.Username, user.Username) && IsReservedName(input.Username) {
+		return c.Status(400).SendString("This name is reserved")
+	}
+
 	// Update user fields
 	user.Username = input.Username
 	user.Name = input.Name
@@ -242,6 +249,10 @@ func PostEditOrganization(c *fiber.Ctx) error {
 	var input OrgEditInput
 	if err := c.BodyParser(&input); err != nil {
 		return c.Status(400).SendString("Invalid input")
+	}
+
+	if !strings.EqualFold(input.Name, org.Name) && IsReservedName(input.Name) {
+		return c.Status(400).SendString("This name is reserved")
 	}
 
 	// Update organization fields

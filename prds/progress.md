@@ -484,3 +484,23 @@ cut), moved the logtest import into the rmbl group in five files, replaced a nam
 skip in TestRedactDetails with a marshal-error check. Mutations: composite fallback removed
 -> struct rows red; encoded secrets removed -> two encoded-echo rows red; follow-up First
 without WithContext -> merged webhook test red. Suite ok.
+
+## 2026-10-11 — 9.9 reserved usernames and org names
+
+internal/handlers/reserved_names.go IsReservedName; enforced in PostSignup, PostCreateOrg,
+admin PostEditUser/PostEditOrganization (only when the name changes case-insensitively),
+and processOAuthUserDB (reserved base -> base-1..base-20, skipping reserved and taken names
+by exact LOWER() equality). TestRegisterRoutes_TopLevelSegmentsAreReserved derives the
+required list from registerRoutes (ENV=test so the dev route is included).
+Not changed: database.SeedInitialUser (operator-chosen; config.example.yml defaults to "admin").
+Existing offenders: SELECT id, username FROM users WHERE lower(username) IN (...);
+SELECT id, name FROM organizations WHERE lower(name) IN (...); (add deleted_at IS NULL).
+Orchestrator: suite ok (one testcontainers startup timeout in internal/services/resource on the
+full run, passed on re-run - infrastructure, not code); mutations: "requests" dropped -> router
+guard red; signup check bypassed -> TestPostSignup_ReservedUsername red.
+Review follow-ups -> 9.10: ordinary taken OAuth nickname fails on the unique index;
+PostCreateOrg uniqueness uses ILIKE (_ and % act as wildcards).
+
+PATTERN: tests - testcontainers startup can time out when many packages start Postgres at
+once; a single package failing with "wait until ready: context deadline exceeded" is
+infrastructure - re-run that package before suspecting the code.

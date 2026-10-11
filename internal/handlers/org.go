@@ -30,6 +30,10 @@ func PostCreateOrg(c *fiber.Ctx) error {
 		return c.Status(400).SendString("Organization name is required")
 	}
 
+	if IsReservedName(orgName) {
+		return c.Status(400).SendString("This name is reserved")
+	}
+
 	// Check if name is taken by a User or another Org
 	var count int64
 	reqDB(c).Model(&models.User{}).Where("username ILIKE ?", orgName).Count(&count)

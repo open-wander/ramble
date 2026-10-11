@@ -12,6 +12,7 @@ import (
 	"rmbl/internal/models"
 	"rmbl/internal/services/email"
 	"rmbl/internal/services/logger"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -148,6 +149,14 @@ func processOAuthUserDB(tx *gorm.DB, gothUser goth.User) (models.User, error) {
 	username := gothUser.NickName
 	if username == "" {
 		username = gothUser.Name
+	}
+
+	if IsReservedName(username) {
+		alt, err := unreservedOAuthUsername(tx, username)
+		if err != nil {
+			return models.User{}, err
+		}
+		username = alt
 	}
 
 	newUser := models.User{
@@ -321,6 +330,10 @@ func PostSignup(c *fiber.Ctx) error {
 	// Validate password strength
 	if err := validatePassword(input.Password); err != nil {
 		return c.Status(fiber.StatusBadRequest).SendString(err.Error())
+	}
+
+	if IsReservedName(input.Username) {
+		return c.Status(fiber.StatusBadRequest).SendString("This name is reserved")
 	}
 
 	// Check if username or email exists
@@ -641,4 +654,28 @@ func PostResendVerification(c *fiber.Ctx) error {
 	}
 
 	return c.SendString("Verification email sent successfully")
+}
+
+// unreservedOAuthUsername returns base-N for the first N that is neither
+// reserved nor already used by a user or organisation. LOWER() equality is
+// used because ILIKE would treat _ and % in names as wildcards.
+func unreservedOAuthUsername(tx *gorm.DB, base string) (string, error) {
+	base = strings.TrimSpace(base)
+	for i := 1; i <= 20; i++ {
+		candidate := fmt.Sprintf("%s-%d", base, i)
+		if IsReservedName(candidate) {
+			continue
+		}
+		var users, orgs int64
+		if err := tx.Model(&models.User{}).Where("LOWER(username) = LOWER(?)", candidate).Count(&users).Error; err != nil {
+			return "", fmt.Errorf("database error checking username: %w", err)
+		}
+		if err := tx.Model(&models.Organization{}).Where("LOWER(name) = LOWER(?)", candidate).Count(&orgs).Error; err != nil {
+			return "", fmt.Errorf("database error checking organization name: %w", err)
+		}
+		if users == 0 && orgs == 0 {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("no free username derived from reserved name %q", base)
 }
