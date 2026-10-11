@@ -198,3 +198,20 @@ from a grep for `database.DB`; give it WithContext(ctx) and bind at each handler
 59 of 904 http.request lines were /public/* (6.5%, ~5/h, against ~1,390 lines/h before
 6.2). Lowering them to DEBUG would hide asset 404s for negligible volume. Decision by
 the user. Phase 6 fully DONE and moved to TASKS-archive.md.
+
+## 2026-10-11 — 7.1 plain-text writes on request paths
+
+auth.go (signup, forgot password, resend verification) and utils.go SetFlash log via
+logger.FromContext(c.UserContext()); no address, link or token in the lines (user_id only).
+email.go validateEmail and Rcpt errors no longer embed the address. Guard
+TestServerCodeDoesNotWriteStdout shares walkServerFiles with the event-key guard; flags
+fmt.Print*, print/println, fmt.Fprint*(os.Stdout|os.Stderr); cmd/nomad-vars excluded
+(operator CLI). flash_log_test.go proves session.save_failed carries request_id.
+Orchestrator mutation: fmt.Println added to utils.go -> guard red. Full suite ok.
+Advisor: plan REVISE (scope cmd/ramble only, second address leak at email.go:117),
+review REJECT, fix round, MINOR. Follow-ups: SMTP server replies wrapped by %w can still
+echo the recipient; guard matches identifier names (aliases not caught); stdlib log.* not covered.
+
+PATTERN: workflow - Workflow `isolation: worktree` branches from the default branch, not
+the current HEAD. On a feature branch with unmerged commits, run isolated workers only
+when the base doesn't matter, or have them `git checkout <branch-sha>` first.

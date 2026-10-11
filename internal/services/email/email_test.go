@@ -1,8 +1,43 @@
 package email
 
 import (
+	"errors"
+	"strings"
 	"testing"
 )
+
+func TestValidateEmail_ErrorOmitsAddress(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{"header injection", "bad\r\nBcc: x@y.z", true},
+		{"no at sign", "no-at-sign.example", true},
+		{"double at", "a@b@c", true},
+		{"valid", "user@example.com", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := validateEmail(tt.input)
+			if !tt.wantErr {
+				if err != nil || got != tt.input {
+					t.Fatalf("validateEmail = %q, %v", got, err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if strings.Contains(err.Error(), tt.input) {
+				t.Errorf("error %q contains the input address", err)
+			}
+			if errors.Unwrap(err) == nil {
+				t.Errorf("error %q no longer wraps the parse error", err)
+			}
+		})
+	}
+}
 
 func TestSendResetEmail_MissingConfig(t *testing.T) {
 	// Clear all SMTP config

@@ -16,6 +16,21 @@ import (
 	"rmbl/internal/database"
 )
 
+// newRequestLogApp returns a fiber app with requestid and a middleware that
+// mirrors server.requestLogger: it attaches a request-scoped logger (carrying
+// request_id) built from base to the user context.
+func newRequestLogApp(base zerolog.Logger) *fiber.App {
+	app := fiber.New()
+	app.Use(requestid.New())
+	app.Use(func(c *fiber.Ctx) error {
+		rid, _ := c.Locals(requestid.ConfigDefault.ContextKey).(string)
+		l := base.With().Str("request_id", rid).Logger()
+		c.SetUserContext(l.WithContext(c.UserContext()))
+		return c.Next()
+	})
+	return app
+}
+
 // TestReqDB_QueryErrorCarriesRequestID proves a query run through reqDB logs
 // via the request-scoped logger (and so carries request_id), not the global
 // GORM base logger.
@@ -28,15 +43,7 @@ func TestReqDB_QueryErrorCarriesRequestID(t *testing.T) {
 	database.DB = orig.Session(&gorm.Session{Logger: database.NewGormLogger(&baseLog, database.SlowQueryThreshold)})
 	t.Cleanup(func() { database.DB = orig })
 
-	app := fiber.New()
-	app.Use(requestid.New())
-	// Mirrors server.requestLogger: attach a request-scoped logger to the user context.
-	app.Use(func(c *fiber.Ctx) error {
-		rid, _ := c.Locals(requestid.ConfigDefault.ContextKey).(string)
-		l := reqBase.With().Str("request_id", rid).Logger()
-		c.SetUserContext(l.WithContext(c.UserContext()))
-		return c.Next()
-	})
+	app := newRequestLogApp(reqBase)
 	app.Get("/q", func(c *fiber.Ctx) error {
 		var x []map[string]any
 		_ = reqDB(c).Raw("SELECT * FROM no_such_table_63").Scan(&x).Error

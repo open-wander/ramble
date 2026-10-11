@@ -11,6 +11,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/hashicorp/hcl/v2/hclsimple"
 	"rmbl/internal/security"
+	"rmbl/internal/services/logger"
 )
 
 type Flash struct {
@@ -46,7 +47,7 @@ func SetFlash(c *fiber.Ctx, flashType, message string) {
 	sess.Set("flash_type", flashType)
 	sess.Set("flash_message", message)
 	if err := sess.Save(); err != nil {
-		fmt.Printf("Error saving session in SetFlash: %v\n", err)
+		logger.FromContext(c.UserContext()).Error().Err(err).Str("op", "set_flash").Msg("session.save_failed")
 	}
 }
 
