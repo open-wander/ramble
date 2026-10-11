@@ -289,3 +289,11 @@ Advisor MINOR: db.migrate_failed branch only AST-covered; InitWithWriter widens 
 level change FATAL -> ERROR may affect external alerts. Reported pre-existing bug:
 gorm logger db.error args fail JSON marshalling (pgconn.DialFunc) -> 8.9. 8.1 review
 -> 8.8 (server.Run middleware wiring untested).
+
+## 2026-10-11 — 8.3 github.webhook_request_* lines tested
+
+webhook_log_test.go TestHandleGitHubIssueWebhook_DBLinesCarryRequestID: signed opened
+(pack-request label) and closed payloads through HandleGitHubIssueWebhook + newRequestLogApp;
+asserts DB row Open -> Completed, exactly one created and one status_updated line, each
+with its own request's id, nothing on the global logger. Mutations (each helper back to
+&logger.Log) red; orchestrator re-ran one. Advisor PASS.
