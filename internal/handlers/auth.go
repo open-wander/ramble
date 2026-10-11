@@ -9,10 +9,10 @@ import (
 	"os"
 	"regexp"
 	"rmbl/internal/crypto"
-	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"rmbl/internal/services/email"
 	"rmbl/internal/services/logger"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -75,13 +75,13 @@ func BeginAuth(c *fiber.Ctx) error {
 	return goth_fiber.BeginAuthHandler(c)
 }
 
-// errOAuthEmailCollision is returned by processOAuthUser when the OAuth
+// errOAuthEmailCollision is returned by processOAuthUserDB when the OAuth
 // provider's email already belongs to a local account that has no provider
 // linkage. Callers should surface a clear error to the user rather than
 // silently linking or creating a duplicate.
 var errOAuthEmailCollision = errors.New("existing account")
 
-// processOAuthUser resolves a goth.User against the database and returns the
+// processOAuthUserDB resolves a goth.User against the database and returns the
 // models.User that should be logged in.
 //
 // Rules (hardened against account-takeover via unverified OAuth email):
@@ -100,12 +100,8 @@ var errOAuthEmailCollision = errors.New("existing account")
 // field is populated from the OAuth provider but cannot be trusted as
 // verified for GitHub/GitLab. A future task may add a separate verification
 // step for OAuth-created accounts.
-func processOAuthUser(gothUser goth.User) (models.User, error) {
-	return processOAuthUserDB(database.DB, gothUser)
-}
-
-// processOAuthUserDB is processOAuthUser on a caller-supplied handle, so the
-// callback handler can pass a request-bound one.
+//
+// It takes the handle so the callback handler can pass a request-bound one.
 func processOAuthUserDB(tx *gorm.DB, gothUser goth.User) (models.User, error) {
 	// Encrypt token; use empty string on failure so the rest can proceed.
 	encryptedToken, _ := crypto.EncryptToken(gothUser.AccessToken)
@@ -153,6 +149,11 @@ func processOAuthUserDB(tx *gorm.DB, gothUser goth.User) (models.User, error) {
 	username := gothUser.NickName
 	if username == "" {
 		username = gothUser.Name
+	}
+
+	username, err := availableOAuthUsername(tx, username)
+	if err != nil {
+		return models.User{}, err
 	}
 
 	newUser := models.User{
@@ -206,7 +207,7 @@ func AuthCallback(c *fiber.Ctx) error {
 		}
 	}
 
-	AuditLog(c, "auth.oauth_login", "user", user.ID, user.Username, map[string]interface{}{
+	AuditLog(c, "auth.oauth_login", "user", user.ID, user.Username, map[string]any{
 		"provider": gothUser.Provider,
 	})
 
@@ -249,7 +250,7 @@ func PostLogin(c *fiber.Ctx) error {
 	// Check if account is locked
 	if user.LockedUntil.After(time.Now()) {
 		remainingTime := time.Until(user.LockedUntil).Round(time.Minute)
-		AuditLog(c, "auth.login_blocked", "user", user.ID, user.Username, map[string]interface{}{
+		AuditLog(c, "auth.login_blocked", "user", user.ID, user.Username, map[string]any{
 			"reason": "account_locked",
 		})
 		return c.Status(fiber.StatusTooManyRequests).SendString(
@@ -264,14 +265,14 @@ func PostLogin(c *fiber.Ctx) error {
 		// Lock account if threshold reached
 		if user.FailedLoginAttempts >= MaxFailedLoginAttempts {
 			user.LockedUntil = time.Now().Add(AccountLockDuration)
-			AuditLog(c, "auth.account_locked", "user", user.ID, user.Username, map[string]interface{}{
+			AuditLog(c, "auth.account_locked", "user", user.ID, user.Username, map[string]any{
 				"failed_attempts": user.FailedLoginAttempts,
 				"locked_until":    user.LockedUntil,
 			})
 		}
 
 		reqDB(c).Save(&user)
-		AuditLog(c, "auth.login_failed", "user", user.ID, user.Username, map[string]interface{}{
+		AuditLog(c, "auth.login_failed", "user", user.ID, user.Username, map[string]any{
 			"failed_attempts": user.FailedLoginAttempts,
 		})
 		return c.Status(fiber.StatusUnauthorized).SendString("Invalid email or password")
@@ -328,17 +329,23 @@ func PostSignup(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).SendString(err.Error())
 	}
 
-	// Check if username or email exists
+	if IsReservedName(input.Username) {
+		return c.Status(fiber.StatusBadRequest).SendString("This name is reserved")
+	}
+
+	// Check if email exists
 	var existingUser models.User
-	if err := reqDB(c).Where("username = ? OR email = ?", input.Username, input.Email).First(&existingUser).Error; err == nil {
+	if err := reqDB(c).Where("email = ?", input.Email).First(&existingUser).Error; err == nil {
 		return c.Status(fiber.StatusBadRequest).SendString("Username or Email already registered")
 	}
 
-	// Check if username is taken by an Org
-	var count int64
-	reqDB(c).Model(&models.Organization{}).Where("name ILIKE ?", input.Username).Count(&count)
-	if count > 0 {
-		return c.Status(fiber.StatusBadRequest).SendString("Username is already taken by an organization")
+	// Usernames and organisation names share one case-insensitive namespace
+	taken, err := nameTaken(reqDB(c), input.Username, 0, 0)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString("Database error")
+	}
+	if taken {
+		return c.Status(fiber.StatusBadRequest).SendString("Username or Email already registered")
 	}
 
 	// Hash Password
@@ -458,7 +465,7 @@ func PostForgotPassword(c *fiber.Ctx) error {
 	// Invalidate all previous tokens for this user (user decision)
 	reqDB(c).Model(&models.User{}).
 		Where("id = ?", user.ID).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"reset_token":         "",
 			"reset_token_expires": time.Time{},
 			"reset_token_used_at": nil,
@@ -541,7 +548,7 @@ func PostResetPassword(c *fiber.Ctx) error {
 		hashedTokenStr, time.Now(),
 	).First(&user).Error; err != nil {
 		// Log the failure (internal detail, not returned to client)
-		AuditLog(c, "auth.password_reset_failed", "user", 0, "", map[string]interface{}{
+		AuditLog(c, "auth.password_reset_failed", "user", 0, "", map[string]any{
 			"reason": "invalid_expired_or_used_token",
 		})
 		// Generic error message (user decision: prevent enumeration)
@@ -646,4 +653,59 @@ func PostResendVerification(c *fiber.Ctx) error {
 	}
 
 	return c.SendString("Verification email sent successfully")
+}
+
+// availableOAuthUsername returns base unchanged when it is not reserved and no
+// user or organisation has it, otherwise base-N for the first free N. An empty
+// base becomes "user". Exact
+// case-insensitive equality is used because ILIKE would treat _ and % in
+// names as wildcards.
+func availableOAuthUsername(tx *gorm.DB, base string) (string, error) {
+	base = strings.TrimSpace(base)
+	if base == "" {
+		// The provider sent neither a nickname nor a name.
+		base = "user"
+	}
+	free, err := usernameFree(tx, base)
+	if err != nil {
+		return "", err
+	}
+	if free {
+		return base, nil
+	}
+	for i := 1; i <= 20; i++ {
+		candidate := fmt.Sprintf("%s-%d", base, i)
+		free, err := usernameFree(tx, candidate)
+		if err != nil {
+			return "", err
+		}
+		if free {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("no free username derived from %q", base)
+}
+
+// usernameFree reports whether name is neither reserved nor used by a user
+// or organisation.
+func usernameFree(tx *gorm.DB, name string) (bool, error) {
+	if IsReservedName(name) {
+		return false, nil
+	}
+	taken, err := nameTaken(tx, name, 0, 0)
+	return !taken, err
+}
+
+// nameTaken reports whether name, compared case-insensitively, is used by a
+// user or an organisation. Pass the id of the user or organisation being
+// renamed as exceptUserID or exceptOrgID to exclude it; 0 excludes nothing.
+func nameTaken(tx *gorm.DB, name string, exceptUserID, exceptOrgID uint) (bool, error) {
+	var users, orgs int64
+	if err := tx.Unscoped().Model(&models.User{}).Where(iEq("username"), name).Where("id <> ?", exceptUserID).Count(&users).Error; err != nil {
+		return false, fmt.Errorf("database error checking username: %w", err)
+	}
+	if err := tx.Unscoped().Model(&models.Organization{}).Where(iEq("name"), name).Where("id <> ?", exceptOrgID).Count(&orgs).Error; err != nil {
+		return false, fmt.Errorf("database error checking organization name: %w", err)
+	}
+	return users > 0 || orgs > 0, nil
 }

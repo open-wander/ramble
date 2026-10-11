@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -45,12 +46,7 @@ func Run(cfg Config) error {
 		if env == "" {
 			env = "production"
 		}
-		if err := sentry.Init(sentry.ClientOptions{
-			Dsn:              dsn,
-			Environment:      env,
-			Release:          cfg.Version,
-			AttachStacktrace: true,
-		}); err != nil {
+		if err := sentry.Init(sentryOptions(dsn, env, cfg.Version)); err != nil {
 			logger.Log.Error().Err(err).Msg("sentry.init_failed")
 		} else {
 			logger.Log.Info().Str("environment", env).Str("release", cfg.Version).Msg("sentry.enabled")
@@ -74,11 +70,11 @@ func Run(cfg Config) error {
 	if os.Getenv("ENV") != "production" {
 		engine.Reload(true)
 	}
-	engine.AddFunc("dict", func(values ...interface{}) (map[string]interface{}, error) {
+	engine.AddFunc("dict", func(values ...any) (map[string]any, error) {
 		if len(values)%2 != 0 {
 			return nil, fmt.Errorf("invalid dict call")
 		}
-		dict := make(map[string]interface{}, len(values)/2)
+		dict := make(map[string]any, len(values)/2)
 		for i := 0; i < len(values); i += 2 {
 			key, ok := values[i].(string)
 			if !ok {
@@ -105,12 +101,9 @@ func Run(cfg Config) error {
 	app := fiber.New(fiberConfig(engine))
 
 	// 4. Middleware
-	// Crash reporting (GlitchTip) - outermost. It supplies the hub that
-	// recoverPanics reports through, and backstops panics in the requestid and
-	// RequestLogger middleware. Repanic:false so nothing crashes the app.
-	if os.Getenv("SENTRY_DSN") != "" {
-		app.Use(sentryfiber.New(sentryfiber.Options{Repanic: false}))
-	}
+	// Outermost: a backstop for panics in the requestid and RequestLogger
+	// middleware (recoverPanics sits inside them), then Sentry when a DSN is set.
+	useOuterMiddleware(app, &logger.Log, os.Getenv("SENTRY_DSN") != "")
 
 	// Request ID tracing + structured access log
 	useRequestLogging(app, &logger.Log)
@@ -156,6 +149,8 @@ func Run(cfg Config) error {
 		CookieHTTPOnly: true,
 		Expiration:     1 * time.Hour,
 		SingleUseToken: false,
+		// Signature-authenticated webhooks are called by external services without cookies.
+		Next: isWebhookRequest,
 		Extractor: func(c *fiber.Ctx) (string, error) {
 			// Check header first (for HTMX requests)
 			if token := c.Get("X-CSRF-Token"); token != "" {
@@ -236,7 +231,23 @@ func Run(cfg Config) error {
 		return c.Next()
 	})
 
-	// 5. Static Files
+	// 5. Routes (registerRoutes)
+	registerRoutes(app)
+
+	// 6. Start Server
+	port := cfg.Port
+	if port == "" {
+		port = "3000"
+	}
+	addr := ":" + port
+	logStarted(&logger.Log, addr, cfg.Version)
+	return app.Listen(addr)
+}
+
+// registerRoutes registers every route. It touches no DB, session or template
+// state, so a test can call it on a bare app and inspect the route table.
+func registerRoutes(app *fiber.App) {
+	// Static files
 	app.Static("/public", "./public")
 	app.Static("/favicon.ico", "./public/favicon.ico")
 	app.Static("/robots.txt", "./public/robots.txt")
@@ -263,7 +274,7 @@ func Run(cfg Config) error {
 		},
 	})
 
-	// 6. Routes
+	// Routes
 	app.Get("/", handlers.Home)
 	app.Get("/search", searchLimiter, handlers.Search)
 	app.Get("/packs", handlers.GetPacks)
@@ -289,12 +300,12 @@ func Run(cfg Config) error {
 	app.Get("/requests", handlers.GetRequests)
 	app.Get("/requests/new", handlers.RequireAuth, handlers.GetNewRequest)
 	app.Post("/requests/new", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostNewRequest)
-	app.Get("/requests/:id", handlers.GetRequest)
-	app.Get("/requests/:id/edit", handlers.RequireAuth, handlers.GetEditRequest)
-	app.Post("/requests/:id/edit", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostEditRequest)
-	app.Delete("/requests/:id", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.DeleteUserRequest)
-	app.Post("/requests/:id/vote", handlers.RequireAuth, voteLimiter, handlers.ToggleRequestVote)
-	app.Post("/requests/:id/github-issue", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.RetryGitHubIssue)
+	app.Get("/requests/:id<int>", handlers.GetRequest)
+	app.Get("/requests/:id<int>/edit", handlers.RequireAuth, handlers.GetEditRequest)
+	app.Post("/requests/:id<int>/edit", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostEditRequest)
+	app.Delete("/requests/:id<int>", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.DeleteUserRequest)
+	app.Post("/requests/:id<int>/vote", handlers.RequireAuth, voteLimiter, handlers.ToggleRequestVote)
+	app.Post("/requests/:id<int>/github-issue", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.RetryGitHubIssue)
 
 	// Auth Routes with rate limiter
 	authLimiter := limiter.New(limiter.Config{
@@ -326,7 +337,7 @@ func Run(cfg Config) error {
 	app.Get("/orgs/:orgname/settings", handlers.RequireAuth, handlers.RequireOrgOwner, handlers.GetOrgSettings)
 	app.Post("/orgs/:orgname/update", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.RequireOrgOwner, handlers.PostUpdateOrg)
 	app.Post("/orgs/:orgname/members/add", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.RequireOrgOwner, handlers.PostAddMember)
-	app.Post("/orgs/:orgname/members/:member_id/remove", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.RequireOrgOwner, handlers.PostRemoveMember)
+	app.Post("/orgs/:orgname/members/:member_id<int>/remove", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.RequireOrgOwner, handlers.PostRemoveMember)
 
 	// OAuth Routes
 	app.Get("/auth/:provider", handlers.BeginAuth)
@@ -338,48 +349,48 @@ func Run(cfg Config) error {
 	admin.Get("/users", handlers.GetAdminUsers)
 	admin.Get("/resources", handlers.GetAdminResources)
 	admin.Get("/organizations", handlers.GetAdminOrganizations)
-	admin.Get("/users/:id/edit", handlers.GetEditUser)
-	admin.Post("/users/:id/edit", handlers.PostEditUser)
-	admin.Post("/users/:id/toggle-admin", handlers.PostToggleAdmin)
-	admin.Delete("/users/:id", handlers.DeleteUser)
-	admin.Get("/organizations/:id/edit", handlers.GetEditOrganization)
-	admin.Post("/organizations/:id/edit", handlers.PostEditOrganization)
-	admin.Delete("/organizations/:id", handlers.DeleteOrganization)
+	admin.Get("/users/:id<int>/edit", handlers.GetEditUser)
+	admin.Post("/users/:id<int>/edit", handlers.PostEditUser)
+	admin.Post("/users/:id<int>/toggle-admin", handlers.PostToggleAdmin)
+	admin.Delete("/users/:id<int>", handlers.DeleteUser)
+	admin.Get("/organizations/:id<int>/edit", handlers.GetEditOrganization)
+	admin.Post("/organizations/:id<int>/edit", handlers.PostEditOrganization)
+	admin.Delete("/organizations/:id<int>", handlers.DeleteOrganization)
 	admin.Get("/settings", handlers.GetAdminSettings)
 	admin.Post("/settings", handlers.PostAdminSettings)
 	admin.Get("/requests", handlers.GetAdminRequests)
-	admin.Post("/requests/:id/status", handlers.PostUpdateRequestStatus)
-	admin.Delete("/requests/:id", handlers.DeleteRequest)
+	admin.Post("/requests/:id<int>/status", handlers.PostUpdateRequestStatus)
+	admin.Delete("/requests/:id<int>", handlers.DeleteRequest)
 	admin.Post("/requests/sync", handlers.PostSyncGitHubRequests)
 	admin.Get("/audit", handlers.GetAdminAudit)
 	admin.Get("/errors", handlers.GetAdminErrors)
 	// Admin membership management
-	admin.Post("/organizations/:id/members/add", handlers.PostAdminAddMember)
-	admin.Delete("/organizations/:id/members/:member_id", handlers.PostAdminRemoveMember)
-	admin.Post("/organizations/:id/members/:member_id/role", handlers.PostAdminChangeMemberRole)
-	admin.Delete("/users/:id/memberships/:org_id", handlers.DeleteAdminUserMembership)
+	admin.Post("/organizations/:id<int>/members/add", handlers.PostAdminAddMember)
+	admin.Delete("/organizations/:id<int>/members/:member_id<int>", handlers.PostAdminRemoveMember)
+	admin.Post("/organizations/:id<int>/members/:member_id<int>/role", handlers.PostAdminChangeMemberRole)
+	admin.Delete("/users/:id<int>/memberships/:org_id<int>", handlers.DeleteAdminUserMembership)
 
 	// Resource Routes
 
 	// CRUD Operations (resource_crud.go)
 	app.Get("/new", handlers.RequireAuth, handlers.GetNewResource)
 	app.Post("/new", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostNewResource)
-	app.Get("/resource/:id/new-version", handlers.RequireAuth, handlers.GetNewVersion)
-	app.Post("/resource/:id/version", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostNewVersion)
+	app.Get("/resource/:id<int>/new-version", handlers.RequireAuth, handlers.GetNewVersion)
+	app.Post("/resource/:id<int>/version", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostNewVersion)
 	app.Get("/:username/:resourcename/edit", handlers.RequireAuth, handlers.GetEditResource)
-	app.Post("/resource/:id/edit", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostEditResource)
-	app.Delete("/resource/:id", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.DeleteResource)
-	app.Post("/resource/:id/retry-fetch", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostRetryFetch)
+	app.Post("/resource/:id<int>/edit", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostEditResource)
+	app.Delete("/resource/:id<int>", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.DeleteResource)
+	app.Post("/resource/:id<int>/retry-fetch", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostRetryFetch)
 
 	// Webhook Handling (resource_webhooks.go)
 	app.Get("/new/my-repos", handlers.RequireAuth, handlers.GetMyRepos)
 	app.Get("/new/fetch-info", handlers.RequireAuth, handlers.FetchInfo)
-	app.Post("/resource/:id/webhook", handlers.HandleWebhook)
-	app.Post("/resource/:id/webhook/reset", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostResetWebhookSecret)
-	app.Get("/resource/:id/fetch-readme", handlers.FetchReadme)
+	app.Post("/resource/:id<int>/webhook", handlers.HandleWebhook)
+	app.Post("/resource/:id<int>/webhook/reset", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostResetWebhookSecret)
+	app.Get("/resource/:id<int>/fetch-readme", handlers.FetchReadme)
 
 	// Social Features (resource_social.go)
-	app.Post("/resource/:id/star", handlers.RequireAuth, handlers.ToggleStar)
+	app.Post("/resource/:id<int>/star", handlers.RequireAuth, handlers.ToggleStar)
 
 	// Dev Routes (disabled in production)
 	if os.Getenv("ENV") != "production" {
@@ -404,15 +415,6 @@ func Run(cfg Config) error {
 	app.Get("/:username/:resourcename/v", handlers.GetResourceVersion)
 	app.Get("/:username/:resourcename/raw", handlers.GetRawResource)
 	app.Get("/:username/:resourcename/v/:version/raw", handlers.GetRawResourceVersion)
-
-	// 7. Start Server
-	port := cfg.Port
-	if port == "" {
-		port = "3000"
-	}
-	addr := ":" + port
-	logStarted(&logger.Log, addr, cfg.Version)
-	return app.Listen(addr)
 }
 
 // fiberConfig builds the Fiber configuration.
@@ -428,6 +430,72 @@ func fiberConfig(views fiber.Views) fiber.Config {
 		// The text banner breaks one-JSON-object-per-line; server.started replaces it.
 		DisableStartupMessage: true,
 	}
+}
+
+// useOuterMiddleware registers the outermost backstop and, when withSentry,
+// the sentryfiber hub. Repanic is true so a panic in a middleware outside
+// recoverPanics reaches recoverOuter instead of being swallowed as a 200;
+// handler panics are recovered inside and never re-panic.
+func useOuterMiddleware(app *fiber.App, base *zerolog.Logger, withSentry bool) {
+	app.Use(recoverOuter(base))
+	if withSentry {
+		app.Use(sentryfiber.New(sentryfiber.Options{Repanic: true}))
+	}
+}
+
+// recoverOuter turns a panic from the request logging middleware itself into
+// a 500. No request context exists this far out, so it logs through base and
+// marks the line outer. The panic value stays out of the response body.
+func recoverOuter(base *zerolog.Logger) fiber.Handler {
+	return func(c *fiber.Ctx) (err error) {
+		defer func() {
+			r := recover()
+			if r == nil {
+				return
+			}
+			base.Error().
+				Bool("outer", true).
+				Str("panic", fmt.Sprint(r)).
+				Str("stack", string(debug.Stack())).
+				Msg("http.panic")
+			err = fiber.ErrInternalServerError
+		}()
+		return c.Next()
+	}
+}
+
+// sentryOptions are the client options for Run. BeforeSend keeps request
+// data out of events; SendDefaultPII stays false.
+func sentryOptions(dsn, env, release string) sentry.ClientOptions {
+	return sentry.ClientOptions{
+		Dsn:              dsn,
+		Environment:      env,
+		Release:          release,
+		AttachStacktrace: true,
+		BeforeSend:       scrubSentryEvent,
+	}
+}
+
+// scrubSentryEvent removes the query string, cookies, body and credential
+// headers from an event. The SDK only redacts a built-in list of key names.
+func scrubSentryEvent(e *sentry.Event, _ *sentry.EventHint) *sentry.Event {
+	r := e.Request
+	if r == nil {
+		return e
+	}
+	r.QueryString = ""
+	r.Cookies = ""
+	r.Data = ""
+	r.URL, _, _ = strings.Cut(r.URL, "?")
+	r.URL, _, _ = strings.Cut(r.URL, "#")
+	for k := range r.Headers {
+		for _, h := range []string{"Authorization", "Cookie", "X-Hub-Signature-256", "X-Webhook-Timestamp"} {
+			if strings.EqualFold(k, h) {
+				delete(r.Headers, k)
+			}
+		}
+	}
+	return e
 }
 
 // useRequestLogging registers request ID tracing, the structured access log
@@ -478,7 +546,7 @@ var defaultTrustedProxies = []string{"127.0.0.1/8", "::1", "10.0.0.0/8", "172.16
 
 func trustedProxies(env string) []string {
 	var out []string
-	for _, p := range strings.Split(env, ",") {
+	for p := range strings.SplitSeq(env, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			out = append(out, p)
 		}
@@ -487,4 +555,19 @@ func trustedProxies(env string) []string {
 		return defaultTrustedProxies
 	}
 	return out
+}
+
+// resourceWebhookPath matches exactly /resource/<digits>/webhook; the digit
+// check keeps non-numeric ids out of the CSRF exemption.
+var resourceWebhookPath = regexp.MustCompile(`^/resource/[0-9]+/webhook$`)
+
+// isWebhookRequest reports whether the request is one of the two
+// signature-authenticated webhook POSTs that skip CSRF. Exact path shapes only:
+// /resource/:id<int>/webhook/reset is a logged-in form action and keeps CSRF.
+func isWebhookRequest(c *fiber.Ctx) bool {
+	if c.Method() != fiber.MethodPost {
+		return false
+	}
+	p := c.Path()
+	return p == "/webhooks/github/issues" || resourceWebhookPath.MatchString(p)
 }

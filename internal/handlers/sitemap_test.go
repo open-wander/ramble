@@ -68,7 +68,7 @@ func TestGenerateSitemap_IncludesResources(t *testing.T) {
 		Email:    "sitemap@test.com",
 	}
 	database.DB.Create(&user)
-	defer database.DB.Delete(&user)
+	defer database.DB.Unscoped().Delete(&user)
 
 	resource := models.NomadResource{
 		Name:        "sitemap-pack",
@@ -77,7 +77,7 @@ func TestGenerateSitemap_IncludesResources(t *testing.T) {
 		Type:        "pack",
 	}
 	database.DB.Create(&resource)
-	defer database.DB.Delete(&resource)
+	defer database.DB.Unscoped().Delete(&resource)
 
 	app := fiber.New()
 	app.Get("/sitemap.xml", GenerateSitemap)
@@ -103,7 +103,7 @@ func TestGenerateSitemap_IncludesUsers(t *testing.T) {
 		Email:    "sitemaptest@test.com",
 	}
 	database.DB.Create(&user)
-	defer database.DB.Delete(&user)
+	defer database.DB.Unscoped().Delete(&user)
 
 	app := fiber.New()
 	app.Get("/sitemap.xml", GenerateSitemap)
@@ -129,13 +129,13 @@ func TestGenerateSitemap_IncludesOrganizations(t *testing.T) {
 		Email:    "orgowner@test.com",
 	}
 	database.DB.Create(&user)
-	defer database.DB.Delete(&user)
+	defer database.DB.Unscoped().Delete(&user)
 
 	org := models.Organization{
 		Name: "sitemaptestorg",
 	}
 	database.DB.Create(&org)
-	defer database.DB.Delete(&org)
+	defer database.DB.Unscoped().Delete(&org)
 
 	// Create owner membership
 	membership := models.Membership{
@@ -144,7 +144,7 @@ func TestGenerateSitemap_IncludesOrganizations(t *testing.T) {
 		Role:           "owner",
 	}
 	database.DB.Create(&membership)
-	defer database.DB.Delete(&membership)
+	defer database.DB.Unscoped().Delete(&membership)
 
 	app := fiber.New()
 	app.Get("/sitemap.xml", GenerateSitemap)
@@ -170,13 +170,13 @@ func TestGenerateSitemap_OrgResource(t *testing.T) {
 		Email:    "orgresowner@test.com",
 	}
 	database.DB.Create(&user)
-	defer database.DB.Delete(&user)
+	defer database.DB.Unscoped().Delete(&user)
 
 	org := models.Organization{
 		Name: "resourceorg",
 	}
 	database.DB.Create(&org)
-	defer database.DB.Delete(&org)
+	defer database.DB.Unscoped().Delete(&org)
 
 	// Create owner membership
 	membership := models.Membership{
@@ -185,7 +185,7 @@ func TestGenerateSitemap_OrgResource(t *testing.T) {
 		Role:           "owner",
 	}
 	database.DB.Create(&membership)
-	defer database.DB.Delete(&membership)
+	defer database.DB.Unscoped().Delete(&membership)
 
 	resource := models.NomadResource{
 		Name:           "org-owned-pack",
@@ -195,7 +195,7 @@ func TestGenerateSitemap_OrgResource(t *testing.T) {
 		Type:           "pack",
 	}
 	database.DB.Create(&resource)
-	defer database.DB.Delete(&resource)
+	defer database.DB.Unscoped().Delete(&resource)
 
 	app := fiber.New()
 	app.Get("/sitemap.xml", GenerateSitemap)

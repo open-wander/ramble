@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -340,13 +341,7 @@ func TestDefaultAllowedHosts(t *testing.T) {
 	expectedHosts := []string{"github.com", "raw.githubusercontent.com", "api.github.com", "gitlab.com"}
 
 	for _, expected := range expectedHosts {
-		found := false
-		for _, host := range hosts {
-			if host == expected {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(hosts, expected)
 		if !found {
 			t.Errorf("expected default host %s not found in %v", expected, hosts)
 		}

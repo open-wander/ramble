@@ -101,7 +101,7 @@ func GetSearchSEO(c *fiber.Ctx, query string, resultCount int) SEOData {
 
 // generateResourceStructuredData creates JSON-LD structured data for a resource
 func generateResourceStructuredData(resource models.NomadResource, displayName, url string) string {
-	data := map[string]interface{}{
+	data := map[string]any{
 		"@context":            "https://schema.org",
 		"@type":               "SoftwareSourceCode",
 		"name":                fmt.Sprintf("%s/%s", displayName, resource.Name),
@@ -119,11 +119,11 @@ func generateResourceStructuredData(resource models.NomadResource, displayName, 
 		data["keywords"] = strings.Join(keywords, ", ")
 	}
 
-	if resource.CreatedAt.IsZero() == false {
+	if !resource.CreatedAt.IsZero() {
 		data["datePublished"] = resource.CreatedAt.Format("2006-01-02")
 	}
 
-	if resource.UpdatedAt.IsZero() == false {
+	if !resource.UpdatedAt.IsZero() {
 		data["dateModified"] = resource.UpdatedAt.Format("2006-01-02")
 	}
 

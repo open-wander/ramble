@@ -388,7 +388,7 @@ func TestAuth_AccountLockout(t *testing.T) {
 	// In production, time passes naturally
 	// For testing, we simulate by updating LockedUntil to past time and reload user
 	pastTime := time.Now().Add(-1 * time.Minute)
-	database.DB.Model(&models.User{}).Where("id = ?", user.ID).Updates(map[string]interface{}{
+	database.DB.Model(&models.User{}).Where("id = ?", user.ID).Updates(map[string]any{
 		"locked_until":          pastTime,
 		"failed_login_attempts": 5, // Keep failed attempts count
 	})

@@ -126,7 +126,7 @@ func isNewerVersion(a, b string) bool {
 	aParts := parseVersion(a)
 	bParts := parseVersion(b)
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if aParts[i] > bParts[i] {
 			return true
 		}

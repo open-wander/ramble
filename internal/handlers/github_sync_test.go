@@ -283,7 +283,7 @@ func TestHandleNewIssue_SkipsAppCreated(t *testing.T) {
 		Labels:  []LabelPayload{{Name: "pack-request"}},
 	}
 
-	err := handleNewIssue(issue)
+	err := handleNewIssueDB(database.DB, issue)
 	assert.Nil(t, err)
 
 	// Verify no request was created
@@ -302,7 +302,7 @@ func TestHandleNewIssue_SkipsNonRequestIssue(t *testing.T) {
 		Labels:  []LabelPayload{{Name: "bug"}}, // No pack-request or job-request label
 	}
 
-	err := handleNewIssue(issue)
+	err := handleNewIssueDB(database.DB, issue)
 	assert.Nil(t, err)
 
 	// Verify no request was created
@@ -318,7 +318,7 @@ func TestHandleIssueStateChange_NotTracked(t *testing.T) {
 		Labels: []LabelPayload{{Name: "status:completed"}},
 	}
 
-	err := handleIssueStateChange(issue)
+	err := handleIssueStateChangeDB(database.DB, issue)
 	assert.Nil(t, err) // Should not error for untracked issues
 }
 
@@ -356,7 +356,7 @@ func TestHandleIssueStateChange_TrackedRequest(t *testing.T) {
 		Labels: []LabelPayload{{Name: "status:completed"}},
 	}
 
-	err := handleIssueStateChange(issue)
+	err := handleIssueStateChangeDB(database.DB, issue)
 	assert.Nil(t, err)
 
 	// Verify status was updated

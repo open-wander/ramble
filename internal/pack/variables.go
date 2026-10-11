@@ -95,15 +95,15 @@ func ctyValueToGo(val interface{ GoString() string }) any {
 	if s == "cty.False" {
 		return false
 	}
-	if strings.HasPrefix(s, "cty.StringVal(") {
+	if after, ok := strings.CutPrefix(s, "cty.StringVal("); ok {
 		// Extract string value
-		s = strings.TrimPrefix(s, "cty.StringVal(")
+		s = after
 		s = strings.TrimSuffix(s, ")")
 		s = strings.Trim(s, "\"")
 		return s
 	}
-	if strings.HasPrefix(s, "cty.NumberIntVal(") {
-		s = strings.TrimPrefix(s, "cty.NumberIntVal(")
+	if after, ok := strings.CutPrefix(s, "cty.NumberIntVal("); ok {
+		s = after
 		s = strings.TrimSuffix(s, ")")
 		if n, err := strconv.ParseInt(s, 10, 64); err == nil {
 			return n

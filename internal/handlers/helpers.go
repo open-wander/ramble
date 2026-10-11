@@ -1,5 +1,7 @@
 package handlers
 
+import "maps"
+
 import "github.com/gofiber/fiber/v2"
 
 // BaseContext returns a fiber.Map with common template values
@@ -16,8 +18,6 @@ func BaseContext(c *fiber.Ctx) fiber.Map {
 
 // MergeContext merges additional values into a base context
 func MergeContext(base fiber.Map, extra fiber.Map) fiber.Map {
-	for k, v := range extra {
-		base[k] = v
-	}
+	maps.Copy(base, extra)
 	return base
 }

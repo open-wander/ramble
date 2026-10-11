@@ -43,11 +43,11 @@ func ListPacksAPI(c *fiber.Ctx) error {
 	var orgID *uint
 
 	var user models.User
-	if err := reqDB(c).Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
+	if err := reqDB(c).Where(iEq("username"), namespace).First(&user).Error; err == nil {
 		userID = user.ID
 	} else {
 		var org models.Organization
-		if err := reqDB(c).Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
+		if err := reqDB(c).Where(iEq("name"), namespace).First(&org).Error; err == nil {
 			orgID = &org.ID
 		} else {
 			return c.Status(404).JSON(fiber.Map{"error": "Namespace not found"})
@@ -131,11 +131,11 @@ func GetPackAPI(c *fiber.Ctx) error {
 	var orgID *uint
 
 	var user models.User
-	if err := reqDB(c).Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
+	if err := reqDB(c).Where(iEq("username"), namespace).First(&user).Error; err == nil {
 		userID = user.ID
 	} else {
 		var org models.Organization
-		if err := reqDB(c).Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
+		if err := reqDB(c).Where(iEq("name"), namespace).First(&org).Error; err == nil {
 			orgID = &org.ID
 		} else {
 			return c.Status(404).JSON(fiber.Map{"error": "Namespace not found"})
@@ -143,7 +143,7 @@ func GetPackAPI(c *fiber.Ctx) error {
 	}
 
 	var resource models.NomadResource
-	dbQuery := reqDB(c).Preload("Versions").Where("type = ? AND name ILIKE ?", models.ResourceTypePack, packname)
+	dbQuery := reqDB(c).Preload("Versions").Where("type = ?", models.ResourceTypePack).Where(iEq("name"), packname)
 	if orgID != nil {
 		dbQuery = dbQuery.Where("organization_id = ?", *orgID)
 	} else {
@@ -385,11 +385,11 @@ func GetJobAPI(c *fiber.Ctx) error {
 	var orgID *uint
 
 	var user models.User
-	if err := reqDB(c).Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
+	if err := reqDB(c).Where(iEq("username"), namespace).First(&user).Error; err == nil {
 		userID = user.ID
 	} else {
 		var org models.Organization
-		if err := reqDB(c).Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
+		if err := reqDB(c).Where(iEq("name"), namespace).First(&org).Error; err == nil {
 			orgID = &org.ID
 		} else {
 			return c.Status(404).JSON(fiber.Map{"error": "Namespace not found"})
@@ -397,7 +397,7 @@ func GetJobAPI(c *fiber.Ctx) error {
 	}
 
 	var resource models.NomadResource
-	dbQuery := reqDB(c).Preload("Versions").Where("type = ? AND name ILIKE ?", models.ResourceTypeJob, jobname)
+	dbQuery := reqDB(c).Preload("Versions").Where("type = ?", models.ResourceTypeJob).Where(iEq("name"), jobname)
 	if orgID != nil {
 		dbQuery = dbQuery.Where("organization_id = ?", *orgID)
 	} else {
@@ -467,10 +467,7 @@ type RecentResource struct {
 // @Router /v1/recent [get]
 func ListRecentAPI(c *fiber.Ctx) error {
 	since := c.Query("since")
-	limit := c.QueryInt("limit", 50)
-	if limit > 100 {
-		limit = 100
-	}
+	limit := min(c.QueryInt("limit", 50), 100)
 	if limit < 1 {
 		limit = 50
 	}

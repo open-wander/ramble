@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"net"
 	"net/textproto"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -224,6 +225,24 @@ func TestSend_ErrorsRedactAddressesAndLink(t *testing.T) {
 			wantCode: "554",
 			wantText: "failed to close data writer",
 			hidden:   []string{"RESETTOKEN456"},
+		},
+		{
+			name:     "reply echoes the query-encoded link",
+			failAt:   "DATA",
+			reply:    "554 5.7.1 refused%.0s%.0s body had " + strings.ReplaceAll(url.QueryEscape(resetLink), "%", "%%"),
+			send:     func() error { return SendResetEmail(rcpt, resetLink) },
+			wantCode: "554",
+			wantText: "failed to close data writer",
+			hidden:   []string{url.QueryEscape(resetLink), "ramble.example.org%2Freset%3Ftoken%3D"},
+		},
+		{
+			name:     "reply echoes the path-encoded link",
+			failAt:   "DATA",
+			reply:    "554 5.7.1 refused%.0s%.0s body had " + strings.ReplaceAll(url.PathEscape(resetLink), "%", "%%"),
+			send:     func() error { return SendResetEmail(rcpt, resetLink) },
+			wantCode: "554",
+			wantText: "failed to close data writer",
+			hidden:   []string{url.PathEscape(resetLink), "ramble.example.org%2Freset%3Ftoken="},
 		},
 	}
 

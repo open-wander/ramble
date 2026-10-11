@@ -903,7 +903,7 @@ func TestPostRetryFetch_NotOwner(t *testing.T) {
 	// Set latest version to failed state
 	var version models.ResourceVersion
 	database.DB.Where("resource_id = ?", resource.ID).First(&version)
-	database.DB.Model(&version).Updates(map[string]interface{}{
+	database.DB.Model(&version).Updates(map[string]any{
 		"fetch_status": models.FetchStatusFailed,
 		"fetch_error":  "test error",
 	})
@@ -938,7 +938,7 @@ func TestPostRetryFetch_Owner(t *testing.T) {
 	// Set latest version to failed state
 	var version models.ResourceVersion
 	database.DB.Where("resource_id = ?", resource.ID).First(&version)
-	database.DB.Model(&version).Updates(map[string]interface{}{
+	database.DB.Model(&version).Updates(map[string]any{
 		"fetch_status": models.FetchStatusFailed,
 		"fetch_error":  "connection timeout",
 	})

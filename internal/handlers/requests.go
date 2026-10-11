@@ -254,7 +254,7 @@ func createGitHubIssueForRequest(db *gorm.DB, requestID uint) {
 		return
 	}
 
-	db.Model(&request).Updates(map[string]interface{}{
+	db.Model(&request).Updates(map[string]any{
 		"github_issue_url": resp.HTMLURL,
 		"github_issue_num": resp.Number,
 	})
@@ -262,7 +262,10 @@ func createGitHubIssueForRequest(db *gorm.DB, requestID uint) {
 
 // GetRequest shows a single request detail
 func GetRequest(c *fiber.Ctx) error {
-	id := c.Params("id")
+	id, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("Request not found")
+	}
 
 	var request models.PackRequest
 	if err := reqDB(c).Preload("User").Preload("Voters").First(&request, id).Error; err != nil {
@@ -289,7 +292,10 @@ func GetRequest(c *fiber.Ctx) error {
 
 // ToggleRequestVote toggles the current user's vote on a request
 func ToggleRequestVote(c *fiber.Ctx) error {
-	id := c.Params("id")
+	id, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("Request not found")
+	}
 	sess, _ := Store.Get(c)
 	userID := sess.Get("user_id").(uint)
 
@@ -307,12 +313,12 @@ func ToggleRequestVote(c *fiber.Ctx) error {
 	}
 
 	if hasVoted {
-		if err := reqDB(c).Model(&request).Association("Voters").Delete(&models.User{Model: gorm.Model{ID: userID}}); err != nil {
+		if err := reqDB(c).Model(&request).Association("Voters").Delete(&models.User{ID: userID}); err != nil {
 			return c.Status(fiber.StatusInternalServerError).SendString("Failed to remove vote")
 		}
 		reqDB(c).Model(&request).Update("vote_count", gorm.Expr("vote_count - ?", 1))
 	} else {
-		if err := reqDB(c).Model(&request).Association("Voters").Append(&models.User{Model: gorm.Model{ID: userID}}); err != nil {
+		if err := reqDB(c).Model(&request).Association("Voters").Append(&models.User{ID: userID}); err != nil {
 			return c.Status(fiber.StatusInternalServerError).SendString("Failed to add vote")
 		}
 		reqDB(c).Model(&request).Update("vote_count", gorm.Expr("vote_count + ?", 1))
@@ -331,7 +337,10 @@ func ToggleRequestVote(c *fiber.Ctx) error {
 
 // GetEditRequest shows the edit form for a request (owner only, open status only)
 func GetEditRequest(c *fiber.Ctx) error {
-	id := c.Params("id")
+	id, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("Request not found")
+	}
 	sess, _ := Store.Get(c)
 	userID := sess.Get("user_id").(uint)
 
@@ -358,7 +367,10 @@ func GetEditRequest(c *fiber.Ctx) error {
 
 // PostEditRequest updates a request (owner only, open status only)
 func PostEditRequest(c *fiber.Ctx) error {
-	id := c.Params("id")
+	id, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("Request not found")
+	}
 	sess, _ := Store.Get(c)
 	userID := sess.Get("user_id").(uint)
 
@@ -434,7 +446,10 @@ func PostEditRequest(c *fiber.Ctx) error {
 
 // DeleteUserRequest deletes a request (owner only, open status only)
 func DeleteUserRequest(c *fiber.Ctx) error {
-	id := c.Params("id")
+	id, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("Request not found")
+	}
 	sess, _ := Store.Get(c)
 	userID := sess.Get("user_id").(uint)
 
@@ -464,7 +479,10 @@ func DeleteUserRequest(c *fiber.Ctx) error {
 
 // RetryGitHubIssue retries creating a GitHub issue for a request that's missing one
 func RetryGitHubIssue(c *fiber.Ctx) error {
-	id := c.Params("id")
+	id, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("Request not found")
+	}
 	sess, _ := Store.Get(c)
 	userID := sess.Get("user_id").(uint)
 

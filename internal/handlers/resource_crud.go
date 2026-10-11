@@ -66,8 +66,8 @@ func PostNewResource(c *fiber.Ctx) error {
 
 	// Parse organization ID from owner field
 	var orgID *uint
-	if strings.HasPrefix(input.Owner, "org:") {
-		id, _ := strconv.ParseUint(strings.TrimPrefix(input.Owner, "org:"), 10, 32)
+	if after, ok := strings.CutPrefix(input.Owner, "org:"); ok {
+		id, _ := strconv.ParseUint(after, 10, 32)
 		val := uint(id)
 		orgID = &val
 	}
@@ -145,14 +145,19 @@ func PostNewResource(c *fiber.Ctx) error {
 }
 
 func GetNewVersion(c *fiber.Ctx) error {
-	id := c.Params("id")
+	id, err := paramID(c, "id")
+	if err != nil {
+		return c.Status(404).SendString("Resource not found")
+	}
 	return c.Render("partials/new_version_modal", fiber.Map{"ResourceID": id, "CSRFToken": c.Locals("CSRFToken")})
 }
 
 func PostNewVersion(c *fiber.Ctx) error {
-	idStr := c.Params("id")
+	id, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("Resource not found")
+	}
 	versionStr := c.FormValue("version")
-	id, _ := strconv.ParseUint(idStr, 10, 32)
 	if versionStr == "" {
 		return c.Status(400).SendString("Version is required")
 	}
@@ -167,7 +172,7 @@ func PostNewVersion(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
 	}
 
-	if authErr := resource.Service.WithContext(c.UserContext()).AuthorizeResourceAction(uint(id), currentUserID, false); authErr != nil {
+	if authErr := resource.Service.WithContext(c.UserContext()).AuthorizeResourceAction(id, currentUserID, false); authErr != nil {
 		if errors.Is(authErr, resource.ErrResourceNotFound) {
 			return c.Status(404).SendString("Resource not found")
 		}
@@ -175,10 +180,10 @@ func PostNewVersion(c *fiber.Ctx) error {
 	}
 
 	var res models.NomadResource
-	if err := reqDB(c).First(&res, uint(id)).Error; err != nil {
+	if err := reqDB(c).First(&res, id).Error; err != nil {
 		return c.Status(404).SendString("Resource not found")
 	}
-	version := models.ResourceVersion{ResourceID: uint(id), Version: versionStr}
+	version := models.ResourceVersion{ResourceID: id, Version: versionStr}
 	if err := reqDB(c).Create(&version).Error; err != nil {
 		return c.Status(500).SendString("Could not add version")
 	}
@@ -196,11 +201,11 @@ func GetEditResource(c *fiber.Ctx) error {
 	var userID uint
 	var orgID *uint
 	var user models.User
-	if err := reqDB(c).Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
+	if err := reqDB(c).Where(iEq("username"), namespace).First(&user).Error; err == nil {
 		userID = user.ID
 	} else {
 		var org models.Organization
-		if err := reqDB(c).Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
+		if err := reqDB(c).Where(iEq("name"), namespace).First(&org).Error; err == nil {
 			orgID = &org.ID
 		} else {
 			return c.Status(404).SendString("Namespace not found")
@@ -221,9 +226,9 @@ func GetEditResource(c *fiber.Ctx) error {
 	var resource models.NomadResource
 	dbQuery := reqDB(c).Preload("User").Preload("Tags")
 	if orgID != nil {
-		dbQuery = dbQuery.Where("organization_id = ? AND name ILIKE ?", *orgID, resourcename)
+		dbQuery = dbQuery.Where("organization_id = ?", *orgID).Where(iEq("name"), resourcename)
 	} else {
-		dbQuery = dbQuery.Where("user_id = ? AND organization_id IS NULL AND name ILIKE ?", userID, resourcename)
+		dbQuery = dbQuery.Where("user_id = ? AND organization_id IS NULL", userID).Where(iEq("name"), resourcename)
 	}
 	if err := dbQuery.First(&resource).Error; err != nil {
 		return c.Status(404).SendString("Resource not found")
@@ -258,10 +263,12 @@ func GetEditResource(c *fiber.Ctx) error {
 // @Failure 403 {string} string "Unauthorized"
 // @Router /resource/{id}/edit [post]
 func PostEditResource(c *fiber.Ctx) error {
-	idStr := c.Params("id")
+	id, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("Resource not found")
+	}
 	sess, _ := Store.Get(c)
 	currentUserID := sess.Get("user_id").(uint)
-	id, _ := strconv.ParseUint(idStr, 10, 32)
 
 	type EditInput struct {
 		Name          string `form:"name"`
@@ -290,7 +297,7 @@ func PostEditResource(c *fiber.Ctx) error {
 		Tags:          input.Tags,
 	}
 
-	if err := resource.Service.WithContext(c.UserContext()).UpdateResource(uint(id), serviceInput, currentUserID); err != nil {
+	if err := resource.Service.WithContext(c.UserContext()).UpdateResource(id, serviceInput, currentUserID); err != nil {
 		if errors.Is(err, resource.ErrUnauthorized) {
 			return c.Status(403).SendString("Unauthorized")
 		}
@@ -302,7 +309,7 @@ func PostEditResource(c *fiber.Ctx) error {
 
 	// Get updated resource for redirect
 	var res models.NomadResource
-	reqDB(c).First(&res, uint(id))
+	reqDB(c).First(&res, id)
 
 	newNamespace := ""
 	if res.OrganizationID != nil {
@@ -330,22 +337,20 @@ func PostEditResource(c *fiber.Ctx) error {
 // @Failure 403 {string} string "Unauthorized"
 // @Router /resource/{id} [delete]
 func PostRetryFetch(c *fiber.Ctx) error {
-	idStr := c.Params("id")
+	id, idErr := paramID(c, "id")
+	if idErr != nil {
+		return c.Status(404).SendString("Resource not found")
+	}
 	sess, err := Store.Get(c)
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
 	}
 	currentUserID := sess.Get("user_id").(uint)
 
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		return c.Status(404).SendString("Resource not found")
-	}
-
 	var res models.NomadResource
 	if err := reqDB(c).Preload("Versions", func(db *gorm.DB) *gorm.DB {
 		return db.Order("created_at DESC")
-	}).First(&res, uint(id)).Error; err != nil {
+	}).First(&res, id).Error; err != nil {
 		return c.Status(404).SendString("Resource not found")
 	}
 
@@ -354,7 +359,7 @@ func PostRetryFetch(c *fiber.Ctx) error {
 	reqDB(c).First(&currentUser, currentUserID)
 
 	if !currentUser.IsAdmin {
-		if authErr := resource.Service.WithContext(c.UserContext()).AuthorizeResourceAction(uint(id), currentUserID, false); authErr != nil {
+		if authErr := resource.Service.WithContext(c.UserContext()).AuthorizeResourceAction(id, currentUserID, false); authErr != nil {
 			if errors.Is(authErr, resource.ErrResourceNotFound) {
 				return c.Status(404).SendString("Resource not found")
 			}
@@ -372,7 +377,7 @@ func PostRetryFetch(c *fiber.Ctx) error {
 	}
 
 	// Reset fetch status and clear error
-	reqDB(c).Model(&latest).Updates(map[string]interface{}{
+	reqDB(c).Model(&latest).Updates(map[string]any{
 		"fetch_status": models.FetchStatusPending,
 		"fetch_error":  "",
 	})
@@ -386,16 +391,12 @@ func PostRetryFetch(c *fiber.Ctx) error {
 }
 
 func DeleteResource(c *fiber.Ctx) error {
-	id := c.Params("id")
-	sess, _ := Store.Get(c)
-	userID := sess.Get("user_id").(uint)
-
-	// Parse resource ID
-	resourceIDUint64, err := strconv.ParseUint(id, 10, 32)
+	resourceID, err := paramID(c, "id")
 	if err != nil {
 		return c.Status(404).SendString("Resource not found")
 	}
-	resourceID := uint(resourceIDUint64)
+	sess, _ := Store.Get(c)
+	userID := sess.Get("user_id").(uint)
 
 	// Get resource name before deletion for audit log
 	var res models.NomadResource

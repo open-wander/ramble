@@ -15,11 +15,27 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.26.x'
+        go-version: '1.27.x'
         check-latest: true
 
     - name: Verify dependencies
       run: go mod verify
+
+    - name: Vet
+      run: |
+        go vet ./...
+        go vet -tags=security ./...
+
+    - name: Check formatting and go fix modernizers
+      run: |
+        unformatted=$(gofmt -l .)
+        if [ -n "$unformatted" ]; then
+          echo "gofmt needed on:"; echo "$unformatted"; exit 1
+        fi
+        fixes=$(go fix -diff ./...; go fix -tags=security -diff ./...)
+        if [ -n "$fixes" ]; then
+          echo "$fixes"; echo "Run 'go fix ./...' and 'go fix -tags=security ./...' and commit the changes."; exit 1
+        fi
 
     - name: Run tests
       run: go test -tags=security -v ./...
@@ -42,11 +58,13 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.26.x'
+        go-version: '1.27.x'
         check-latest: true
 
+    # gosec master commit: no tagged release (<= v2.29.0) reads Go 1.27 export data yet.
+    # Switch back to a tagged release once one does.
     - name: Install gosec
-      run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.11
+      run: go install github.com/securego/gosec/v2/cmd/gosec@v2.29.1-0.20261009120814-7b1b5cebe007
 
     - name: Run gosec
       run: gosec ./...

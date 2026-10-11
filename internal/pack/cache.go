@@ -205,9 +205,7 @@ func extractTarGz(r io.Reader, destDir string) error {
 		}
 
 		// Strip root directory
-		if strings.HasPrefix(name, rootDir) {
-			name = strings.TrimPrefix(name, rootDir)
-		}
+		name = strings.TrimPrefix(name, rootDir)
 
 		if name == "" {
 			continue

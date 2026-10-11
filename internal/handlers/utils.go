@@ -39,6 +39,13 @@ func escapeLikeString(s string) string {
 	return s
 }
 
+// iEq returns a case-insensitive equality clause for an exact-name lookup.
+// ILIKE would treat _ and % in the value as wildcards. Pass constant column
+// names only; chain further Where calls rather than concatenating.
+func iEq(col string) string {
+	return "LOWER(" + col + ") = LOWER(?)"
+}
+
 func SetFlash(c *fiber.Ctx, flashType, message string) {
 	sess, err := Store.Get(c)
 	if err != nil {
@@ -84,24 +91,6 @@ func parsePackVariables(content string) ([]PackVariable, error) {
 		return nil, err
 	}
 	return config.Variables, nil
-}
-
-// isAllowedContentType checks if the Content-Type is safe for file downloads
-func isAllowedContentType(contentType string) bool {
-	allowedTypes := []string{
-		"text/plain",
-		"text/markdown",
-		"text/x-markdown",
-		"application/octet-stream",
-		"application/x-hcl",
-		"text/x-hcl",
-	}
-	for _, allowed := range allowedTypes {
-		if strings.HasPrefix(contentType, allowed) {
-			return true
-		}
-	}
-	return false
 }
 
 // MaxRemoteFileBytes is the maximum number of bytes accepted from any remote

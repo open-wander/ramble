@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,9 +43,7 @@ func (e *Engine) SetPackMetadata(name, description, version string) {
 
 // SetVariables sets variable values for the "var" template function
 func (e *Engine) SetVariables(vars map[string]any) {
-	for k, v := range vars {
-		e.ctx.Variables[k] = v
-	}
+	maps.Copy(e.ctx.Variables, vars)
 }
 
 // SetVariable sets a single variable value

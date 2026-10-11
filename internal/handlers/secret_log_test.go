@@ -19,6 +19,7 @@ import (
 	"rmbl/internal/models"
 	"rmbl/internal/services/logger"
 	"rmbl/internal/services/resource"
+	"rmbl/internal/testutil/logtest"
 )
 
 // captureAllLogs routes the global logger, the request logger and every SQL
@@ -42,13 +43,11 @@ func captureAllLogs(t *testing.T) (*bytes.Buffer, zerolog.Logger) {
 
 func requireMsg(t *testing.T, buf *bytes.Buffer, msg string) map[string]any {
 	t.Helper()
-	for _, m := range logLines(buf) {
-		if m[zerolog.MessageFieldName] == msg {
-			return m
-		}
+	m := logtest.Find(t, buf, msg)
+	if m == nil {
+		t.Fatalf("expected log line %q not found in: %s", msg, buf.String())
 	}
-	t.Fatalf("expected log line %q not found in: %s", msg, buf.String())
-	return nil
+	return m
 }
 
 func requireNoSecrets(t *testing.T, buf *bytes.Buffer, secrets ...string) {
@@ -59,52 +58,80 @@ func requireNoSecrets(t *testing.T, buf *bytes.Buffer, secrets ...string) {
 	}
 }
 
+type auditCreds struct {
+	User          string
+	WebhookSecret string `json:"webhook_secret"`
+	Password      string
+}
+
 func TestRedactDetails(t *testing.T) {
+	ptr := &auditCreds{User: "u", WebhookSecret: "S", Password: "S"}
+	redactedCreds := map[string]any{"User": "u", "webhook_secret": "[REDACTED]", "Password": "[REDACTED]"}
 	tests := []struct {
 		name string
-		in   map[string]interface{}
-		want map[string]interface{}
+		in   map[string]any
+		want map[string]any
 	}{
 		{"nil", nil, nil},
-		{"flat", map[string]interface{}{"password": "S", "reason": "r"},
-			map[string]interface{}{"password": "[REDACTED]", "reason": "r"}},
-		{"mixed case and separators", map[string]interface{}{"Password": "S", "X-Api-Key": "S", "webhook_secret": "S", "Reset_Token": "S", "csrf_token": "S", "Authorization": "S", "Cookie": "S", "session_id": "S", "hub_signature": "S", "passwd": "S", "apikey": "S", "note": "n"},
-			map[string]interface{}{"Password": "[REDACTED]", "X-Api-Key": "[REDACTED]", "webhook_secret": "[REDACTED]", "Reset_Token": "[REDACTED]", "csrf_token": "[REDACTED]", "Authorization": "[REDACTED]", "Cookie": "[REDACTED]", "session_id": "[REDACTED]", "hub_signature": "[REDACTED]", "passwd": "[REDACTED]", "apikey": "[REDACTED]", "note": "n"}},
-		{"nested map", map[string]interface{}{"outer": map[string]interface{}{"token": "S", "keep": 1}},
-			map[string]interface{}{"outer": map[string]interface{}{"token": "[REDACTED]", "keep": 1}}},
-		{"nested fiber.Map", map[string]interface{}{"outer": fiber.Map{"secret": "S", "reason": "r"}},
-			map[string]interface{}{"outer": map[string]interface{}{"secret": "[REDACTED]", "reason": "r"}}},
-		{"nested string map", map[string]interface{}{"hdr": map[string]string{"Authorization": "S", "ua": "u"}},
-			map[string]interface{}{"hdr": map[string]string{"Authorization": "[REDACTED]", "ua": "u"}}},
-		{"slice of maps", map[string]interface{}{"items": []interface{}{map[string]interface{}{"api_key": "S", "n": 1}, "plain"}},
-			map[string]interface{}{"items": []interface{}{map[string]interface{}{"api_key": "[REDACTED]", "n": 1}, "plain"}}},
-		{"typed slice of maps", map[string]interface{}{"items": []map[string]interface{}{{"token": "S"}}},
-			map[string]interface{}{"items": []map[string]interface{}{{"token": "[REDACTED]"}}}},
+		{"flat", map[string]any{"password": "S", "reason": "r"},
+			map[string]any{"password": "[REDACTED]", "reason": "r"}},
+		{"mixed case and separators", map[string]any{"Password": "S", "X-Api-Key": "S", "webhook_secret": "S", "Reset_Token": "S", "csrf_token": "S", "Authorization": "S", "Cookie": "S", "session_id": "S", "hub_signature": "S", "passwd": "S", "apikey": "S", "note": "n"},
+			map[string]any{"Password": "[REDACTED]", "X-Api-Key": "[REDACTED]", "webhook_secret": "[REDACTED]", "Reset_Token": "[REDACTED]", "csrf_token": "[REDACTED]", "Authorization": "[REDACTED]", "Cookie": "[REDACTED]", "session_id": "[REDACTED]", "hub_signature": "[REDACTED]", "passwd": "[REDACTED]", "apikey": "[REDACTED]", "note": "n"}},
+		{"nested map", map[string]any{"outer": map[string]any{"token": "S", "keep": 1}},
+			map[string]any{"outer": map[string]any{"token": "[REDACTED]", "keep": 1}}},
+		{"nested fiber.Map", map[string]any{"outer": fiber.Map{"secret": "S", "reason": "r"}},
+			map[string]any{"outer": map[string]any{"secret": "[REDACTED]", "reason": "r"}}},
+		{"nested string map", map[string]any{"hdr": map[string]string{"Authorization": "S", "ua": "u"}},
+			map[string]any{"hdr": map[string]string{"Authorization": "[REDACTED]", "ua": "u"}}},
+		{"slice of maps", map[string]any{"items": []any{map[string]any{"api_key": "S", "n": 1}, "plain"}},
+			map[string]any{"items": []any{map[string]any{"api_key": "[REDACTED]", "n": 1}, "plain"}}},
+		{"typed slice of maps", map[string]any{"items": []map[string]any{{"token": "S"}}},
+			map[string]any{"items": []map[string]any{{"token": "[REDACTED]"}}}},
+		{"struct", map[string]any{"c": auditCreds{User: "u", WebhookSecret: "S", Password: "S"}},
+			map[string]any{"c": redactedCreds}},
+		{"pointer to struct", map[string]any{"c": ptr},
+			map[string]any{"c": redactedCreds}},
+		{"struct nested in map", map[string]any{"outer": map[string]any{"c": auditCreds{User: "u", WebhookSecret: "S", Password: "S"}}},
+			map[string]any{"outer": map[string]any{"c": redactedCreds}}},
+		{"slice of structs", map[string]any{"cs": []auditCreds{{User: "u", WebhookSecret: "S", Password: "S"}}},
+			map[string]any{"cs": []any{redactedCreds}}},
+		{"large int kept exact", map[string]any{"c": struct{ N uint64 }{1<<63 + 1}},
+			map[string]any{"c": map[string]any{"N": json.Number("9223372036854775809")}}},
+		{"unmarshalable value", map[string]any{"ch": make(chan int), "reason": "r"},
+			map[string]any{"ch": "[UNSERIALIZABLE]", "reason": "r"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Snapshot the input to prove it is not modified; skipped when the
+			// input itself cannot be marshalled (the chan row).
 			var before []byte
 			if tt.in != nil {
-				before, _ = json.Marshal(tt.in)
+				if b, err := json.Marshal(tt.in); err == nil {
+					before = b
+				}
 			}
 			got := redactDetails(tt.in)
 			assert.Equal(t, tt.want, got)
-			if tt.in != nil {
+			if before != nil {
 				after, _ := json.Marshal(tt.in)
 				assert.JSONEq(t, string(before), string(after), "caller's map must not be modified")
 			}
+			assert.Equal(t, "S", ptr.WebhookSecret, "caller's struct must not be modified")
 		})
 	}
 }
 
 func TestAuditLog_RedactsSensitiveDetails(t *testing.T) {
-	const s1, s2, s3 = "SENTINEL_AUDIT_ONE", "SENTINEL_AUDIT_TWO", "SENTINEL_AUDIT_THREE"
-	newDetails := func() map[string]interface{} {
-		return map[string]interface{}{
+	const s1, s2, s3, s4, s5, s6 = "SENTINEL_AUDIT_ONE", "SENTINEL_AUDIT_TWO", "SENTINEL_AUDIT_THREE", "SENTINEL_AUDIT_FOUR", "SENTINEL_AUDIT_FIVE", "SENTINEL_AUDIT_SIX"
+	newDetails := func() map[string]any {
+		return map[string]any{
 			"reason":         "kept-reason",
 			"webhook_secret": s1,
 			"nested":         fiber.Map{"X-Api-Key": s2, "ok": "kept-nested"},
-			"list":           []interface{}{map[string]interface{}{"reset_token": s3}},
+			"list":           []any{map[string]any{"reset_token": s3}},
+			"struct":         auditCreds{User: "kept-struct", WebhookSecret: s4},
+			"ptr":            &auditCreds{User: "kept-ptr", Password: s5},
+			"deep":           map[string]any{"c": auditCreds{WebhookSecret: s6}},
 		}
 	}
 
@@ -121,10 +148,10 @@ func TestAuditLog_RedactsSensitiveDetails(t *testing.T) {
 		require.NoError(t, database.DB.Where("action = ?", action).First(&audit).Error)
 		assert.Contains(t, audit.Details, "kept-reason")
 		assert.Contains(t, audit.Details, "[REDACTED]")
-		for _, s := range []string{s1, s2, s3} {
+		for _, s := range []string{s1, s2, s3, s4, s5, s6} {
 			assert.NotContains(t, audit.Details, s, "stored Details")
 		}
-		requireNoSecrets(t, buf, s1, s2, s3)
+		requireNoSecrets(t, buf, s1, s2, s3, s4, s5, s6)
 	}
 
 	t.Run("AuditLog", func(t *testing.T) {

@@ -25,6 +25,27 @@ func TestHandleWebhook_NotFound(t *testing.T) {
 	assert.Equal(t, 404, resp.StatusCode)
 }
 
+// A non-numeric id must 404 without reaching GORM: First(&x, "<string>") would
+// otherwise treat it as raw SQL (id>0 matches any existing row).
+func TestHandleWebhook_NonNumericID(t *testing.T) {
+	defer cleanupTestData(t)
+
+	user := createTestUser(t, "webhookuser-nonnum")
+	database.DB.Create(&models.NomadResource{
+		Name: "webhook-nonnum", Type: models.ResourceTypePack, UserID: user.ID, WebhookSecret: "s",
+	})
+
+	app := setupTestApp()
+	app.Post("/webhook/:id", HandleWebhook)
+
+	for _, id := range []string{"id>0", "abc", "1=1"} {
+		req := httptest.NewRequest("POST", "/webhook/"+id+"?secret=s", nil)
+		resp, err := app.Test(req)
+		assert.NoError(t, err)
+		assert.Equal(t, 404, resp.StatusCode, id)
+	}
+}
+
 func TestHandleWebhook_InvalidSecret(t *testing.T) {
 	defer cleanupTestData(t)
 

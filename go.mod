@@ -1,6 +1,6 @@
 module rmbl
 
-go 1.26.1
+go 1.27.2
 
 require (
 	code.dny.dev/ssrf v0.2.0
@@ -11,6 +11,7 @@ require (
 	github.com/gofiber/swagger v1.1.1
 	github.com/gofiber/template/html/v2 v2.1.3
 	github.com/hashicorp/hcl/v2 v2.24.0
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/markbates/goth v1.82.0
 	github.com/rs/zerolog v1.34.0
 	github.com/shareed2k/goth_fiber v0.3.3
@@ -19,6 +20,7 @@ require (
 	github.com/swaggo/swag v1.16.6
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
+	github.com/valyala/fasthttp v1.71.0
 	golang.org/x/crypto v0.57.0
 	golang.org/x/sync v0.23.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -72,7 +74,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/pgx/v5 v5.9.2 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
@@ -105,7 +106,6 @@ require (
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
 	github.com/tklauser/numcpus v0.12.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	github.com/valyala/fasthttp v1.71.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zclconf/go-cty v1.17.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

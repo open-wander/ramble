@@ -53,7 +53,7 @@ func TestReqDB_QueryErrorCarriesRequestID(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 
 	var found bool
-	for _, line := range bytes.Split(bytes.TrimSpace(reqBuf.Bytes()), []byte("\n")) {
+	for line := range bytes.SplitSeq(bytes.TrimSpace(reqBuf.Bytes()), []byte("\n")) {
 		var m map[string]any
 		if json.Unmarshal(line, &m) != nil {
 			continue
@@ -94,7 +94,7 @@ func TestRequestChain_QueryErrorSharesRequestIDWithAccessLine(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		var nAccess, nErr int
-		for _, line := range bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n")) {
+		for line := range bytes.SplitSeq(bytes.TrimSpace(buf.Bytes()), []byte("\n")) {
 			var m map[string]any
 			require.NoError(t, json.Unmarshal(line, &m), "non-JSON line: %s", line)
 			switch m[zerolog.MessageFieldName] {

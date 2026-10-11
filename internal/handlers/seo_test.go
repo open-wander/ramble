@@ -123,7 +123,7 @@ func TestGetResourceSEO_LongDescription(t *testing.T) {
 
 	// Create a very long description
 	longDesc := ""
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		longDesc += "This is a very long description. "
 	}
 

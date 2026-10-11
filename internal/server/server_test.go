@@ -2,9 +2,13 @@ package server
 
 import (
 	"fmt"
+	"io"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 // Template helper function tests
@@ -12,11 +16,11 @@ import (
 
 func TestDictFunction_Valid(t *testing.T) {
 	// Recreate the dict function logic for testing
-	dictFunc := func(values ...interface{}) (map[string]interface{}, error) {
+	dictFunc := func(values ...any) (map[string]any, error) {
 		if len(values)%2 != 0 {
 			return nil, fmt.Errorf("invalid dict call")
 		}
-		dict := make(map[string]interface{}, len(values)/2)
+		dict := make(map[string]any, len(values)/2)
 		for i := 0; i < len(values); i += 2 {
 			key, ok := values[i].(string)
 			if !ok {
@@ -41,11 +45,11 @@ func TestDictFunction_Valid(t *testing.T) {
 }
 
 func TestDictFunction_OddValues(t *testing.T) {
-	dictFunc := func(values ...interface{}) (map[string]interface{}, error) {
+	dictFunc := func(values ...any) (map[string]any, error) {
 		if len(values)%2 != 0 {
 			return nil, fmt.Errorf("invalid dict call")
 		}
-		dict := make(map[string]interface{}, len(values)/2)
+		dict := make(map[string]any, len(values)/2)
 		for i := 0; i < len(values); i += 2 {
 			key, ok := values[i].(string)
 			if !ok {
@@ -63,11 +67,11 @@ func TestDictFunction_OddValues(t *testing.T) {
 }
 
 func TestDictFunction_NonStringKey(t *testing.T) {
-	dictFunc := func(values ...interface{}) (map[string]interface{}, error) {
+	dictFunc := func(values ...any) (map[string]any, error) {
 		if len(values)%2 != 0 {
 			return nil, fmt.Errorf("invalid dict call")
 		}
-		dict := make(map[string]interface{}, len(values)/2)
+		dict := make(map[string]any, len(values)/2)
 		for i := 0; i < len(values); i += 2 {
 			key, ok := values[i].(string)
 			if !ok {
@@ -85,11 +89,11 @@ func TestDictFunction_NonStringKey(t *testing.T) {
 }
 
 func TestDictFunction_Empty(t *testing.T) {
-	dictFunc := func(values ...interface{}) (map[string]interface{}, error) {
+	dictFunc := func(values ...any) (map[string]any, error) {
 		if len(values)%2 != 0 {
 			return nil, fmt.Errorf("invalid dict call")
 		}
-		dict := make(map[string]interface{}, len(values)/2)
+		dict := make(map[string]any, len(values)/2)
 		for i := 0; i < len(values); i += 2 {
 			key, ok := values[i].(string)
 			if !ok {
@@ -258,3 +262,43 @@ func TestSessionInvalidatedOnPasswordChange(t *testing.T) {
 var _ = fmt.Sprintf
 var _ = strings.ToUpper
 var _ = time.Now
+
+func TestIsWebhookRequest(t *testing.T) {
+	app := fiber.New()
+	app.All("/*", func(c *fiber.Ctx) error {
+		return c.SendString(fmt.Sprint(isWebhookRequest(c)))
+	})
+
+	tests := []struct {
+		method, path string
+		want         bool
+	}{
+		{"POST", "/resource/42/webhook", true},
+		{"POST", "/webhooks/github/issues", true},
+		{"POST", "/resource/42/webhook/reset", false},
+		{"POST", "/login", false},
+		{"GET", "/resource/42/webhook", false},
+		{"GET", "/webhooks/github/issues", false},
+		{"POST", "/resource/abc/webhook", false},
+		{"POST", "/resource/id%3E0/webhook", false},
+		{"POST", "/resource//webhook", false},
+		{"POST", "/xresource/1/webhook", false},
+		// Fiber routes these to the handler, but they stay under CSRF (fails closed).
+		{"POST", "/resource/42/webhook/", false},
+		{"POST", "/webhooks/github/issues/", false},
+		{"POST", "/webhooks/github/issues/x", false},
+		{"POST", "/Webhooks/github/issues", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			resp, err := app.Test(httptest.NewRequest(tt.method, tt.path, nil))
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, _ := io.ReadAll(resp.Body)
+			if got := string(b) == "true"; got != tt.want {
+				t.Errorf("isWebhookRequest(%s %s) = %v, want %v", tt.method, tt.path, got, tt.want)
+			}
+		})
+	}
+}

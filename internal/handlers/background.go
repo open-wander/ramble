@@ -158,7 +158,7 @@ func fetchVersionContent(ctx context.Context, resID uint, versionStr, repoURL, r
 	now := time.Now()
 	database.DB.WithContext(ctx).Model(&models.ResourceVersion{}).
 		Where("resource_id = ? AND version = ?", resID, versionStr).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"fetch_status":     models.FetchStatusFetching,
 			"fetch_started_at": now,
 		})
@@ -250,7 +250,7 @@ func fetchVersionContent(ctx context.Context, resID uint, versionStr, repoURL, r
 	now = time.Now()
 	database.DB.WithContext(ctx).Model(&models.ResourceVersion{}).
 		Where("resource_id = ? AND version = ?", resID, versionStr).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"readme":             readme,
 			"content":            content,
 			"variables":          variablesJSON,

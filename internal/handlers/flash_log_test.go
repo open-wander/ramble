@@ -47,7 +47,7 @@ func TestSetFlash_SaveFailureLogsWithRequestID(t *testing.T) {
 	resp.Body.Close()
 
 	var found bool
-	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
 		var m map[string]any
 		if err := json.Unmarshal([]byte(line), &m); err != nil {
 			t.Fatalf("non-JSON log line %q: %v", line, err)

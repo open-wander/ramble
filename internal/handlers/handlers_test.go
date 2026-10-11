@@ -38,11 +38,11 @@ func setupTestApp() *fiber.App {
 	engine := html.New("../../views", ".html")
 
 	// Add required functions
-	engine.AddFunc("dict", func(values ...interface{}) (map[string]interface{}, error) {
+	engine.AddFunc("dict", func(values ...any) (map[string]any, error) {
 		if len(values)%2 != 0 {
 			return nil, fmt.Errorf("invalid dict call")
 		}
-		dict := make(map[string]interface{}, len(values)/2)
+		dict := make(map[string]any, len(values)/2)
 		for i := 0; i < len(values); i += 2 {
 			key, ok := values[i].(string)
 			if !ok {
@@ -98,7 +98,12 @@ func TestSignupAndLogin(t *testing.T) {
 
 	// 1. Test Signup (using strong password meeting all requirements)
 	username := fmt.Sprintf("user%d", os.Getpid()) // Unique username per run if needed
-	strongPassword := "SecurePass123!"             // Meets all requirements: 12+ chars, upper, lower, number, special
+	t.Cleanup(func() {
+		if err := database.DB.Exec("DELETE FROM users WHERE username = ?", username).Error; err != nil {
+			t.Errorf("cleanup user: %v", err)
+		}
+	})
+	strongPassword := "SecurePass123!" // Meets all requirements: 12+ chars, upper, lower, number, special
 	payload := strings.NewReader(fmt.Sprintf("username=%s&name=Test+User&email=%s@example.com&password=%s", username, username, strongPassword))
 	req := httptest.NewRequest("POST", "/signup", payload)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

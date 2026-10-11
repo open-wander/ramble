@@ -1,11 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -20,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -45,6 +51,33 @@ func (s *syncBuffer) String() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.b.String()
+}
+
+// trackAssets opens every file under views and public. The child binary reads
+// them, but the go test cache only records files the test process itself
+// opens, so without this an edited template would still give a cached pass.
+func trackAssets(t *testing.T, repoRoot string) {
+	t.Helper()
+	files := 0
+	for _, dir := range []string{"views", "public"} {
+		err := filepath.WalkDir(filepath.Join(repoRoot, dir), func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			f, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			files++
+			return f.Close()
+		})
+		if err != nil {
+			t.Fatalf("track %s: %v", dir, err)
+		}
+	}
+	if files == 0 {
+		t.Fatal("no files found under views and public; repo root is wrong")
+	}
 }
 
 type e2eRequest struct {
@@ -114,6 +147,7 @@ func TestE2EProductionLogging(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	trackAssets(t, repoRoot)
 
 	// Free port.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -122,6 +156,11 @@ func TestE2EProductionLogging(t *testing.T) {
 	}
 	portStr := strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
 	_ = ln.Close()
+
+	// The secrets double as leak sentinels: they must never appear in output.
+	sentinel := "e2esentinel" + randHex(t)
+	resSecret := "e2eressecret" + randHex(t)
+	ghSecret := "e2eghsecret" + randHex(t)
 
 	var stdout, stderr syncBuffer
 	// Explicit env: an inherited DATABASE_URL or SENTRY_DSN would change behaviour.
@@ -137,6 +176,7 @@ func TestE2EProductionLogging(t *testing.T) {
 		"DB_SSLMODE=disable", // production defaults to require; the container has no TLS
 		"BASE_URL=https://example.test",
 		"TRUSTED_PROXIES=127.0.0.1/32",
+		"GITHUB_WEBHOOK_SECRET=" + ghSecret,
 		"PATH=" + os.Getenv("PATH"),
 		"HOME=" + os.Getenv("HOME"),
 		"TMPDIR=" + os.TempDir(),
@@ -185,8 +225,10 @@ func TestE2EProductionLogging(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
+	// Seed a resource with a known webhook secret (migrations have run by now).
+	resID := seedResource(t, net.JoinHostPort(dbHost, dbPort.Port()), dbUser, dbPass, dbName, resSecret)
+
 	// Requests.
-	sentinel := "e2esentinel" + randHex(t)
 	client := &http.Client{
 		Timeout:       10 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
@@ -215,6 +257,25 @@ func TestE2EProductionLogging(t *testing.T) {
 		return resp.StatusCode
 	}
 
+	doRaw := func(name, path string, body []byte, hdr map[string]string) int {
+		t.Helper()
+		req, err := http.NewRequest("POST", base+path, bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("X-Forwarded-Proto", "https")
+		for k, v := range hdr {
+			req.Header.Set(k, v)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("%s: %v\n%s", name, err, dump())
+		}
+		_ = resp.Body.Close()
+		reqs = append(reqs, e2eRequest{name, resp.Header.Get("X-Request-ID"), resp.StatusCode})
+		return resp.StatusCode
+	}
+
 	if s := do("home", "GET", "/", nil, nil); s != 200 {
 		t.Errorf("GET / = %d, want 200\n%s", s, dump())
 	}
@@ -224,13 +285,95 @@ func TestE2EProductionLogging(t *testing.T) {
 	if s := do("query", "GET", "/?token="+sentinel+"&q="+sentinel, nil, nil); s != 200 {
 		t.Errorf("GET /?token= = %d, want 200\n%s", s, dump())
 	}
-	// CSRF rejects this before the handler; the log line must still be JSON.
-	if s := do("login", "POST", "/login", url.Values{"username": {"x"}, "password": {sentinel}}, nil); s < 400 || s > 499 {
-		t.Errorf("POST /login = %d, want 4xx", s)
+	// A normal form route without a CSRF token must still be rejected by CSRF (exactly 403).
+	if s := do("login", "POST", "/login", url.Values{"username": {"x"}, "password": {sentinel}}, nil); s != 403 {
+		t.Errorf("POST /login = %d, want 403", s)
 	}
-	// Also stopped by CSRF today, so only the log guarantees are asserted.
-	do("webhook", "POST", "/webhooks/github/issues", url.Values{"payload": {"{}"}},
-		map[string]string{"X-Hub-Signature-256": "sha256=deadbeef"})
+
+	// Resource webhook, HMAC + timestamp, no event headers (no remote fetch).
+	resPath := "/resource/" + strconv.FormatUint(resID, 10) + "/webhook"
+	body := []byte(`{}`)
+	signedHdr := func(secret string) map[string]string {
+		ts := strconv.FormatInt(time.Now().Unix(), 10)
+		return map[string]string{
+			"X-Webhook-Timestamp": ts,
+			"X-Hub-Signature-256": hmacSig(secret, ts+"."+string(body)),
+			"Content-Type":        "application/json",
+		}
+	}
+	if s := doRaw("webhook-signed", resPath, body, signedHdr(resSecret)); s < 200 || s > 299 {
+		t.Errorf("signed resource webhook = %d, want 2xx\n%s", s, dump())
+	}
+	if s := doRaw("webhook-bad-signature", resPath, body, signedHdr("wrong-secret")); s != 401 {
+		t.Errorf("badly signed resource webhook = %d, want 401 from the handler\n%s", s, dump())
+	}
+
+	// GitHub issue webhook in the signature-only form GitHub sends.
+	if s := doRaw("github-signed", "/webhooks/github/issues", body, map[string]string{
+		"X-Hub-Signature-256": hmacSig(ghSecret, string(body)),
+		"X-GitHub-Event":      "ping",
+		"Content-Type":        "application/json",
+	}); s != 200 {
+		t.Errorf("signed github webhook = %d, want 200\n%s", s, dump())
+	}
+	if s := do("github-bad-signature", "POST", "/webhooks/github/issues", url.Values{"payload": {"{}"}},
+		map[string]string{"X-Hub-Signature-256": "sha256=deadbeef"}); s != 401 {
+		t.Errorf("badly signed github webhook = %d, want 401 from the handler\n%s", s, dump())
+	}
+
+	// The reset route is a logged-in form action and must keep CSRF.
+	if s := do("webhook-reset", "POST", resPath+"/reset", nil, nil); s != 403 {
+		t.Errorf("POST %s/reset = %d, want 403", resPath, s)
+	}
+
+	// SQL injection through id path params must 404 without running the payload.
+	// Go's client sends '>' as %3E, so the literal form goes over a raw socket.
+	// A non-numeric id fails the <int> route constraint and falls through to the
+	// catch-all /:username/:resourcename (user "requests" does not exist), which is
+	// what answers 404 for the /requests/ URLs; /resource/abc/fetch-readme matches
+	// no route at all.
+	rawGet := func(name, requestTarget string) int {
+		t.Helper()
+		conn, err := net.DialTimeout("tcp", "127.0.0.1:"+portStr, 5*time.Second)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		defer conn.Close()
+		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		if _, err := fmt.Fprintf(conn, "GET %s HTTP/1.1\r\nHost: x\r\nX-Forwarded-Proto: https\r\nConnection: close\r\n\r\n", requestTarget); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+		if err != nil {
+			t.Fatalf("%s: %v\n%s", name, err, dump())
+		}
+		_ = resp.Body.Close()
+		reqs = append(reqs, e2eRequest{name, resp.Header.Get("X-Request-ID"), resp.StatusCode})
+		return resp.StatusCode
+	}
+	for _, tc := range []struct {
+		name string
+		get  func() int
+	}{
+		{"inject-gt-escaped", func() int { return do("inject-gt-escaped", "GET", "/requests/id>0", nil, nil) }},
+		{"inject-gt-literal", func() int { return rawGet("inject-gt-literal", "/requests/id>0") }},
+		{"inject-or-literal", func() int { return rawGet("inject-or-literal", "/requests/1%20or%201=1") }},
+		{"inject-sleep", func() int { return do("inject-sleep", "GET", "/requests/(select(pg_sleep(5)))is(null)", nil, nil) }},
+		{"inject-sleep-literal", func() int { return rawGet("inject-sleep-literal", "/requests/(select(pg_sleep(5)))is(null)") }},
+		{"inject-readme", func() int { return do("inject-readme", "GET", "/resource/abc/fetch-readme", nil, nil) }},
+		{"inject-readme-sleep", func() int {
+			return rawGet("inject-readme-sleep", "/resource/(select(pg_sleep(5)))is(null)/fetch-readme")
+		}},
+	} {
+		start := time.Now()
+		s := tc.get()
+		if elapsed := time.Since(start); elapsed > 3*time.Second {
+			t.Errorf("%s took %v; the payload may have run (pg_sleep(5))", tc.name, elapsed)
+		}
+		if s != 404 {
+			t.Errorf("%s = %d, want 404\n%s", tc.name, s, dump())
+		}
+	}
 
 	// Stop: SIGTERM, then kill. The exit code is not asserted (no graceful handler).
 	_ = cmd.Process.Signal(syscall.SIGTERM)
@@ -250,15 +393,17 @@ func TestE2EProductionLogging(t *testing.T) {
 		if strings.Contains(s, "\x1b[") {
 			t.Errorf("%s contains ANSI escapes:\n%s", name, s)
 		}
-		if strings.Contains(s, sentinel) {
-			t.Errorf("%s leaks the sentinel secret:\n%s", name, s)
+		for _, secret := range []string{sentinel, resSecret, ghSecret} {
+			if strings.Contains(s, secret) {
+				t.Errorf("%s leaks a secret:\n%s", name, s)
+			}
 		}
 	}
 
 	seen := map[string]bool{}
 	httpLines := map[string]int{} // request_id -> count
 	httpTotal := 0
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -290,6 +435,12 @@ func TestE2EProductionLogging(t *testing.T) {
 		}
 	}
 
+	// Rejections must come from the handlers (log keys), not from CSRF.
+	for _, want := range []string{"webhook.validated", "webhook.validation_failed", "webhook.signature_invalid"} {
+		if !seen[want] {
+			t.Errorf("handler line %q missing from stdout:\n%s", want, out)
+		}
+	}
 	for _, want := range []string{"db.connected", "db.migrate_completed", "server.started"} {
 		if !seen[want] {
 			t.Errorf("startup line %q missing from stdout:\n%s", want, out)
@@ -316,4 +467,36 @@ func randHex(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return hex.EncodeToString(b)
+}
+
+func hmacSig(secret, payload string) string {
+	h := hmac.New(sha256.New, []byte(secret))
+	h.Write([]byte(payload))
+	return "sha256=" + hex.EncodeToString(h.Sum(nil))
+}
+
+// seedResource inserts a user and a resource with the given webhook secret into
+// the migrated schema and returns the resource id.
+func seedResource(t *testing.T, hostPort, user, pass, name, secret string) uint64 {
+	t.Helper()
+	dsn := "postgres://" + user + ":" + pass + "@" + hostPort + "/" + name + "?sslmode=disable"
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open seed db: %v", err)
+	}
+	defer db.Close()
+	var userID uint64
+	if err := db.QueryRow(`INSERT INTO users (created_at, updated_at, username, email) VALUES (now(), now(), 'e2eowner', 'e2eowner@example.test') RETURNING id`).Scan(&userID); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	var id uint64
+	if err := db.QueryRow(`INSERT INTO nomad_resources (created_at, updated_at, name, type, webhook_secret, user_id) VALUES (now(), now(), 'e2e-res', 'pack', $1, $2) RETURNING id`, secret, userID).Scan(&id); err != nil {
+		t.Fatalf("seed resource: %v", err)
+	}
+	// A pack_requests row, so an injected id predicate has a row to evaluate
+	// against: on an empty table Postgres may never run pg_sleep.
+	if _, err := db.Exec(`INSERT INTO pack_requests (created_at, updated_at, title, user_id) VALUES (now(), now(), 'e2e-req', $1)`, userID); err != nil {
+		t.Fatalf("seed request: %v", err)
+	}
+	return id
 }

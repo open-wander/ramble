@@ -363,3 +363,230 @@ get 403 before the handler runs. Not fixed here - reported to the user.
 
 PATTERN: e2e - an end-to-end run of the real binary finds what unit tests with hand-built
 apps cannot (here: middleware order blocking webhooks entirely).
+
+## 2026-10-11 — Phase 9 started; 9.3 staticcheck findings
+
+Phase 9 scope: webhook CSRF bug (8.4 finding), review debt from Phases 6-8, staticcheck
+(latest via go run; installed binary too old for go1.26), go fix modernizers, Go 1.27 bump
+(user request, 9.8). gosec clean.
+9.3: pages.go titleWords replaces deprecated strings.Title; TestGetPageTitle written and
+passing against the old code first. Orchestrator mutation ToTitle -> ToLower red. Suite ok.
+
+PATTERN: tooling - the installed staticcheck (go1.25 build) cannot load go1.26+ modules;
+use `go run honnef.co/go/tools/cmd/staticcheck@latest ./...`.
+
+## 2026-10-11 — 9.2 dead code and test-only wrappers
+
+Deleted: validateGitHubSignature (duplicate of github.ValidateWebhookSignature),
+setupAuthenticatedApp (unused test helper), SyncGitHubToRequest + syncGitHubToRequest (no
+callers), and the database.DB wrappers only tests used (processOAuthUser, handleNewIssue,
+handleIssueStateChange, GetPopularTags). Tests now call processOAuthUserDB, handleNewIssueDB,
+handleIssueStateChangeDB, popularTags(database.DB); TestGetPopularTags_* renamed
+TestPopularTags_* by the orchestrator.
+isAllowedContentType (added 9c5135f, never called) DELETED rather than wired, because:
+(1) downloaded content is never served to a client with the remote Content-Type - it is
+parsed as HCL, stored as a string, or HTML-escaped - so the header adds no security; the
+SSRF host allowlist and the 1 MiB read cap already bound the download; (2) downloadFile
+builds its client and hosts internally, so wiring it testably needs a new seam;
+(3) GitLab raw files go through Workhorse and can return application/octet-stream or
+sniffed types, and the case-sensitive prefix check would reject valid responses.
+
+## 2026-10-11 — 9.1 webhook CSRF exemption; SQL injection found (9.0)
+
+9.1: server.go isWebhookRequest (POST + exact path, resource id digits only via regexp) as
+csrf Next; HandleWebhook parses the id with ParseUint before querying. e2e seeds a user and
+resource with a sentinel webhook secret via database/sql (pgx stdlib, now a direct dep) and
+proves signed resource and GitHub webhooks reach their handlers, bad signatures get the
+handler's 401, /login without a token gets 403. Orchestrator mutations: predicate false ->
+unit + e2e red (403 on signed webhooks, i.e. the original bug); predicate true -> unit red;
+ParseUint removed -> TestHandleWebhook_NonNumericID red.
+SECURITY (advisor on 9.1, confirmed by the orchestrator with a DryRun probe): GORM's
+First(&x, idString) treats a non-numeric string as a raw WHERE condition
+(statement.go BuildCondition). ~30 handlers pass c.Params("id") strings. Public:
+GET /requests/:id, GET /resource/:id/fetch-readme; the rest need a login (open registration)
+or admin. Loki (~14 days, ramble + traefik JSON and CLF) shows no probes. Since ~January.
+User chose to fix it as 9.0 inside Phase 9's PR.
+
+PATTERN: gorm - never pass a request string as the primary-key argument of First/Find/
+Delete/Take; parse to uint first or constrain the route (:id<int>). GORM only treats the
+string as a key if strconv.Atoi succeeds; otherwise it is raw SQL.
+PATTERN: review - exempting a route from a middleware (CSRF) can remove an accidental
+guard; check what the handler does with untrusted input before widening exposure.
+
+## 2026-10-11 — 9.0 SQL injection fixed
+
+internal/handlers/params.go: paramID(c, name) -> parseID(s): ParseUint base 10, 64-bit,
+rejects 0. All 31 id-like c.Params sites (28 "id", 3 "member_id", 1 "org_id"; admin 16,
+requests 6, web FetchReadme, resource_crud 5, resource_social, resource_webhooks 2, org 1)
+use it and return their existing not-found response. registerRoutes(app) extracted from
+Run (static files through catch-all, limiters, dev route); 30 params carry <int>.
+Guards: TestRegisterRoutes_IDParamsAreIntConstrained (route table), TestParamsIDOnlyInParamID
+(AST; flags id-like literal, non-literal names, ParamsInt, AllParams outside paramID),
+TestIDHandlers_RejectInjectionPayloads (8 handlers incl. two-param admin routes, payloads
+id>0 / 1 or 1=1 / pg_sleep / -1 / +1 / abc, GORM capture at 1ns threshold, payload never in
+SQL), TestIDHandlers_BadIDIs404BeforeAnyWork, e2e probes (404, fast). Before the fix the
+handler test showed WHERE id>0 returning a row.
+Orchestrator: suite, gosec and staticcheck clean; mutations <int> dropped -> route guard red;
+GetRequest back to raw string -> AST guard + injection test red; zero accepted ->
+TestParamID/0 red. Orchestrator tidy: parseID extracted so TestParamID tests the parse
+directly (the " 1" and "" rows previously never reached the handler); dead valid/control
+case fields removed; section comments fixed.
+Review notes: scanParamsCalls inspects FuncDecl bodies only (package-level func literals
+not covered; none exist); idLike/idParamName duplicated across two test packages; /requests/abc
+now 404s via the catch-all falling through -> 9.9 (no reserved usernames).
+
+## 2026-10-11 — 9.8 Go 1.27
+
+User request. go 1.26.1 -> 1.27.2 (latest; 1.26.9 still supported), golang:1.27-bookworm,
+setup-go 1.27.x in ci, release and security-nightly. GOTOOLCHAIN=auto switched the local
+toolchain to 1.27.2. go test -tags=security ./..., govulncheck (latest; vulns present in
+required modules but none called), gosec clean; `docker build --target builder` ok.
+Not done (offered to the user): `go get -u` dependency refresh; pinning alpine:latest.
+
+## 2026-10-11 — 9.6 coverage gaps
+
+TestConnectMigrateFailed: SetupTestDB, users table replaced by a view -> AutoMigrate fails
+(42P07); asserts exit codes [1], ERROR db.migrate_failed with error, no migrate_completed.
+Orchestrator fix: restore the caller's DB handle (SetupTestDB had left database.DB pointing
+at the closed test handle). e2e trackAssets opens every file under views/ and public/ in the
+test process. Note: in practice the e2e test is never served from the go test cache here
+(two consecutive runs both executed), so the stale-cache risk was not observed; trackAssets
+is kept as cheap insurance. msgkey guard now rejects stdlib log.Print*/Fatal*/Panic* in
+server code. Orchestrator mutations: exit(1) removed on migrate branch -> red; log.Printf
+added to a handler -> guard red. Advisor PASS.
+
+## 2026-10-11 — 9.4 outer panic backstop, Sentry scrub, update-check predicate
+
+server.go useOuterMiddleware(app, base, withSentry): recoverOuter first (logs http.panic
+with outer=true via the base logger, returns 500), then sentryfiber. Advisor REVISE: with
+Repanic:false sentryfiber swallowed middleware panics as a 200 with no log line, so it is
+now Repanic:true; handler panics are recovered inside by recoverPanics and reported once.
+sentryOptions(dsn, env, release) sets BeforeSend: scrubSentryEvent (QueryString, URL
+?/#, Cookies, Data cleared; Authorization, Cookie, X-Hub-Signature-256, X-Webhook-Timestamp
+removed case-insensitively). Tests go through a capture Transport, not a test BeforeSend.
+root.go wantsUpdateCheck compares versionCmd/serverCmd by pointer; help matched as the
+root's direct child (rootCmd itself would be an init cycle).
+Orchestrator: TestOuterBackstop now panics only on /boom and checks a follow-up /ok
+succeeds (the /ok route was dead). Mutations: Repanic false -> with_sentry red; BeforeSend
+removed -> TestSentryEventsCarryNoRequestSecrets red; name compare -> nested_server red.
+
+## 2026-10-11 — 9.5 handler and test debt
+
+audit.go redactValue sends any other composite through redactComposite (marshal, decode
+with UseNumber so big ints stay exact, recurse); unmarshalable values -> "[UNSERIALIZABLE]";
+caller's value untouched. fetch_log_test.go: follow-up lookup assertions folded into
+TestHandleWebhook_FetchLogsCarryRequestID. New internal/testutil/logtest (Lines, Find; imports
+nothing under rmbl) replaces the logLines copies in server, logger and handlers tests; note
+Lines fails on non-JSON lines where the old handlers copy skipped them. email sendSecrets adds
+url.QueryEscape/PathEscape of the link and token values.
+Orchestrator: fixed a stale logLines call in TestOuterBackstop (added after 9.5's worktree was
+cut), moved the logtest import into the rmbl group in five files, replaced a name-matched
+skip in TestRedactDetails with a marshal-error check. Mutations: composite fallback removed
+-> struct rows red; encoded secrets removed -> two encoded-echo rows red; follow-up First
+without WithContext -> merged webhook test red. Suite ok.
+
+## 2026-10-11 — 9.9 reserved usernames and org names
+
+internal/handlers/reserved_names.go IsReservedName; enforced in PostSignup, PostCreateOrg,
+admin PostEditUser/PostEditOrganization (only when the name changes case-insensitively),
+and processOAuthUserDB (reserved base -> base-1..base-20, skipping reserved and taken names
+by exact LOWER() equality). TestRegisterRoutes_TopLevelSegmentsAreReserved derives the
+required list from registerRoutes (ENV=test so the dev route is included).
+Not changed: database.SeedInitialUser (operator-chosen; config.example.yml defaults to "admin").
+Existing offenders: SELECT id, username FROM users WHERE lower(username) IN (...);
+SELECT id, name FROM organizations WHERE lower(name) IN (...); (add deleted_at IS NULL).
+Orchestrator: suite ok (one testcontainers startup timeout in internal/services/resource on the
+full run, passed on re-run - infrastructure, not code); mutations: "requests" dropped -> router
+guard red; signup check bypassed -> TestPostSignup_ReservedUsername red.
+Review follow-ups -> 9.10: ordinary taken OAuth nickname fails on the unique index;
+PostCreateOrg uniqueness uses ILIKE (_ and % act as wildcards).
+
+PATTERN: tests - testcontainers startup can time out when many packages start Postgres at
+once; a single package failing with "wait until ready: context deadline exceeded" is
+infrastructure - re-run that package before suspecting the code.
+
+## 2026-10-11 — 9.10 ILIKE wildcards in exact lookups; OAuth taken nicknames
+
+utils.go iEq(col) -> LOWER(col) = LOWER(?); all 31 unescaped `ILIKE ?` exact-match sites
+(web, resource_crud, org, auth, nomad_pack) converted; compound clauses chained with Where.
+Escaped searches (ILIKE ? ESCAPE) untouched. sql_like_guard_test.go TestNoUnescapedLikeQueries
+(regexp; known limit: misses LIKE built via || or Sprintf). lookup_wildcard_test.go covers
+underscore and percent in user/resource lookups, org/signup uniqueness, OAuth taken nicknames.
+availableOAuthUsername(tx, base) replaces unreservedOAuthUsername: free base kept, else base-1..20;
+orchestrator added: empty base -> "user" (provider with no nickname and no name previously
+created an empty username).
+Orchestrator mutations: ILIKE restored in GetResource -> guard red; in GetUserProfile -> guard and
+three profile tests red; empty-base default removed -> OAuth test red. Suite ok.
+Not added: LOWER() functional unique indexes (prod may hold case-variant duplicates) -> 9.11
+handles the app-level checks. Noted: GetOrgSettings ignores First() error -> 9.11.
+
+## 2026-10-11 — 9.11 case-insensitive name uniqueness, missing-org 404s
+
+auth.go nameTaken(tx, name, exceptUserID, exceptOrgID): users and orgs via iEq, excluding the
+given ids; usernameFree builds on it. PostSignup: separate email check + nameTaken (users and
+orgs). Admin PostEditUser/PostEditOrganization: when the name changes exactly, nameTaken with
+self-exclusion (own case-variant allowed; legacy case-duplicates stay editable). org.go:
+GetOrgSettings, PostUpdateOrg (previously Save()d a zero-value org = INSERT of a blank org on
+a miss), PostAddMember, PostRemoveMember now 404 on a missing org (lookups moved before writes).
+No LOWER() unique index. Duplicate audit SQL:
+SELECT LOWER(name) AS folded, COUNT(*) AS n, STRING_AGG(kind||':'||id||':'||name||CASE WHEN
+deleted_at IS NOT NULL THEN ' (deleted)' ELSE '' END, ', ' ORDER BY kind, id) AS rows FROM
+(SELECT 'user' AS kind, id, username AS name, deleted_at FROM users UNION ALL SELECT 'org', id,
+name, deleted_at FROM organizations) x GROUP BY LOWER(name) HAVING COUNT(*) > 1 ORDER BY folded;
+Review REJECT: cleanupOrgTestData missed mixed-case test orgs (fixed: LOWER(name) LIKE 'test%').
+Orchestrator mutations: admin user rename check removed -> red; signup nameTaken removed ->
+both signup tests red. Suite ok. Leftovers -> 9.12.
+
+## 2026-10-11 — 9.12 review leftovers
+
+org.go orgLoadError: 404 only for gorm.ErrRecordNotFound, else 500 + ERROR org.load_failed
+(RequireOrgOwner membership lookup: 403 / 500 org.membership_load_failed). PostAddMember: user
+lookup via iEq; DB errors 500 (org.member_lookup_failed / org.member_add_failed). Real bug fixed:
+idx_user_org includes soft-deleted memberships, so remove + re-add hit the index and returned 200
+with no membership; the pre-check is now Unscoped and restores a soft-deleted membership.
+nameTaken counts Unscoped (soft-deleted names now give 400, not a 500 at Save).
+Test idempotency: cleanupTestData deletes resource_tags, user_stars, test memberships and the
+popular-tag tag, and reports every Exec error; four tests fixed (org rename into test% namespace,
+signup user cleanup, sitemap hard deletes). go test -count=2 ./internal/handlers/ passes.
+Forced DB errors are tested with a separately opened gorm.DB on the shared pool with a failing
+callback (never registered on database.DB, never closing the pool).
+Orchestrator: gofmt fixes (org.go imports, handlers_test.go alignment); fixture cleanup now reports
+errors; addMemberApp unused param removed, t.Helper added; role from the add-member form limited
+to owner/member like the admin handlers (TestPostAddMember_UnknownRoleBecomesMember).
+Mutations: role check removed -> red; nameTaken without Unscoped -> both soft-deleted tests red.
+One-off flake seen by the worker: TestDownloadAndFetch_NeverLogRepoURLUserinfo failed once, not
+reproducible (-count=5 green).
+
+## 2026-10-11 — 9.7 go fix + CI checks; Phase 9 collapsed
+
+go fix ./... and go fix -tags=security ./... (Go 1.27 modernizers): 46 files, mostly
+interface{} -> any. CI test job gains go vet (both tags), gofmt -l and go fix -diff gates (it
+had none). staticcheck 2026.2.1 cannot read Go 1.27 export data (v5) -> not added; add it to
+CI once a release supports Go 1.27. Local: vet, gofmt, suite, swagger (no diff), gosec clean.
+Phase 9 (13 tasks incl. 9.0 SQL injection) done and archived.
+Remaining known debt (not in Phase 9): staticcheck in CI (blocked on upstream); a LOWER()
+unique index on users.username / organizations.name after auditing prod for case-variant
+duplicates (SQL in 9.11); optional `go get -u` dependency refresh and pinning alpine:latest.
+
+## 2026-10-11 — CI: gosec pin for Go 1.27
+
+PR #54 security-scan failed: the CI pin gosec v2.22.11 cannot load Go 1.27 packages
+("package encoding/json without types"); reproduced locally. Bumped the pin to v2.29.0
+(2026-08-25), which runs clean on Go 1.27. Missed in 9.8: when bumping Go, check every
+pinned analysis tool (gosec, staticcheck, swag) against the new toolchain.
+
+PATTERN: toolchain-bump - Go major bumps break pinned go/analysis tools (gosec, staticcheck)
+before they break the build; run each pinned tool at its pinned version on the new toolchain.
+
+## 2026-10-11 — CORRECTION: gosec on Go 1.27
+
+The "gosec clean" results recorded for 9.8, 9.4-9.6 checks and 9.7 were wrong: gosec exited 1
+with 241 "export data version 5 is greater than maximum supported version 4" errors and
+"Issues: 0"; the orchestrator read the output and piped through tail, losing the exit code.
+No tagged gosec (<= v2.29.0, built against x/tools v0.49 / go 1.25) reads Go 1.27 export data.
+gosec master v2.29.1-0.20261009120814-7b1b5cebe007 does: exit 0, 0 issues on the branch. CI and
+the nightly workflow now pin that commit, with a comment to return to a tagged release.
+govulncheck@latest verified with its real exit code: 0.
+
+PATTERN: verification - never judge a tool by its output piped through tail/grep; capture the
+exit code ($? of the tool itself, or set -o pipefail). A tool can print "Issues: 0" and fail.

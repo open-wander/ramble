@@ -14,7 +14,7 @@ import (
 // cleanupOrgTestData removes org-related test data
 func cleanupOrgTestData(t *testing.T) {
 	database.DB.Exec("DELETE FROM memberships")
-	database.DB.Exec("DELETE FROM organizations WHERE name LIKE 'test%'")
+	database.DB.Exec("DELETE FROM organizations WHERE LOWER(name) LIKE 'test%'")
 	cleanupTestData(t)
 }
 

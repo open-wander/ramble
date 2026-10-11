@@ -58,18 +58,19 @@ Examples:
 // check. version does its own check, help is not worth a network call, and
 // server must write only JSON (no update notice, no network call at startup).
 func wantsUpdateCheck(cmd *cobra.Command) bool {
-	switch cmd.Name() {
-	case "version", "help", "server":
+	if cmd == versionCmd || cmd == serverCmd {
 		return false
 	}
-	return true
+	// cobra creates the help command lazily, so there is no variable to
+	// compare; match the root's direct child. (rootCmd itself would be an
+	// initialization cycle.)
+	return !(cmd.Name() == "help" && cmd.Parent() != nil && !cmd.Parent().HasParent())
 }
 
 // reportExecError prints err in plain text unless it was already logged as
 // structured JSON (see runServerCmd).
 func reportExecError(err error, w io.Writer) {
-	var le loggedError
-	if errors.As(err, &le) {
+	if _, ok := errors.AsType[loggedError](err); ok {
 		return
 	}
 	fmt.Fprintln(w, err)

@@ -93,7 +93,7 @@ func coalesce(values ...any) any {
 			if val.Len() > 0 {
 				return v
 			}
-		case reflect.Ptr, reflect.Interface:
+		case reflect.Pointer, reflect.Interface:
 			if !val.IsNil() {
 				return v
 			}

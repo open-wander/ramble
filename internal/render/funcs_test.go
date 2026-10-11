@@ -39,7 +39,7 @@ func TestToStringList(t *testing.T) {
 		},
 		{
 			name:     "interface slice",
-			input:    []interface{}{"x", "y"},
+			input:    []any{"x", "y"},
 			expected: `["x", "y"]`,
 		},
 	}

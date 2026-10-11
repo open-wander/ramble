@@ -18,29 +18,16 @@ import (
 	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"rmbl/internal/services/logger"
+	"rmbl/internal/testutil/logtest"
 )
-
-// logLines decodes the JSON log lines in buf.
-func logLines(buf *bytes.Buffer) []map[string]any {
-	var out []map[string]any
-	for _, line := range bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n")) {
-		var m map[string]any
-		if json.Unmarshal(line, &m) == nil {
-			out = append(out, m)
-		}
-	}
-	return out
-}
 
 func requireLineWithRequestID(t *testing.T, buf *bytes.Buffer, msg, rid string) {
 	t.Helper()
-	for _, m := range logLines(buf) {
-		if m[zerolog.MessageFieldName] == msg {
-			assert.Equal(t, rid, m["request_id"])
-			return
-		}
+	m := logtest.Find(t, buf, msg)
+	if m == nil {
+		t.Fatalf("%s not logged via request logger: %s", msg, buf.String())
 	}
-	t.Fatalf("%s not logged via request logger: %s", msg, buf.String())
+	assert.Equal(t, rid, m["request_id"])
 }
 
 func TestHandleGitHubIssueWebhook_LogsCarryRequestID(t *testing.T) {
@@ -166,7 +153,7 @@ func TestHandleGitHubIssueWebhook_DBLinesCarryRequestID(t *testing.T) {
 	lineFor := func(msg string) (httpRID string, line map[string]any) {
 		t.Helper()
 		var n int
-		for _, m := range logLines(&buf) {
+		for _, m := range logtest.Lines(t, &buf) {
 			switch m[zerolog.MessageFieldName] {
 			case "http.request":
 				httpRID, _ = m["request_id"].(string)
@@ -203,7 +190,7 @@ func TestHandleGitHubIssueWebhook_DBLinesCarryRequestID(t *testing.T) {
 	assert.Equal(t, updatedRID, updated["request_id"])
 	assert.NotEqual(t, createdRID, updatedRID, "each request has its own id")
 
-	for _, m := range logLines(&globalBuf) {
+	for _, m := range logtest.Lines(t, &globalBuf) {
 		msg := m[zerolog.MessageFieldName]
 		assert.NotEqual(t, "github.webhook_request_created", msg)
 		assert.NotEqual(t, "github.webhook_request_status_updated", msg)

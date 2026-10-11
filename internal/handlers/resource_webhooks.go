@@ -2,16 +2,12 @@ package handlers
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"rmbl/internal/crypto"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"rmbl/internal/services/logger"
 	"rmbl/internal/services/resource"
-	"strconv"
 	"strings"
 	"time"
 
@@ -19,30 +15,6 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 )
-
-// validateGitHubSignature validates GitHub webhook signature (X-Hub-Signature-256)
-func validateGitHubSignature(payload []byte, secret, signature string) bool {
-	if secret == "" || signature == "" {
-		return false
-	}
-
-	// GitHub signature format: sha256=<hex>
-	if !strings.HasPrefix(signature, "sha256=") {
-		return false
-	}
-
-	expectedSig := strings.TrimPrefix(signature, "sha256=")
-	expectedBytes, err := hex.DecodeString(expectedSig)
-	if err != nil {
-		return false
-	}
-
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(payload)
-	actualBytes := mac.Sum(nil)
-
-	return hmac.Equal(expectedBytes, actualBytes)
-}
 
 type GitRepoInfo struct {
 	Name        string `json:"name"`
@@ -169,7 +141,7 @@ func FetchInfo(c *fiber.Ctx) error {
 		}
 	}
 	if existingTags != "" {
-		for _, t := range strings.Split(existingTags, ",") {
+		for t := range strings.SplitSeq(existingTags, ",") {
 			t = strings.ToLower(strings.TrimSpace(t))
 			if t != "" {
 				tagMap[t] = true
@@ -216,19 +188,23 @@ func FetchInfo(c *fiber.Ctx) error {
 // @Failure 403 {string} string "Forbidden"
 // @Router /resource/{id}/webhook [post]
 func HandleWebhook(c *fiber.Ctx) error {
-	id := c.Params("id")
+	// Parse before querying: GORM treats a non-numeric string as raw SQL.
+	idNum, err := paramID(c, "id")
+	if err != nil {
+		return c.SendStatus(404)
+	}
 
 	var resource models.NomadResource
 	if err := reqDB(c).Preload("Versions", func(db *gorm.DB) *gorm.DB {
 		return db.Order("resource_versions.created_at DESC")
-	}).First(&resource, id).Error; err != nil {
+	}).First(&resource, idNum).Error; err != nil {
 		return c.SendStatus(404)
 	}
 
 	// Create webhook logger
 	webhookLog := logger.FromContext(c.UserContext()).With().
 		Str("operation", "webhook").
-		Str("resource_id", id).
+		Uint("resource_id", idNum).
 		Logger()
 
 	// Extract authentication headers and query params
@@ -345,7 +321,7 @@ func finishWebhookFetch(ctx context.Context, log zerolog.Logger, resID uint, vSt
 		if version.FetchStatus == models.FetchStatusFailed {
 			database.DB.WithContext(ctx).Model(&models.NomadResource{}).
 				Where("id = ?", resID).
-				Updates(map[string]interface{}{
+				Updates(map[string]any{
 					"last_webhook_status": "failure",
 					"last_webhook_error":  "Fetch failed: " + version.FetchError,
 				})
@@ -358,16 +334,12 @@ func finishWebhookFetch(ctx context.Context, log zerolog.Logger, resID uint, vSt
 }
 
 func PostResetWebhookSecret(c *fiber.Ctx) error {
-	id := c.Params("id")
-	sess, _ := Store.Get(c)
-	currentUserID := sess.Get("user_id").(uint)
-
-	// Parse resource ID
-	resourceIDUint64, err := strconv.ParseUint(id, 10, 32)
+	resourceID, err := paramID(c, "id")
 	if err != nil {
 		return c.Status(404).SendString("Resource not found")
 	}
-	resourceID := uint(resourceIDUint64)
+	sess, _ := Store.Get(c)
+	currentUserID := sess.Get("user_id").(uint)
 
 	// Reset webhook secret via service
 	if err := resource.Service.WithContext(c.UserContext()).ResetWebhookSecret(resourceID, currentUserID); err != nil {

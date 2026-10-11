@@ -65,9 +65,20 @@ func createTestJob(t *testing.T, userID uint, name string) models.NomadResource 
 
 // cleanupTestData removes test data created during tests
 func cleanupTestData(t *testing.T) {
-	database.DB.Exec("DELETE FROM resource_versions")
-	database.DB.Exec("DELETE FROM nomad_resources")
-	database.DB.Exec("DELETE FROM users WHERE email LIKE '%@test.com'")
+	t.Helper()
+	for _, q := range []string{
+		"DELETE FROM resource_tags",
+		"DELETE FROM user_stars",
+		"DELETE FROM memberships WHERE user_id IN (SELECT id FROM users WHERE email LIKE '%@test.com')",
+		"DELETE FROM resource_versions",
+		"DELETE FROM nomad_resources",
+		"DELETE FROM tags WHERE name = 'popular-tag'",
+		"DELETE FROM users WHERE email LIKE '%@test.com'",
+	} {
+		if err := database.DB.Exec(q).Error; err != nil {
+			t.Errorf("cleanup %q: %v", q, err)
+		}
+	}
 }
 
 func TestContentNegotiation_UserProfile_JSON(t *testing.T) {
@@ -467,7 +478,7 @@ func TestListUserRegistriesAPI_Empty(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	var result map[string]interface{}
+	var result map[string]any
 	json.NewDecoder(resp.Body).Decode(&result)
 	assert.NotNil(t, result["registries"])
 }
@@ -610,15 +621,15 @@ func TestFetchInfo_EmptyURL(t *testing.T) {
 	// Empty response for empty URL
 }
 
-// GetPopularTags tests
+// popularTags tests
 
-func TestGetPopularTags_Empty(t *testing.T) {
-	tags := GetPopularTags()
+func TestPopularTags_Empty(t *testing.T) {
+	tags := popularTags(database.DB)
 	// Should return empty slice when no tags exist
 	assert.NotNil(t, tags)
 }
 
-func TestGetPopularTags_WithData(t *testing.T) {
+func TestPopularTags_WithData(t *testing.T) {
 	defer cleanupTestData(t)
 
 	user := createTestUser(t, "taguser")
@@ -636,7 +647,7 @@ func TestGetPopularTags_WithData(t *testing.T) {
 	}
 	database.DB.Create(&resource)
 
-	tags := GetPopularTags()
+	tags := popularTags(database.DB)
 	assert.NotNil(t, tags)
 	// Should include our tag
 	found := false

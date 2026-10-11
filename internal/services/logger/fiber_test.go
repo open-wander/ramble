@@ -2,7 +2,6 @@ package logger
 
 import (
 	"bytes"
-	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -10,6 +9,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"github.com/rs/zerolog"
+
+	"rmbl/internal/testutil/logtest"
 )
 
 func newLoggedApp(t *testing.T) (*fiber.App, *bytes.Buffer) {
@@ -28,19 +29,6 @@ func newLoggedApp(t *testing.T) (*fiber.App, *bytes.Buffer) {
 		return c.SendStatus(fiber.StatusNoContent)
 	})
 	return app, &buf
-}
-
-func logLines(t *testing.T, buf *bytes.Buffer) []map[string]any {
-	t.Helper()
-	var out []map[string]any
-	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
-		var m map[string]any
-		if err := json.Unmarshal([]byte(line), &m); err != nil {
-			t.Fatalf("log line is not JSON: %q: %v", line, err)
-		}
-		out = append(out, m)
-	}
-	return out
 }
 
 func TestRequestLogger(t *testing.T) {
@@ -74,7 +62,7 @@ func TestRequestLogger(t *testing.T) {
 				t.Fatalf("query string reached the log: %s", buf.String())
 			}
 
-			lines := logLines(t, buf)
+			lines := logtest.Lines(t, buf)
 			if len(lines) != 1 {
 				t.Fatalf("want 1 line, got %d: %v", len(lines), lines)
 			}
@@ -111,7 +99,7 @@ func TestRequestLoggerAttachesRequestIDToHandlerLogs(t *testing.T) {
 	}
 	rid := resp.Header.Get(fiber.HeaderXRequestID)
 
-	lines := logLines(t, buf)
+	lines := logtest.Lines(t, buf)
 	if len(lines) != 2 {
 		t.Fatalf("want handler line + access line, got %v", lines)
 	}
