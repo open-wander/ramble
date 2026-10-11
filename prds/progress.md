@@ -136,3 +136,122 @@ API-limit test was de-cruft'd (removed dead 10 MiB padding alloc + unused table,
 real small-body assertion). build + full test green; gofmt-clean; DCO signed.
 LESSON: never trust a worker's DONE/commit-message claim over the actual diff — the
 adversarial code review is what caught this. Verify edits landed before committing.
+
+## 2026-10-11 — 6.6 startup banner -> server.started
+
+Batch with 6.4 (parallel worktrees, workflow). internal/server/server.go: Fiber config
+extracted to fiberConfig(views) with DisableStartupMessage: true; logStarted(l, addr,
+version) logs INFO `server.started` just before app.Listen, same addr variable for both.
+internal/server/startup_test.go pins DisableStartupMessage plus the trusted-proxy fields
+and the server.started line. Mutation-checked (flag false, msg renamed -> red).
+Advisor review PASS. Re-verified by orchestrator: go vet, go test -tags=security ./... ok.
+Note: server.started is written before bind, so a bind failure still logs it first.
+
+## 2026-10-11 — 6.4 sentence-style log messages -> event keys
+
+Converted every remaining server-side zerolog message to a dotted event key (fields and
+levels unchanged, no Msgf existed). Prefixes: github.*, webhook.*, download.*,
+version_fetch.*, audit.recorded (was msg="audit"; no consumer found, JSON logs live only
+since 2026-10-10). internal/cli excluded on purpose (terminal tool). Guard:
+TestServerLogMessagesAreEventKeys walks internal/ and cmd/ with go/parser, rejects Msgf,
+non-literal Msg args and non-matching keys; requires >= 40 calls seen. The AST walk found
+8 multi-line chained calls the advisor's grep missed. Orchestrator re-ran the mutation
+(audit.recorded -> "audit recorded" -> red) and go test -tags=security ./... ok.
+Advisor MINOR notes: guard matches any .Msg selector, not only zerolog; a webhook fetch
+failure emits both webhook.fetch_failed and version_fetch.failed (two layers).
+Incident: the reviewer ran `git checkout` on a file with uncommitted worker edits during
+its mutation check and restored them by hand; diff verified intact before applying.
+
+PATTERN: review - a read-only reviewer must not use `git checkout <file>` to undo a
+mutation on a file with uncommitted changes; copy aside first or reverse the edit.
+PATTERN: logging - guard log-key conventions with a go/parser walk, not grep: grep misses
+multi-line chained zerolog calls.
+PATTERN: tooling - BSD sed ignores GNU `0,/re/`; a "mutation" that silently didn't apply
+looks like a surviving mutant. Confirm the mutation landed before trusting the result.
+
+## 2026-10-11 — 6.3 request context into DB calls
+
+reqDB(c) = database.DB.WithContext(c.UserContext()) in internal/handlers/db.go, used on
+all request paths (14 handler files). resource.Service gained WithContext(ctx); all 7
+handler-side service calls use it, so service transactions inherit the request logger.
+Session middleware in server.go inlines database.DB.WithContext(c.UserContext()).
+github_sync internals and createGitHubIssueForRequest now take a *gorm.DB; goroutines
+and the CLI pass database.DB, request paths pass reqDB(c). Unchanged on purpose:
+startup, AuditLogNoContext, background.go fetches, goroutine bodies in admin.go,
+requests.go, resource_webhooks.go. No c.Context() and no goroutine captures *fiber.Ctx.
+Tests: internal/handlers/db_test.go (query against a missing table -> db.query_error in
+the request logger buffer with the request's X-Request-ID; base buffer empty) and
+internal/services/resource/withcontext_test.go. Orchestrator mutation: reqDB returning
+database.DB -> red; go vet, go test -tags=security ./... ok.
+Advisor: first review REJECT (service calls not context-bound, WithContext unused), one
+fix round, re-review MINOR. Follow-ups (not blocking): SyncGitHubToRequest has no
+callers; processOAuthUser, handleNewIssue, handleIssueStateChange and GetPopularTags
+are now database.DB wrappers used only by tests - point tests at the *DB variants and
+delete the wrappers in a later cleanup.
+
+PATTERN: context-threading - a global service built at startup with the global DB hides
+from a grep for `database.DB`; give it WithContext(ctx) and bind at each handler call.
+
+## 2026-10-11 — 6.5 closed; Phase 6 collapsed
+
+6.5 (static-asset access lines) closed without a change on measurement: over 12h,
+59 of 904 http.request lines were /public/* (6.5%, ~5/h, against ~1,390 lines/h before
+6.2). Lowering them to DEBUG would hide asset 404s for negligible volume. Decision by
+the user. Phase 6 fully DONE and moved to TASKS-archive.md.
+
+## 2026-10-11 — 7.1 plain-text writes on request paths
+
+auth.go (signup, forgot password, resend verification) and utils.go SetFlash log via
+logger.FromContext(c.UserContext()); no address, link or token in the lines (user_id only).
+email.go validateEmail and Rcpt errors no longer embed the address. Guard
+TestServerCodeDoesNotWriteStdout shares walkServerFiles with the event-key guard; flags
+fmt.Print*, print/println, fmt.Fprint*(os.Stdout|os.Stderr); cmd/nomad-vars excluded
+(operator CLI). flash_log_test.go proves session.save_failed carries request_id.
+Orchestrator mutation: fmt.Println added to utils.go -> guard red. Full suite ok.
+Advisor: plan REVISE (scope cmd/ramble only, second address leak at email.go:117),
+review REJECT, fix round, MINOR. Follow-ups: SMTP server replies wrapped by %w can still
+echo the recipient; guard matches identifier names (aliases not caught); stdlib log.* not covered.
+
+PATTERN: workflow - Workflow `isolation: worktree` branches from the default branch, not
+the current HEAD. On a feature branch with unmerged commits, run isolated workers only
+when the base doesn't matter, or have them `git checkout <branch-sha>` first.
+
+## 2026-10-11 — 7.2 webhook lines carry request_id
+
+resource_webhooks.go webhookLog from logger.FromContext(c.UserContext()); both goroutines
+take a zerolog.Logger parameter (no *fiber.Ctx capture). HandleGitHubIssueWebhook uses the
+request logger; handleNewIssueDB/handleIssueStateChangeDB use
+logger.FromContextOr(db.Statement.Context, &logger.Log). Keys and levels unchanged.
+webhook_log_test.go: table test of early-reject paths plus a HandleWebhook case.
+Merged with 7.1: both extracted the same db_test.go helper; kept 7.1's newRequestLogApp.
+Orchestrator mutation: HandleGitHubIssueWebhook back to &logger.Log -> red. Suite ok.
+Advisor REJECT, fix round, MINOR. Follow-ups: fetchVersionContent (background.go) logs
+version_fetch.* via the global logger, so webhook-triggered fetch lines lack request_id;
+goroutine DB writes in resource_webhooks.go stay on database.DB; no test covers the
+github.webhook_request_* lines.
+
+## 2026-10-11 — 7.3 ramble server writes only JSON
+
+root.go: wantsUpdateCheck (no update check or notice for version/help/server);
+Execute uses ExecuteC + reportExecError, which skips errors marked loggedError.
+server.go: runServer seam, runServerCmd logs server.exit_error and wraps in loggedError;
+SilenceErrors/SilenceUsage on serverCmd only. Tests in internal/cli/cmd/server_test.go
+including an end-to-end `ramble server` with a failing runServer. Worker ran in a
+worktree based on main (cli untouched by the branch, applied cleanly).
+Orchestrator mutation: drop "server" from wantsUpdateCheck -> red. Suite ok.
+Advisor MINOR: predicate matches by name (a future `x server` subcommand would also
+skip); flag parse errors stay plain text; tests mutate package-level cobra state.
+
+## 2026-10-11 — 7.4 and 7.5 test the production logging wiring
+
+7.4: logger.Init -> initWithWriter(os.Stdout). TestInit_ProductionFormat no longer swaps
+the writer with Log.Output, snapshots and restores every global Init touches.
+7.5: database.gormConfig() used by Connect; TestGormConfigUsesZerologAdapter.
+Run in parallel in the main checkout (different packages, no worktrees). The 7.5 worker
+saw a transient TestInit_ProductionFormat failure from 7.4's mutation in progress.
+Orchestrator: full suite ok; mutations ConsoleWriter in prod branch -> red,
+gormlogger.Default -> red. Both advisor PASS.
+
+PATTERN: parallel-in-one-checkout - workers sharing a checkout see each other's
+in-flight mutations; tell them to report cross-package failures, and re-run the suite
+after both finish.

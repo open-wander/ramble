@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 )
 
@@ -56,7 +57,7 @@ func GetMyRepos(c *fiber.Ctx) error {
 	}
 	userID := sess.Get("user_id").(uint)
 	var user models.User
-	database.DB.First(&user, userID)
+	reqDB(c).First(&user, userID)
 	if user.AccessToken == "" {
 		return c.SendString("<p class='text-sm text-red-500'>No access token found. Please logout and login again.</p>")
 	}
@@ -110,7 +111,7 @@ func FetchInfo(c *fiber.Ctx) error {
 	if err == nil {
 		if uID := sess.Get("user_id"); uID != nil {
 			var user models.User
-			database.DB.First(&user, uID.(uint))
+			reqDB(c).First(&user, uID.(uint))
 			if user.AccessToken != "" {
 				decryptedToken, _ := crypto.DecryptToken(user.AccessToken)
 				token = decryptedToken
@@ -218,14 +219,14 @@ func HandleWebhook(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	var resource models.NomadResource
-	if err := database.DB.Preload("Versions", func(db *gorm.DB) *gorm.DB {
+	if err := reqDB(c).Preload("Versions", func(db *gorm.DB) *gorm.DB {
 		return db.Order("resource_versions.created_at DESC")
 	}).First(&resource, id).Error; err != nil {
 		return c.SendStatus(404)
 	}
 
 	// Create webhook logger
-	webhookLog := logger.Log.With().
+	webhookLog := logger.FromContext(c.UserContext()).With().
 		Str("operation", "webhook").
 		Str("resource_id", id).
 		Logger()
@@ -242,13 +243,13 @@ func HandleWebhook(c *fiber.Ctx) error {
 
 	if !valid {
 		// Log validation failure with reason (for debugging)
-		webhookLog.Warn().Str("reason", reason).Msg("webhook validation failed")
+		webhookLog.Warn().Str("reason", reason).Msg("webhook.validation_failed")
 
 		// Record failure in database
 		resource.LastWebhookDelivery = time.Now()
 		resource.LastWebhookStatus = "failure"
 		resource.LastWebhookError = "Invalid or missing secret"
-		database.DB.Save(&resource)
+		reqDB(c).Save(&resource)
 
 		// Return generic error to client (401 with no details)
 		return c.Status(401).SendString("Invalid webhook signature")
@@ -257,16 +258,16 @@ func HandleWebhook(c *fiber.Ctx) error {
 	// Handle legacy auth deprecation warning
 	if isLegacy {
 		c.Set("X-Deprecation-Warning", "Query parameter authentication is deprecated. Migrate to X-Hub-Signature-256 headers.")
-		webhookLog.Warn().Msg("resource using deprecated query parameter webhook authentication")
+		webhookLog.Warn().Msg("webhook.legacy_auth_deprecated")
 	}
 
-	webhookLog.Info().Bool("legacy_auth", isLegacy).Msg("webhook validated")
+	webhookLog.Info().Bool("legacy_auth", isLegacy).Msg("webhook.validated")
 
 	// Initial success state (might be updated later if fetch fails)
 	resource.LastWebhookDelivery = time.Now()
 	resource.LastWebhookStatus = "success"
 	resource.LastWebhookError = ""
-	database.DB.Save(&resource)
+	reqDB(c).Save(&resource)
 
 	type GitHubPayload struct {
 		Ref     string `json:"ref"`
@@ -303,19 +304,19 @@ func HandleWebhook(c *fiber.Ctx) error {
 	if isTagEvent && newVersion != "" {
 		// Check if version already exists
 		var exists int64
-		database.DB.Model(&models.ResourceVersion{}).Where("resource_id = ? AND version = ?", resource.ID, newVersion).Count(&exists)
+		reqDB(c).Model(&models.ResourceVersion{}).Where("resource_id = ? AND version = ?", resource.ID, newVersion).Count(&exists)
 		if exists == 0 {
 			// Create new version
 			version := models.ResourceVersion{
 				ResourceID: resource.ID,
 				Version:    newVersion,
 			}
-			database.DB.Create(&version)
+			reqDB(c).Create(&version)
 
-			webhookLog.Info().Str("version", newVersion).Msg("new version from webhook")
+			webhookLog.Info().Str("version", newVersion).Msg("webhook.version_received")
 
 			// Background Fetch for the NEW version with error propagation to webhook status
-			go func(resID uint, vStr, repoURL, resType, resName, filePath string) {
+			go func(log zerolog.Logger, resID uint, vStr, repoURL, resType, resName, filePath string) {
 				fetchVersionContent(context.Background(), resID, vStr, repoURL, resType, resName, filePath)
 
 				// Check if the fetch failed and update webhook error status
@@ -328,13 +329,13 @@ func HandleWebhook(c *fiber.Ctx) error {
 								"last_webhook_status": "failure",
 								"last_webhook_error":  "Fetch failed: " + version.FetchError,
 							})
-						webhookLog.Warn().
+						log.Warn().
 							Str("version", vStr).
 							Str("fetch_error", version.FetchError).
-							Msg("webhook fetch failed, updated resource error status")
+							Msg("webhook.fetch_failed")
 					}
 				}
-			}(resource.ID, newVersion, resource.RepositoryURL, string(resource.Type), resource.Name, resource.FilePath)
+			}(webhookLog, resource.ID, newVersion, resource.RepositoryURL, string(resource.Type), resource.Name, resource.FilePath)
 
 			return c.SendStatus(200)
 		}
@@ -344,10 +345,10 @@ func HandleWebhook(c *fiber.Ctx) error {
 	if len(resource.Versions) > 0 {
 		latest := resource.Versions[0]
 
-		webhookLog.Info().Str("version", latest.Version).Msg("refreshing latest version from webhook")
+		webhookLog.Info().Str("version", latest.Version).Msg("webhook.latest_version_refresh")
 
 		// Background Fetch for refresh with error propagation to webhook status
-		go func(resID uint, vStr, repoURL, resType, resName, filePath string) {
+		go func(log zerolog.Logger, resID uint, vStr, repoURL, resType, resName, filePath string) {
 			fetchVersionContent(context.Background(), resID, vStr, repoURL, resType, resName, filePath)
 
 			// Check if the fetch failed and update webhook error status
@@ -360,13 +361,13 @@ func HandleWebhook(c *fiber.Ctx) error {
 							"last_webhook_status": "failure",
 							"last_webhook_error":  "Fetch failed: " + version.FetchError,
 						})
-					webhookLog.Warn().
+					log.Warn().
 						Str("version", vStr).
 						Str("fetch_error", version.FetchError).
-						Msg("webhook fetch failed, updated resource error status")
+						Msg("webhook.fetch_failed")
 				}
 			}
-		}(resource.ID, latest.Version, resource.RepositoryURL, string(resource.Type), resource.Name, resource.FilePath)
+		}(webhookLog, resource.ID, latest.Version, resource.RepositoryURL, string(resource.Type), resource.Name, resource.FilePath)
 	}
 
 	return c.SendStatus(200)
@@ -385,7 +386,7 @@ func PostResetWebhookSecret(c *fiber.Ctx) error {
 	resourceID := uint(resourceIDUint64)
 
 	// Reset webhook secret via service
-	if err := resource.Service.ResetWebhookSecret(resourceID, currentUserID); err != nil {
+	if err := resource.Service.WithContext(c.UserContext()).ResetWebhookSecret(resourceID, currentUserID); err != nil {
 		if errors.Is(err, resource.ErrUnauthorized) {
 			return c.Status(403).SendString("Unauthorized")
 		}

@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"strings"
 	"time"
@@ -44,7 +43,7 @@ func GenerateSitemap(c *fiber.Ctx) error {
 
 	// All resources
 	var resources []models.NomadResource
-	database.DB.Preload("User").Preload("Organization").Find(&resources)
+	reqDB(c).Preload("User").Preload("Organization").Find(&resources)
 
 	for _, r := range resources {
 		displayName := r.User.Username
@@ -59,7 +58,7 @@ func GenerateSitemap(c *fiber.Ctx) error {
 
 	// All user profiles
 	var users []models.User
-	database.DB.Find(&users)
+	reqDB(c).Find(&users)
 	for _, u := range users {
 		url := fmt.Sprintf("%s/%s", baseURL, u.Username)
 		xml.WriteString(sitemapURL(url, "", "weekly", "0.6"))
@@ -67,7 +66,7 @@ func GenerateSitemap(c *fiber.Ctx) error {
 
 	// All organization profiles
 	var orgs []models.Organization
-	database.DB.Find(&orgs)
+	reqDB(c).Find(&orgs)
 	for _, org := range orgs {
 		url := fmt.Sprintf("%s/%s", baseURL, org.Name)
 		xml.WriteString(sitemapURL(url, "", "weekly", "0.6"))

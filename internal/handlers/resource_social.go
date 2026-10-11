@@ -31,7 +31,7 @@ func ToggleStar(c *fiber.Ctx) error {
 	resourceID := uint(resourceIDUint64)
 
 	// Toggle star via service
-	isStarred, starCount, err := resource.Service.ToggleStar(resourceID, userID)
+	isStarred, starCount, err := resource.Service.WithContext(c.UserContext()).ToggleStar(resourceID, userID)
 	if err != nil {
 		if errors.Is(err, resource.ErrResourceNotFound) {
 			return c.Status(404).SendString("Resource not found")

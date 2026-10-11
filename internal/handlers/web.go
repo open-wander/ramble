@@ -14,7 +14,7 @@ import (
 
 func Home(c *fiber.Ctx) error {
 	var results []models.NomadResource
-	database.DB.Model(&models.NomadResource{}).Preload("User").Preload("Tags").Order("updated_at desc").Limit(12).Find(&results)
+	reqDB(c).Model(&models.NomadResource{}).Preload("User").Preload("Tags").Order("updated_at desc").Limit(12).Find(&results)
 
 	nextPage := 0
 	if len(results) == 12 {
@@ -27,7 +27,7 @@ func Home(c *fiber.Ctx) error {
 	// Render index within the main layout
 	return c.Render("index", MergeContext(BaseContext(c), fiber.Map{
 		"Page":        "home",
-		"PopularTags": GetPopularTags(),
+		"PopularTags": popularTags(reqDB(c)),
 		"Resources":   results,
 		"NextPage":    nextPage,
 		// SEO fields
@@ -59,7 +59,7 @@ func Search(c *fiber.Ctx) error {
 
 	var results []models.NomadResource
 
-	dbQuery := database.DB.Model(&models.NomadResource{}).Preload("User").Preload("Tags")
+	dbQuery := reqDB(c).Model(&models.NomadResource{}).Preload("User").Preload("Tags")
 
 	if query != "" {
 		searchParam := "%" + escapeLikeString(query) + "%"
@@ -113,7 +113,7 @@ func Search(c *fiber.Ctx) error {
 		"Tag":         tag,
 		"Sort":        sort,
 		"NextPage":    nextPage,
-		"PopularTags": GetPopularTags(),
+		"PopularTags": popularTags(reqDB(c)),
 	}), "layouts/main")
 }
 
@@ -137,12 +137,12 @@ func GetResource(c *fiber.Ctx) error {
 	var displayName string
 
 	var user models.User
-	if err := database.DB.Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
+	if err := reqDB(c).Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
 		userID = user.ID
 		displayName = user.Username
 	} else {
 		var org models.Organization
-		if err := database.DB.Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
+		if err := reqDB(c).Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
 			orgID = &org.ID
 			displayName = org.Name
 		} else {
@@ -151,7 +151,7 @@ func GetResource(c *fiber.Ctx) error {
 	}
 
 	var resource models.NomadResource
-	dbQuery := database.DB.Preload("User").Preload("Tags").Preload("StarredBy").Preload("Versions", func(db *gorm.DB) *gorm.DB {
+	dbQuery := reqDB(c).Preload("User").Preload("Tags").Preload("StarredBy").Preload("Versions", func(db *gorm.DB) *gorm.DB {
 		return db.Order("resource_versions.created_at DESC")
 	})
 
@@ -175,7 +175,7 @@ func GetResource(c *fiber.Ctx) error {
 		// If it's an org repo, current user must be member of that org
 		if orgID != nil {
 			var membership models.Membership
-			if err := database.DB.Where("user_id = ? AND organization_id = ?", currentUserID, *orgID).First(&membership).Error; err == nil {
+			if err := reqDB(c).Where("user_id = ? AND organization_id = ?", currentUserID, *orgID).First(&membership).Error; err == nil {
 				isOwner = true // members can edit
 			}
 		} else {
@@ -254,17 +254,17 @@ func GetResourceVersion(c *fiber.Ctx) error {
 	versionStr := c.Query("version")
 
 	var user models.User
-	if err := database.DB.Where("username ILIKE ?", username).First(&user).Error; err != nil {
+	if err := reqDB(c).Where("username ILIKE ?", username).First(&user).Error; err != nil {
 		return c.Status(404).SendString("User not found")
 	}
 
 	var resource models.NomadResource
-	if err := database.DB.Where("user_id = ? AND name ILIKE ?", user.ID, resourcename).First(&resource).Error; err != nil {
+	if err := reqDB(c).Where("user_id = ? AND name ILIKE ?", user.ID, resourcename).First(&resource).Error; err != nil {
 		return c.Status(404).SendString("Resource not found")
 	}
 
 	var version models.ResourceVersion
-	if err := database.DB.Where("resource_id = ? AND version = ?", resource.ID, versionStr).First(&version).Error; err != nil {
+	if err := reqDB(c).Where("resource_id = ? AND version = ?", resource.ID, versionStr).First(&version).Error; err != nil {
 		return c.Status(404).SendString("Version not found")
 	}
 
@@ -298,17 +298,17 @@ func GetRawResourceVersion(c *fiber.Ctx) error {
 	versionStr := c.Params("version")
 
 	var user models.User
-	if err := database.DB.Where("username ILIKE ?", username).First(&user).Error; err != nil {
+	if err := reqDB(c).Where("username ILIKE ?", username).First(&user).Error; err != nil {
 		return c.Status(404).SendString("User not found")
 	}
 
 	var resource models.NomadResource
-	if err := database.DB.Where("user_id = ? AND name ILIKE ?", user.ID, resourcename).First(&resource).Error; err != nil {
+	if err := reqDB(c).Where("user_id = ? AND name ILIKE ?", user.ID, resourcename).First(&resource).Error; err != nil {
 		return c.Status(404).SendString("Resource not found")
 	}
 
 	var version models.ResourceVersion
-	if err := database.DB.Where("resource_id = ? AND version = ?", resource.ID, versionStr).First(&version).Error; err != nil {
+	if err := reqDB(c).Where("resource_id = ? AND version = ?", resource.ID, versionStr).First(&version).Error; err != nil {
 		return c.Status(404).SendString("Version not found")
 	}
 
@@ -317,7 +317,7 @@ func GetRawResourceVersion(c *fiber.Ctx) error {
 	}
 
 	// Increment download count
-	database.DB.Model(&resource).Update("download_count", gorm.Expr("download_count + ?", 1))
+	reqDB(c).Model(&resource).Update("download_count", gorm.Expr("download_count + ?", 1))
 
 	c.Set("Content-Type", "text/plain")
 	return c.SendString(version.Content)
@@ -352,7 +352,7 @@ func GetUserProfile(c *fiber.Ctx) error {
 
 	var user models.User
 
-	if err := database.DB.Preload("Memberships.Organization").Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
+	if err := reqDB(c).Preload("Memberships.Organization").Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
 
 		profileUser = &user
 
@@ -360,7 +360,7 @@ func GetUserProfile(c *fiber.Ctx) error {
 
 		var org models.Organization
 
-		if err := database.DB.Preload("Memberships.User").Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
+		if err := reqDB(c).Preload("Memberships.User").Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
 
 			profileOrg = &org
 
@@ -374,7 +374,7 @@ func GetUserProfile(c *fiber.Ctx) error {
 
 	var results []models.NomadResource
 
-	dbQuery := database.DB.Model(&models.NomadResource{}).
+	dbQuery := reqDB(c).Model(&models.NomadResource{}).
 		Preload("User").
 		Preload("Tags")
 
@@ -474,7 +474,7 @@ func GetUserProfile(c *fiber.Ctx) error {
 
 			var count int64
 
-			database.DB.Model(&models.Membership{}).Where("user_id = ? AND organization_id = ?", currentUserID, profileOrg.ID).Count(&count)
+			reqDB(c).Model(&models.Membership{}).Where("user_id = ? AND organization_id = ?", currentUserID, profileOrg.ID).Count(&count)
 
 			isOwner = count > 0
 
@@ -496,7 +496,7 @@ func GetUserProfile(c *fiber.Ctx) error {
 		"Sort":        sort,
 		"Page":        "profile",
 		"NextPage":    nextPage,
-		"PopularTags": GetPopularTags(),
+		"PopularTags": popularTags(reqDB(c)),
 	}), "layouts/main")
 
 }
@@ -515,12 +515,12 @@ func GetRawResource(c *fiber.Ctx) error {
 	resourcename := c.Params("resourcename")
 
 	var user models.User
-	if err := database.DB.Where("username ILIKE ?", username).First(&user).Error; err != nil {
+	if err := reqDB(c).Where("username ILIKE ?", username).First(&user).Error; err != nil {
 		return c.Status(404).SendString("User not found")
 	}
 
 	var resource models.NomadResource
-	if err := database.DB.Preload("Versions", func(db *gorm.DB) *gorm.DB {
+	if err := reqDB(c).Preload("Versions", func(db *gorm.DB) *gorm.DB {
 		return db.Order("resource_versions.created_at DESC")
 	}).Where("user_id = ? AND name ILIKE ?", user.ID, resourcename).First(&resource).Error; err != nil {
 		return c.Status(404).SendString("Resource not found")
@@ -531,7 +531,7 @@ func GetRawResource(c *fiber.Ctx) error {
 	}
 
 	// Increment download count
-	database.DB.Model(&resource).Update("download_count", gorm.Expr("download_count + ?", 1))
+	reqDB(c).Model(&resource).Update("download_count", gorm.Expr("download_count + ?", 1))
 
 	c.Set("Content-Type", "text/plain")
 	return c.SendString(resource.Versions[0].Content)
@@ -540,7 +540,7 @@ func GetRawResource(c *fiber.Ctx) error {
 func FetchReadme(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var resource models.NomadResource
-	if err := database.DB.Preload("Versions", func(db *gorm.DB) *gorm.DB {
+	if err := reqDB(c).Preload("Versions", func(db *gorm.DB) *gorm.DB {
 		return db.Order("resource_versions.created_at DESC")
 	}).First(&resource, id).Error; err != nil {
 		return c.Status(404).SendString("Resource not found")
@@ -572,7 +572,7 @@ func FetchReadme(c *fiber.Ctx) error {
 					lic = lic[:25] + "..."
 				}
 				resource.License = lic
-				database.DB.Save(&resource)
+				reqDB(c).Save(&resource)
 			}
 		}
 	}
@@ -582,7 +582,7 @@ func FetchReadme(c *fiber.Ctx) error {
 		version := resource.Versions[0]
 		version.Readme = readme
 		version.Content = content
-		database.DB.Save(&version)
+		reqDB(c).Save(&version)
 	}
 
 	if readme == "" {
@@ -592,9 +592,13 @@ func FetchReadme(c *fiber.Ctx) error {
 	return c.SendString("<div id='readme-content' _='on load call renderMarkdown(my.textContent) then set my.innerHTML to it then call hljs.highlightAll()'>" + html.EscapeString(readme) + "</div>")
 }
 
-func GetPopularTags() []models.Tag {
+// GetPopularTags returns the most-used tags using the global database.
+func GetPopularTags() []models.Tag { return popularTags(database.DB) }
+
+// popularTags runs the query on db so handlers can pass a request-bound handle.
+func popularTags(db *gorm.DB) []models.Tag {
 	var tags []models.Tag
-	database.DB.Table("tags").
+	db.Table("tags").
 		Select("tags.*, COUNT(resource_tags.nomad_resource_id) as usage_count").
 		Joins("JOIN resource_tags ON resource_tags.tag_id = tags.id").
 		Group("tags.id").

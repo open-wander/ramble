@@ -73,7 +73,7 @@ func AuditLog(c *fiber.Ctx, action string, targetType string, targetID uint, tar
 		logEvent = logEvent.Interface("details", details)
 	}
 
-	logEvent.Msg("audit")
+	logEvent.Msg("audit.recorded")
 
 	// Log to database
 	audit := models.AuditLog{
@@ -90,7 +90,7 @@ func AuditLog(c *fiber.Ctx, action string, targetType string, targetID uint, tar
 		RequestID:  requestID,
 	}
 	audit.Checksum = computeAuditChecksum(&audit)
-	database.DB.Create(&audit)
+	reqDB(c).Create(&audit)
 }
 
 // AuditLogNoContext records an action without request context (for background jobs)
@@ -115,7 +115,7 @@ func AuditLogNoContext(action string, actorID uint, actorName string, targetType
 		logEvent = logEvent.Interface("details", details)
 	}
 
-	logEvent.Msg("audit")
+	logEvent.Msg("audit.recorded")
 
 	// Log to database
 	audit := models.AuditLog{

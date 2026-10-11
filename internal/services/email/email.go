@@ -57,7 +57,7 @@ func SendVerificationEmail(toEmail string, verificationLink string) error {
 func validateEmail(addr string) (string, error) {
 	parsed, err := mail.ParseAddress(addr)
 	if err != nil {
-		return "", fmt.Errorf("invalid email address %q: %w", addr, err)
+		return "", fmt.Errorf("invalid email address: %w", err)
 	}
 	return parsed.Address, nil
 }
@@ -120,7 +120,7 @@ func sendEmailWithTLS(host, port, user, password, from string, to []string, msg 
 	// Set recipients
 	for _, recipient := range to {
 		if err = client.Rcpt(recipient); err != nil {
-			return fmt.Errorf("failed to set recipient %s: %w", recipient, err)
+			return fmt.Errorf("failed to set recipient: %w", err)
 		}
 	}
 

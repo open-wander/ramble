@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"strings"
 	"time"
@@ -44,11 +43,11 @@ func ListPacksAPI(c *fiber.Ctx) error {
 	var orgID *uint
 
 	var user models.User
-	if err := database.DB.Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
+	if err := reqDB(c).Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
 		userID = user.ID
 	} else {
 		var org models.Organization
-		if err := database.DB.Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
+		if err := reqDB(c).Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
 			orgID = &org.ID
 		} else {
 			return c.Status(404).JSON(fiber.Map{"error": "Namespace not found"})
@@ -56,7 +55,7 @@ func ListPacksAPI(c *fiber.Ctx) error {
 	}
 
 	var resources []models.NomadResource
-	dbQuery := database.DB.Where("type = ?", models.ResourceTypePack)
+	dbQuery := reqDB(c).Where("type = ?", models.ResourceTypePack)
 	if orgID != nil {
 		dbQuery = dbQuery.Where("organization_id = ?", *orgID)
 	} else {
@@ -87,7 +86,7 @@ func ListPacksAPI(c *fiber.Ctx) error {
 // @Router /v1/packs [get]
 func ListAllPacksAPI(c *fiber.Ctx) error {
 	var resources []models.NomadResource
-	if err := database.DB.Preload("User").Preload("Organization").Where("type = ?", models.ResourceTypePack).Find(&resources).Error; err != nil {
+	if err := reqDB(c).Preload("User").Preload("Organization").Where("type = ?", models.ResourceTypePack).Find(&resources).Error; err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Database error"})
 	}
 
@@ -132,11 +131,11 @@ func GetPackAPI(c *fiber.Ctx) error {
 	var orgID *uint
 
 	var user models.User
-	if err := database.DB.Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
+	if err := reqDB(c).Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
 		userID = user.ID
 	} else {
 		var org models.Organization
-		if err := database.DB.Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
+		if err := reqDB(c).Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
 			orgID = &org.ID
 		} else {
 			return c.Status(404).JSON(fiber.Map{"error": "Namespace not found"})
@@ -144,7 +143,7 @@ func GetPackAPI(c *fiber.Ctx) error {
 	}
 
 	var resource models.NomadResource
-	dbQuery := database.DB.Preload("Versions").Where("type = ? AND name ILIKE ?", models.ResourceTypePack, packname)
+	dbQuery := reqDB(c).Preload("Versions").Where("type = ? AND name ILIKE ?", models.ResourceTypePack, packname)
 	if orgID != nil {
 		dbQuery = dbQuery.Where("organization_id = ?", *orgID)
 	} else {
@@ -184,7 +183,7 @@ func GetRegistries(c *fiber.Ctx) error {
 	}
 
 	// Query for unique owners of resources of type 'pack'
-	err := database.DB.Table("nomad_resources").
+	err := reqDB(c).Table("nomad_resources").
 		Select("DISTINCT COALESCE(organizations.name, users.username) as name, CASE WHEN organization_id IS NOT NULL THEN 'organization' ELSE 'user' END as type").
 		Joins("LEFT JOIN users ON users.id = nomad_resources.user_id").
 		Joins("LEFT JOIN organizations ON organizations.id = nomad_resources.organization_id").
@@ -212,7 +211,7 @@ func GetRegistries(c *fiber.Ctx) error {
 // @Router /v1/registries [get]
 func ListUserRegistriesAPI(c *fiber.Ctx) error {
 	var names []string
-	err := database.DB.Table("nomad_resources").
+	err := reqDB(c).Table("nomad_resources").
 		Select("DISTINCT COALESCE(organizations.name, users.username)").
 		Joins("LEFT JOIN users ON users.id = nomad_resources.user_id").
 		Joins("LEFT JOIN organizations ON organizations.id = nomad_resources.organization_id").
@@ -242,7 +241,7 @@ func SearchRegistriesAPI(c *fiber.Ctx) error {
 
 	searchParam := "%" + escapeLikeString(query) + "%"
 	var names []string
-	err := database.DB.Table("nomad_resources").
+	err := reqDB(c).Table("nomad_resources").
 		Select("DISTINCT COALESCE(organizations.name, users.username) as namespace").
 		Joins("LEFT JOIN users ON users.id = nomad_resources.user_id").
 		Joins("LEFT JOIN organizations ON organizations.id = nomad_resources.organization_id").
@@ -273,7 +272,7 @@ func SearchPacksAPI(c *fiber.Ctx) error {
 
 	var resources []models.NomadResource
 	searchParam := "%" + escapeLikeString(query) + "%"
-	err := database.DB.Preload("User").Preload("Organization").
+	err := reqDB(c).Preload("User").Preload("Organization").
 		Where("type = ? AND (name ILIKE ? ESCAPE '\\' OR description ILIKE ? ESCAPE '\\')", models.ResourceTypePack, searchParam, searchParam).
 		Limit(20).Find(&resources).Error
 
@@ -316,7 +315,7 @@ type JobDetail struct {
 // @Router /v1/jobs [get]
 func ListAllJobsAPI(c *fiber.Ctx) error {
 	var resources []models.NomadResource
-	if err := database.DB.Preload("User").Preload("Organization").Where("type = ?", models.ResourceTypeJob).Find(&resources).Error; err != nil {
+	if err := reqDB(c).Preload("User").Preload("Organization").Where("type = ?", models.ResourceTypeJob).Find(&resources).Error; err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Database error"})
 	}
 
@@ -348,7 +347,7 @@ func SearchJobsAPI(c *fiber.Ctx) error {
 
 	var resources []models.NomadResource
 	searchParam := "%" + escapeLikeString(query) + "%"
-	err := database.DB.Preload("User").Preload("Organization").
+	err := reqDB(c).Preload("User").Preload("Organization").
 		Where("type = ? AND (name ILIKE ? ESCAPE '\\' OR description ILIKE ? ESCAPE '\\')", models.ResourceTypeJob, searchParam, searchParam).
 		Limit(20).Find(&resources).Error
 
@@ -386,11 +385,11 @@ func GetJobAPI(c *fiber.Ctx) error {
 	var orgID *uint
 
 	var user models.User
-	if err := database.DB.Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
+	if err := reqDB(c).Where("username ILIKE ?", namespace).First(&user).Error; err == nil {
 		userID = user.ID
 	} else {
 		var org models.Organization
-		if err := database.DB.Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
+		if err := reqDB(c).Where("name ILIKE ?", namespace).First(&org).Error; err == nil {
 			orgID = &org.ID
 		} else {
 			return c.Status(404).JSON(fiber.Map{"error": "Namespace not found"})
@@ -398,7 +397,7 @@ func GetJobAPI(c *fiber.Ctx) error {
 	}
 
 	var resource models.NomadResource
-	dbQuery := database.DB.Preload("Versions").Where("type = ? AND name ILIKE ?", models.ResourceTypeJob, jobname)
+	dbQuery := reqDB(c).Preload("Versions").Where("type = ? AND name ILIKE ?", models.ResourceTypeJob, jobname)
 	if orgID != nil {
 		dbQuery = dbQuery.Where("organization_id = ?", *orgID)
 	} else {
@@ -476,7 +475,7 @@ func ListRecentAPI(c *fiber.Ctx) error {
 		limit = 50
 	}
 
-	query := database.DB.
+	query := reqDB(c).
 		Preload("User").
 		Preload("Organization").
 		Preload("Tags").

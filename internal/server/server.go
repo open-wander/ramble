@@ -15,6 +15,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"github.com/gofiber/swagger"
 	"github.com/gofiber/template/html/v2"
+	"github.com/rs/zerolog"
 	_ "rmbl/api-docs"
 	"rmbl/internal/database"
 	"rmbl/internal/handlers"
@@ -99,15 +100,7 @@ func Run(cfg Config) error {
 	})
 
 	// 3. Setup Fiber
-	app := fiber.New(fiber.Config{
-		Views:                   engine,
-		EnableTrustedProxyCheck: true,
-		TrustedProxies:          trustedProxies(os.Getenv("TRUSTED_PROXIES")),
-		ProxyHeader:             fiber.HeaderXForwardedFor,
-		// X-Forwarded-For may carry a chain ("visitor, edge"); with validation c.IP() is
-		// the first valid address rather than the whole header.
-		EnableIPValidation: true,
-	})
+	app := fiber.New(fiberConfig(engine))
 
 	// 4. Middleware
 	// Crash reporting (GlitchTip) - outermost, captures panics. Repanic:false
@@ -201,7 +194,7 @@ func Run(cfg Config) error {
 
 			if userID := sess.Get("user_id"); userID != nil {
 				var user models.User
-				if err := database.DB.Preload("Memberships.Organization").First(&user, userID).Error; err == nil {
+				if err := database.DB.WithContext(c.UserContext()).Preload("Memberships.Organization").First(&user, userID).Error; err == nil {
 					// Check if password was changed after session was created
 					// If so, invalidate this session (force logout on password reset)
 					if createdAt := sess.Get("session_created_at"); createdAt != nil {
@@ -417,7 +410,29 @@ func Run(cfg Config) error {
 	if port == "" {
 		port = "3000"
 	}
-	return app.Listen(":" + port)
+	addr := ":" + port
+	logStarted(&logger.Log, addr, cfg.Version)
+	return app.Listen(addr)
+}
+
+// fiberConfig builds the Fiber configuration.
+func fiberConfig(views fiber.Views) fiber.Config {
+	return fiber.Config{
+		Views:                   views,
+		EnableTrustedProxyCheck: true,
+		TrustedProxies:          trustedProxies(os.Getenv("TRUSTED_PROXIES")),
+		ProxyHeader:             fiber.HeaderXForwardedFor,
+		// X-Forwarded-For may carry a chain ("visitor, edge"); with validation c.IP() is
+		// the first valid address rather than the whole header.
+		EnableIPValidation: true,
+		// The text banner breaks one-JSON-object-per-line; server.started replaces it.
+		DisableStartupMessage: true,
+	}
+}
+
+// logStarted emits the single startup line that replaces Fiber's banner.
+func logStarted(l *zerolog.Logger, addr, version string) {
+	l.Info().Str("addr", addr).Str("version", version).Msg("server.started")
 }
 
 // defaultTrustedProxies covers loopback and the RFC1918 ranges, which is where a reverse

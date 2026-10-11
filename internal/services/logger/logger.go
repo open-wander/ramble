@@ -3,6 +3,7 @@ package logger
 import (
 	"bytes"
 	"context"
+	"io"
 	stdlog "log"
 	"os"
 	"strings"
@@ -22,7 +23,10 @@ func upperLevelMarshal(l zerolog.Level) string { return strings.ToUpper(l.String
 // Init initializes the structured logger. In production every line is one
 // JSON object on stdout with time, level (upper case) and msg; elsewhere a
 // console writer is used.
-func Init() {
+func Init() { initWithWriter(os.Stdout) }
+
+// initWithWriter is Init with an injectable output, for tests.
+func initWithWriter(w io.Writer) {
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 	zerolog.MessageFieldName = "msg"
 
@@ -30,13 +34,13 @@ func Init() {
 		// Pretty console output in development
 		zerolog.LevelFieldMarshalFunc = defaultLevelMarshal
 		Log = zerolog.New(zerolog.ConsoleWriter{
-			Out:        os.Stdout,
+			Out:        w,
 			TimeFormat: time.RFC3339,
 		}).With().Timestamp().Caller().Logger()
 	} else {
 		// JSON output in production
 		zerolog.LevelFieldMarshalFunc = upperLevelMarshal
-		Log = zerolog.New(os.Stdout).With().Timestamp().Logger()
+		Log = zerolog.New(w).With().Timestamp().Logger()
 	}
 
 	// Set as default logger

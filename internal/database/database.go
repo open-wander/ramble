@@ -25,6 +25,9 @@ func getSSLMode() string {
 	return "disable"
 }
 
+// gormConfig is the production GORM configuration; Connect opens the database with it.
+func gormConfig() *gorm.Config { return &gorm.Config{Logger: newDefaultGormLogger()} }
+
 func Connect() {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
@@ -48,9 +51,7 @@ func Connect() {
 	}
 
 	var err error
-	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: newDefaultGormLogger(),
-	})
+	DB, err = gorm.Open(postgres.Open(dsn), gormConfig())
 
 	if err != nil {
 		logger.Log.Fatal().Err(err).Msg("db.connect_failed")

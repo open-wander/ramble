@@ -39,3 +39,32 @@ PRD: [done/prd-security-bugfix.md](done/prd-security-bugfix.md).
 | 5.3 | Size-cap GitHub/GitLab JSON API responses | [prd-security-bugfix.md](done/prd-security-bugfix.md) | DONE (2026-05-31) | `io.LimitReader(resp.Body, 10 MiB)` on all 6 API decoders; commit d195d9c |
 | 5.4 | Clearer message for cross-provider same-email OAuth signup | [prd-security-bugfix.md](done/prd-security-bugfix.md) | DONE (2026-05-31) | Broadened collision probe to any existing email; provider+id login still runs first; commit d2d3da3 |
 | 5.5 | gofmt-clean tree-wide (Go 1.26) | [prd-security-bugfix.md](done/prd-security-bugfix.md) | DONE (2026-05-31) | `gofmt -w internal/ cmd/`, 23 files; commit b3f8b1d. NOTE: interface{}->any / modernize hints are staticcheck-level, not gofmt — separate pass if wanted |
+
+## Phase 6: Structured logging
+
+Source: infra `docs/prod-logging.md` item 2 (TydeWhatMay/infra, surveyed 2026-10-09). Prod
+logged ~37,000 text lines/day: GORM printed every query with ANSI colours, Fiber's text
+access log, stdlib `log.Printf`. Standard: one JSON object per line, `time`/`level`/`msg`,
+`msg` a stable event key, no SQL at INFO, no secrets or query strings.
+
+| # | Task | PRD | Status | Notes |
+|---|------|-----|--------|-------|
+| 6.1 | JSON logging: GORM through a zerolog adapter (silent <200ms, `db.slow_query` WARN, `db.query_error` ERROR, `$n` placeholders only), `http.request` middleware replacing fiberlogger, all server-side `log.*` calls to event keys, stdlib `log` redirected, upper-case `level` + `msg` | infra `docs/prod-logging.md` | DONE on branch (2026-10-09) | Branch `feat/structured-logging` (bb1c408..c59d669), not merged. Tests/vet/gosec clean, re-run independently. Mutation-tested. |
+| 6.2 | Merge 6.1, release, deploy; then verify in Loki that `{container="ramble"} !~ "^\\{"` returns only panic traces, and that line volume dropped | infra `docs/prod-logging.md` | DONE | Released v0.5.17, deployed 2026-10-10 21:00. Loki: only the Fiber startup banner is non-JSON (6.6); line volume ~1,390/h to ~220/h. |
+| 6.3 | Thread the request context into DB calls (`database.DB.WithContext(c.UserContext())` or a helper) so `db.slow_query`/`db.query_error` lines carry `request_id` | infra `docs/prod-logging.md` | DONE (2026-10-11) | `reqDB(c)` helper (internal/handlers/db.go) on every request path; `resource.Service.WithContext(ctx)` so service transactions inherit it; session middleware inlined. Goroutines, background fetches, startup keep `database.DB`. `TestReqDB_QueryErrorCarriesRequestID` (mutation-checked). Advisor REJECT then MINOR after fix round. |
+| 6.4 | Convert remaining sentence-style zerolog messages to stable event keys (`github_sync.go`, `background.go`, `audit.go`, e.g. "webhook validation failed" -> `webhook.validation_failed`), variable data in fields | infra `docs/prod-logging.md` | DONE (2026-10-11) | 34 messages in github_sync.go, background.go, resource_webhooks.go, audit.go converted (github.*, webhook.*, download.*, version_fetch.*). `msg="audit"` is now `audit.recorded`. AST guard `TestServerLogMessagesAreEventKeys` (internal/services/logger/msgkey_test.go) blocks regressions; CLI excluded. Advisor MINOR. |
+| 6.5 | Decide on static-asset access lines: log `/public/*` at DEBUG or skip them | infra `docs/prod-logging.md` | DONE (2026-10-11) | Closed, no code change. Loki, 12h to 2026-10-11: 59 of 904 `http.request` lines were `/public/*` (6.5%, ~5/h). Not worth hiding asset 404s for. |
+| 6.6 | Disable Fiber's startup banner (`fiber.Config{DisableStartupMessage: true}`) and log one `server.started` JSON line with addr and version instead | infra `docs/prod-logging.md` | DONE (2026-10-11) | fiberConfig() sets DisableStartupMessage; logStarted() writes `server.started` with `addr`, `version` before Listen. Tests pin the proxy settings too. Advisor PASS. |
+
+## Phase 7: Logging standard gaps (from verify 2026-10-11)
+
+Source: [verification.md](verification.md) (Phase 6 verify, gaps 1-6). Fixed on
+`feat/logging-followups` before PR #52 merges. Gap 7 (minor) accepted as-is.
+
+| # | Task | PRD | Status | Notes |
+|---|------|-----|--------|-------|
+| 7.1 | Replace the three `fmt.Printf` calls on request paths (`auth.go:384`, `auth.go:488`, `utils.go:49`) with request-scoped zerolog event keys; stop email validation errors carrying the recipient address; extend the AST guard to fail on `fmt.Print*`, `print`/`println` and `fmt.Fprint*(os.Stdout/os.Stderr)` in server packages | verification.md gaps 1, 2 | DONE (2026-10-11) | email.verification_send_failed / email.reset_send_failed / session.save_failed (op=set_flash) via the request logger; email.go errors no longer embed the address. `TestServerCodeDoesNotWriteStdout` (AST, excludes internal/cli and cmd/nomad-vars operator CLI). Advisor REVISE plan, REJECT then MINOR. |
+| 7.2 | Webhook handlers log through the request logger: `resource_webhooks.go:228` webhookLog, `HandleGitHubIssueWebhook` and the `github.webhook_request_*` lines in handleNewIssueDB/handleIssueStateChangeDB | verification.md gap 3 | DONE (2026-10-11) | HandleWebhook / HandleGitHubIssueWebhook use the request logger; goroutines take a zerolog.Logger value; handleNewIssueDB/handleIssueStateChangeDB derive it from db.Statement.Context. webhook_log_test.go. Advisor REJECT then MINOR. |
+| 7.3 | `ramble server` writes only JSON: SilenceErrors/SilenceUsage for the server command, log a JSON error line when `server.Run` returns an error, skip the update check for `server` | verification.md gap 6 | DONE (2026-10-11) | wantsUpdateCheck skips server; serverCmd SilenceErrors/SilenceUsage; runServerCmd logs `server.exit_error` and returns a loggedError that Execute does not reprint. Flag errors (`--bogus`) still plain text. Advisor MINOR. |
+| 7.4 | Test what `logger.Init` itself writes in production (injectable writer), so a ConsoleWriter in the production branch goes red | verification.md gap 4 | DONE (2026-10-11) | Init calls initWithWriter(os.Stdout); TestInit_ProductionFormat tests Init's own output and restores all globals. ConsoleWriter / lower-case level / os.Stdout mutations red. Advisor PASS. |
+| 7.5 | Test that `database.Connect`'s GORM config uses the zerolog adapter, so reverting to GORM's default logger goes red | verification.md gap 5 | DONE (2026-10-11) | gormConfig() used by Connect; TestGormConfigUsesZerologAdapter asserts adapter type, threshold, base logger and db.query_error output. gormlogger.Default / nil mutations red. Advisor PASS. |

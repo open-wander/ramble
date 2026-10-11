@@ -70,31 +70,31 @@ func downloadFileWithRetry(ctx context.Context, repoURL, fileName string) (strin
 
 	operation := func() error {
 		attempt++
-		log.Debug().Int("attempt", attempt).Msg("attempting file download")
+		log.Debug().Int("attempt", attempt).Msg("download.attempt")
 
 		content, err := downloadFile(repoURL, fileName)
 		if err != nil {
 			lastErr = err
 
 			if isPermanentError(err) {
-				log.Warn().Err(err).Int("attempt", attempt).Msg("permanent error encountered, stopping retries")
+				log.Warn().Err(err).Int("attempt", attempt).Msg("download.permanent_error")
 				return backoff.Permanent(err)
 			}
 
-			log.Warn().Err(err).Int("attempt", attempt).Msg("transient error, will retry")
+			log.Warn().Err(err).Int("attempt", attempt).Msg("download.transient_error")
 			return err
 		}
 
 		result = content
 		if attempt > 1 {
-			log.Info().Int("total_attempts", attempt).Msg("download succeeded after retry")
+			log.Info().Int("total_attempts", attempt).Msg("download.retry_succeeded")
 		}
 		return nil
 	}
 
 	err := backoff.Retry(operation, b)
 	if err != nil {
-		log.Error().Err(err).Int("total_attempts", attempt).Msg("download failed after all retries")
+		log.Error().Err(err).Int("total_attempts", attempt).Msg("download.failed")
 		return "", lastErr
 	}
 
@@ -116,11 +116,11 @@ func fetchVersionContent(ctx context.Context, resID uint, versionStr, repoURL, r
 			log.Error().
 				Interface("panic", r).
 				Stack().
-				Msg("panic during version fetch")
+				Msg("version_fetch.panic")
 
 			// Persist panic as failure
 			if err := resource.Service.RecordFetchFailed(resID, versionStr, fmt.Sprintf("panic: %v", r)); err != nil {
-				log.Error().Err(err).Msg("failed to record panic as fetch failure")
+				log.Error().Err(err).Msg("version_fetch.panic_record_failed")
 			}
 		}
 	}()
@@ -199,10 +199,10 @@ func fetchVersionContent(ctx context.Context, resID uint, versionStr, repoURL, r
 		log.Error().
 			Err(err).
 			Dur("duration", duration).
-			Msg("version fetch failed")
+			Msg("version_fetch.failed")
 
 		if recErr := resource.Service.RecordFetchFailed(resID, versionStr, err.Error()); recErr != nil {
-			log.Error().Err(recErr).Msg("failed to record fetch failure")
+			log.Error().Err(recErr).Msg("version_fetch.failure_record_failed")
 		}
 		return
 	}
@@ -214,7 +214,7 @@ func fetchVersionContent(ctx context.Context, resID uint, versionStr, repoURL, r
 		Bool("readme_fetched", readmeErr == nil).
 		Bool("content_fetched", contentErr == nil).
 		Bool("variables_fetched", varsErr == nil).
-		Msg("version fetch completed")
+		Msg("version_fetch.completed")
 
 	now = time.Now()
 	database.DB.Model(&models.ResourceVersion{}).
