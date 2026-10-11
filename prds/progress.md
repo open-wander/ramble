@@ -567,3 +567,13 @@ Phase 9 (13 tasks incl. 9.0 SQL injection) done and archived.
 Remaining known debt (not in Phase 9): staticcheck in CI (blocked on upstream); a LOWER()
 unique index on users.username / organizations.name after auditing prod for case-variant
 duplicates (SQL in 9.11); optional `go get -u` dependency refresh and pinning alpine:latest.
+
+## 2026-10-11 — CI: gosec pin for Go 1.27
+
+PR #54 security-scan failed: the CI pin gosec v2.22.11 cannot load Go 1.27 packages
+("package encoding/json without types"); reproduced locally. Bumped the pin to v2.29.0
+(2026-08-25), which runs clean on Go 1.27. Missed in 9.8: when bumping Go, check every
+pinned analysis tool (gosec, staticcheck, swag) against the new toolchain.
+
+PATTERN: toolchain-bump - Go major bumps break pinned go/analysis tools (gosec, staticcheck)
+before they break the build; run each pinned tool at its pinned version on the new toolchain.
