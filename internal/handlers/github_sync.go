@@ -214,43 +214,6 @@ func syncRequestToGitHubWithRetry(db *gorm.DB, request models.PackRequest) error
 	return nil
 }
 
-// SyncGitHubToRequest syncs GitHub issue state to a request
-func SyncGitHubToRequest(issueNum int) error {
-	return syncGitHubToRequest(database.DB, issueNum)
-}
-
-// syncGitHubToRequest is SyncGitHubToRequest on a caller-supplied *gorm.DB.
-func syncGitHubToRequest(db *gorm.DB, issueNum int) error {
-	cfg, err := getGitHubSyncConfig(db)
-	if err != nil {
-		return err
-	}
-
-	issue, err := github.GetIssue(cfg.Token, cfg.Owner, cfg.Repo, issueNum)
-	if err != nil {
-		return fmt.Errorf("failed to get issue: %w", err)
-	}
-
-	var request models.PackRequest
-	if err := db.Where("github_issue_num = ?", issueNum).First(&request).Error; err != nil {
-		// Issue exists on GitHub but not in DB - check if it's app-created
-		if strings.Contains(issue.Body, "automatically created from [RMBL]") {
-			// Skip - this shouldn't happen normally
-			return nil
-		}
-		// Could create a new request from external issue here if desired
-		return nil
-	}
-
-	newStatus := mapGitHubToAppStatus(issue)
-	if request.Status != newStatus {
-		request.Status = newStatus
-		db.Save(&request)
-	}
-
-	return nil
-}
-
 // runBidirectionalSync performs full bidirectional sync
 func runBidirectionalSync(db *gorm.DB) (*SyncResult, error) {
 	log := logger.Log.With().Str("operation", "github_sync").Logger()
@@ -508,13 +471,8 @@ func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
 	return c.SendStatus(200)
 }
 
-// handleNewIssue processes a newly opened issue
-func handleNewIssue(issue IssuePayload) error {
-	return handleNewIssueDB(database.DB, issue)
-}
-
-// handleNewIssueDB is handleNewIssue on a caller-supplied handle, so the
-// webhook handler can pass a request-bound one.
+// handleNewIssueDB processes a newly opened issue on a caller-supplied handle,
+// so the webhook handler can pass a request-bound one.
 func handleNewIssueDB(db *gorm.DB, issue IssuePayload) error {
 	// Request-bound handles carry the request logger; others fall back to the global one.
 	log := logger.FromContextOr(db.Statement.Context, &logger.Log)
@@ -579,13 +537,8 @@ func handleNewIssueDB(db *gorm.DB, issue IssuePayload) error {
 	return nil
 }
 
-// handleIssueStateChange processes issue state/label changes
-func handleIssueStateChange(issue IssuePayload) error {
-	return handleIssueStateChangeDB(database.DB, issue)
-}
-
-// handleIssueStateChangeDB is handleIssueStateChange on a caller-supplied
-// handle, so the webhook handler can pass a request-bound one.
+// handleIssueStateChangeDB processes issue state/label changes on a
+// caller-supplied handle, so the webhook handler can pass a request-bound one.
 func handleIssueStateChangeDB(db *gorm.DB, issue IssuePayload) error {
 	// Request-bound handles carry the request logger; others fall back to the global one.
 	log := logger.FromContextOr(db.Statement.Context, &logger.Log)

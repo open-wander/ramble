@@ -9,7 +9,6 @@ import (
 	"os"
 	"regexp"
 	"rmbl/internal/crypto"
-	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"rmbl/internal/services/email"
 	"rmbl/internal/services/logger"
@@ -75,13 +74,13 @@ func BeginAuth(c *fiber.Ctx) error {
 	return goth_fiber.BeginAuthHandler(c)
 }
 
-// errOAuthEmailCollision is returned by processOAuthUser when the OAuth
+// errOAuthEmailCollision is returned by processOAuthUserDB when the OAuth
 // provider's email already belongs to a local account that has no provider
 // linkage. Callers should surface a clear error to the user rather than
 // silently linking or creating a duplicate.
 var errOAuthEmailCollision = errors.New("existing account")
 
-// processOAuthUser resolves a goth.User against the database and returns the
+// processOAuthUserDB resolves a goth.User against the database and returns the
 // models.User that should be logged in.
 //
 // Rules (hardened against account-takeover via unverified OAuth email):
@@ -100,12 +99,8 @@ var errOAuthEmailCollision = errors.New("existing account")
 // field is populated from the OAuth provider but cannot be trusted as
 // verified for GitHub/GitLab. A future task may add a separate verification
 // step for OAuth-created accounts.
-func processOAuthUser(gothUser goth.User) (models.User, error) {
-	return processOAuthUserDB(database.DB, gothUser)
-}
-
-// processOAuthUserDB is processOAuthUser on a caller-supplied handle, so the
-// callback handler can pass a request-bound one.
+//
+// It takes the handle so the callback handler can pass a request-bound one.
 func processOAuthUserDB(tx *gorm.DB, gothUser goth.User) (models.User, error) {
 	// Encrypt token; use empty string on failure so the rest can proceed.
 	encryptedToken, _ := crypto.EncryptToken(gothUser.AccessToken)

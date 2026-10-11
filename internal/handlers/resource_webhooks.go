@@ -2,9 +2,6 @@ package handlers
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"rmbl/internal/crypto"
 	"rmbl/internal/database"
@@ -19,30 +16,6 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 )
-
-// validateGitHubSignature validates GitHub webhook signature (X-Hub-Signature-256)
-func validateGitHubSignature(payload []byte, secret, signature string) bool {
-	if secret == "" || signature == "" {
-		return false
-	}
-
-	// GitHub signature format: sha256=<hex>
-	if !strings.HasPrefix(signature, "sha256=") {
-		return false
-	}
-
-	expectedSig := strings.TrimPrefix(signature, "sha256=")
-	expectedBytes, err := hex.DecodeString(expectedSig)
-	if err != nil {
-		return false
-	}
-
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(payload)
-	actualBytes := mac.Sum(nil)
-
-	return hmac.Equal(expectedBytes, actualBytes)
-}
 
 type GitRepoInfo struct {
 	Name        string `json:"name"`

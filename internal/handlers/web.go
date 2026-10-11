@@ -3,7 +3,6 @@ package handlers
 import (
 	"encoding/json"
 	"html"
-	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"strconv"
 	"strings"
@@ -592,10 +591,7 @@ func FetchReadme(c *fiber.Ctx) error {
 	return c.SendString("<div id='readme-content' _='on load call renderMarkdown(my.textContent) then set my.innerHTML to it then call hljs.highlightAll()'>" + html.EscapeString(readme) + "</div>")
 }
 
-// GetPopularTags returns the most-used tags using the global database.
-func GetPopularTags() []models.Tag { return popularTags(database.DB) }
-
-// popularTags runs the query on db so handlers can pass a request-bound handle.
+// popularTags returns the most-used tags; it runs the query on db so handlers can pass a request-bound handle.
 func popularTags(db *gorm.DB) []models.Tag {
 	var tags []models.Tag
 	db.Table("tags").

@@ -86,24 +86,6 @@ func parsePackVariables(content string) ([]PackVariable, error) {
 	return config.Variables, nil
 }
 
-// isAllowedContentType checks if the Content-Type is safe for file downloads
-func isAllowedContentType(contentType string) bool {
-	allowedTypes := []string{
-		"text/plain",
-		"text/markdown",
-		"text/x-markdown",
-		"application/octet-stream",
-		"application/x-hcl",
-		"text/x-hcl",
-	}
-	for _, allowed := range allowedTypes {
-		if strings.HasPrefix(contentType, allowed) {
-			return true
-		}
-	}
-	return false
-}
-
 // MaxRemoteFileBytes is the maximum number of bytes accepted from any remote
 // file fetch (README, LICENSE, metadata, variables, job files). Downloads
 // exceeding this limit are rejected with an error; no partial content is

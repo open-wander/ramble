@@ -39,7 +39,7 @@ func TestOAuthCallback_AlreadyLinkedProviderLogin(t *testing.T) {
 	var countBefore int64
 	database.DB.Model(&models.User{}).Count(&countBefore)
 
-	result, err := processOAuthUser(gothUser)
+	result, err := processOAuthUserDB(database.DB, gothUser)
 	require.NoError(t, err)
 
 	// Should log in as the existing user.
@@ -71,7 +71,7 @@ func TestOAuthCallback_BrandNewUser(t *testing.T) {
 	var countBefore int64
 	database.DB.Model(&models.User{}).Count(&countBefore)
 
-	result, err := processOAuthUser(gothUser)
+	result, err := processOAuthUserDB(database.DB, gothUser)
 	require.NoError(t, err)
 
 	// A new row should exist.
@@ -119,7 +119,7 @@ func TestOAuthCallback_CrossProviderCollisionRejected(t *testing.T) {
 		AccessToken: "tok",
 	}
 
-	_, err := processOAuthUser(gothUser)
+	_, err := processOAuthUserDB(database.DB, gothUser)
 
 	// Must return the collision error — not a generic DB error and not nil.
 	require.Error(t, err, "cross-provider email collision should produce an error")
@@ -165,7 +165,7 @@ func TestOAuthCallback_EmailCollisionRejected(t *testing.T) {
 		AccessToken: "tok",
 	}
 
-	_, err := processOAuthUser(gothUser)
+	_, err := processOAuthUserDB(database.DB, gothUser)
 
 	// Must return an error signalling the collision.
 	require.Error(t, err, "email collision should produce an error, not silently link")

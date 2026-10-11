@@ -374,3 +374,19 @@ passing against the old code first. Orchestrator mutation ToTitle -> ToLower red
 
 PATTERN: tooling - the installed staticcheck (go1.25 build) cannot load go1.26+ modules;
 use `go run honnef.co/go/tools/cmd/staticcheck@latest ./...`.
+
+## 2026-10-11 — 9.2 dead code and test-only wrappers
+
+Deleted: validateGitHubSignature (duplicate of github.ValidateWebhookSignature),
+setupAuthenticatedApp (unused test helper), SyncGitHubToRequest + syncGitHubToRequest (no
+callers), and the database.DB wrappers only tests used (processOAuthUser, handleNewIssue,
+handleIssueStateChange, GetPopularTags). Tests now call processOAuthUserDB, handleNewIssueDB,
+handleIssueStateChangeDB, popularTags(database.DB); TestGetPopularTags_* renamed
+TestPopularTags_* by the orchestrator.
+isAllowedContentType (added 9c5135f, never called) DELETED rather than wired, because:
+(1) downloaded content is never served to a client with the remote Content-Type - it is
+parsed as HCL, stored as a string, or HTML-escaped - so the header adds no security; the
+SSRF host allowlist and the 1 MiB read cap already bound the download; (2) downloadFile
+builds its client and hosts internally, so wiring it testably needs a new seam;
+(3) GitLab raw files go through Workhorse and can return application/octet-stream or
+sniffed types, and the case-sensitive prefix check would reject valid responses.

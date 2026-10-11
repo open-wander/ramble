@@ -610,15 +610,15 @@ func TestFetchInfo_EmptyURL(t *testing.T) {
 	// Empty response for empty URL
 }
 
-// GetPopularTags tests
+// popularTags tests
 
-func TestGetPopularTags_Empty(t *testing.T) {
-	tags := GetPopularTags()
+func TestPopularTags_Empty(t *testing.T) {
+	tags := popularTags(database.DB)
 	// Should return empty slice when no tags exist
 	assert.NotNil(t, tags)
 }
 
-func TestGetPopularTags_WithData(t *testing.T) {
+func TestPopularTags_WithData(t *testing.T) {
 	defer cleanupTestData(t)
 
 	user := createTestUser(t, "taguser")
@@ -636,7 +636,7 @@ func TestGetPopularTags_WithData(t *testing.T) {
 	}
 	database.DB.Create(&resource)
 
-	tags := GetPopularTags()
+	tags := popularTags(database.DB)
 	assert.NotNil(t, tags)
 	// Should include our tag
 	found := false
