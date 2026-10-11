@@ -577,3 +577,16 @@ pinned analysis tool (gosec, staticcheck, swag) against the new toolchain.
 
 PATTERN: toolchain-bump - Go major bumps break pinned go/analysis tools (gosec, staticcheck)
 before they break the build; run each pinned tool at its pinned version on the new toolchain.
+
+## 2026-10-11 — CORRECTION: gosec on Go 1.27
+
+The "gosec clean" results recorded for 9.8, 9.4-9.6 checks and 9.7 were wrong: gosec exited 1
+with 241 "export data version 5 is greater than maximum supported version 4" errors and
+"Issues: 0"; the orchestrator read the output and piped through tail, losing the exit code.
+No tagged gosec (<= v2.29.0, built against x/tools v0.49 / go 1.25) reads Go 1.27 export data.
+gosec master v2.29.1-0.20261009120814-7b1b5cebe007 does: exit 0, 0 issues on the branch. CI and
+the nightly workflow now pin that commit, with a comment to return to a tagged release.
+govulncheck@latest verified with its real exit code: 0.
+
+PATTERN: verification - never judge a tool by its output piped through tail/grep; capture the
+exit code ($? of the tool itself, or set -o pipefail). A tool can print "Issues: 0" and fail.

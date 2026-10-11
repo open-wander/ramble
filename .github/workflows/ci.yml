@@ -61,8 +61,10 @@ jobs:
         go-version: '1.27.x'
         check-latest: true
 
+    # gosec master commit: no tagged release (<= v2.29.0) reads Go 1.27 export data yet.
+    # Switch back to a tagged release once one does.
     - name: Install gosec
-      run: go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0
+      run: go install github.com/securego/gosec/v2/cmd/gosec@v2.29.1-0.20261009120814-7b1b5cebe007
 
     - name: Run gosec
       run: gosec ./...
