@@ -613,3 +613,14 @@ staticcheck 452d5bb (both 2026-10-09) exit 0 with no findings. Makefile now owns
 CI calls them; bootstrap and `make security` use the same pins. The weekly security workflow
 runs both at master (plus govulncheck@latest) so new checks and toolchain breaks surface there
 first; bump the Makefile pins when it passes.
+
+## 2026-10-12 — dependency refresh and alpine pin
+
+go get -u ./... + go mod tidy: ~60 modules. Direct: ssrf 0.2.0->0.3.0 (refactor, stdlib slices,
+adds 3fff::/20 to the deny list - stricter), goth_fiber 0.3.3->0.5.0 (fixes only: Save error
+returned, safe session value assertion, provider via Locals), cobra 1.8.1->1.10.2, pgx 5.9->5.11,
+fasthttp 1.71->1.75, sentry-go 0.49->0.50, fiber 2.52.15, gorm 1.31.2, hcl 2.25, zerolog 1.35.1,
+x/crypto 0.58. Dockerfile runtime alpine:latest -> alpine:3.24 (3.24.2 today; patch updates on
+rebuild, no surprise minor bumps). Checks: mod verify, vet (both tags), gofmt, go fix, make
+staticcheck, make gosec (0 issues), govulncheck (exit 0; GO-2026-5932 in x/crypto has no fix and
+is not called), full suite incl. e2e, docker build + binary runs on alpine 3.24.2.
