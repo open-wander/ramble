@@ -650,3 +650,16 @@ ubuntu-26.04: .github/actionlint.yaml declares it (remove when actionlint ships 
 quoted $GITHUB_OUTPUT (SC2086) so actionlint exits 0.
 Orchestrator dropped the worker's internal/workflows/workflows_test.go: it hard-coded action
 majors in the Go suite, so every bump would break go test. actionlint in CI (10.2) is the guard.
+
+## 2026-10-14 — 10.2 build tool pins; Phase 10 collapsed
+
+Makefile: SWAG_VERSION v1.16.6 (latest; what @latest resolved to), TAILWIND_VERSION v4.1.18
+(Docker already pinned it; `make tailwind-install` fetched latest = v4.3.3, so local CSS could
+differ from prod - now both 4.1.18; moving to 4.3 is a separate, visual change), ACTIONLINT_VERSION
+v1.7.12. Targets: actionlint, check-pins (Dockerfile ARG defaults must equal the Makefile pins),
+print-%. Dockerfile ARG SWAG_VERSION / TAILWIND_VERSION. CI test job: make actionlint, make
+check-pins, make swagger (no separate swag@latest install).
+Checks: check-pins drift mutation (Dockerfile tailwind v4.3.3) -> exit 2; make swagger -> no
+api-docs diff; docker build ok; suite ok (handlers/database hit testcontainers startup timeouts
+while ~34 containers from other sessions shared Docker; re-run green).
+Release workflow changes (10.1) are only proven by the next release.

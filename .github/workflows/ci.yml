@@ -29,6 +29,12 @@ jobs:
     - name: staticcheck
       run: make staticcheck
 
+    - name: Lint workflows
+      run: make actionlint
+
+    - name: Tool pins match between Makefile and Dockerfile
+      run: make check-pins
+
     - name: Check formatting and go fix modernizers
       run: |
         unformatted=$(gofmt -l .)
@@ -45,7 +51,6 @@ jobs:
 
     - name: Check Swagger docs are up to date
       run: |
-        go install github.com/swaggo/swag/cmd/swag@latest
         make swagger
         if ! git diff --quiet api-docs/; then
           echo "Swagger docs are out of date. Run 'make swagger' and commit the changes."

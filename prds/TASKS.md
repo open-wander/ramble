@@ -17,17 +17,7 @@ verification in [verification.md](verification.md). PRD: [done/prd-security-bugf
 
 ## Phase 9: Webhook CSRF bug and code debt — 13 tasks completed 2026-10-11 (see [TASKS-archive.md](TASKS-archive.md))
 
-## Phase 10: CI and runtime maintenance
-
-Source: review after v0.5.20 (2026-10-14). GitHub's `ubuntu-latest` moves to Ubuntu 26 from
-2026-10-19 and Node 20 actions are deprecated; build tools and the runtime user were never pinned
-or hardened. Decision (user): pin GitHub-hosted jobs to `ubuntu-26.04` now.
-
-| # | Task | PRD | Status | Notes |
-|---|------|-----|--------|-------|
-| 10.1 | Bring GitHub Actions current: docker/login, setup-buildx, setup-qemu, build-push, attest-build-provenance, goreleaser-action to current majors (Node 24); re-check checkout, setup-go, codeql; pin GitHub-hosted jobs to `ubuntu-26.04` | review 2026-10-14 | DONE (2026-10-14) | checkout/setup-go v7, docker login/buildx/qemu v4, build-push v7, attest-build-provenance v4, goreleaser-action v7 (all Node 24); hosted jobs on ubuntu-26.04 (GA per runner-images). No input changes needed. `$GITHUB_OUTPUT` quoted (SC2086). `.github/actionlint.yaml` declares ubuntu-26.04 until actionlint knows it. attest v4 will warn about storage records without `artifact-metadata: write`. Advisor MINOR. |
-| 10.2 | Pin build tools in the Makefile: `SWAG_VERSION`, `TAILWIND_VERSION`; CI uses `make swagger`; Dockerfile takes them as build args; CI check fails if Dockerfile and Makefile pins differ | review 2026-10-14 | TODO | Same pattern as GOSEC_VERSION / STATICCHECK_VERSION. |
-| 10.3 | Run the container as non-root: fixed unprivileged user, `/app` instead of `/root`, ownership right; confirm the server writes nothing to disk and the Nomad job needs no root; verify image (`id -u` != 0, server starts) | review 2026-10-14 | DONE (2026-10-14) | Runtime stage: user `ramble` uid/gid 10001 (no shell, no home), `WORKDIR /app`, files root-owned and read-only to the app, `USER 10001:10001`. Nomad job needed no change. Verified: image builds, `id`, writes denied, server starts and serves / /login /docs against a throwaway Postgres. `TestDockerfileRuntimeRunsNonRoot` guard. Advisor PASS. Ships with the next release. |
+## Phase 10: CI and runtime maintenance — 3 tasks completed 2026-10-14 (see [TASKS-archive.md](TASKS-archive.md))
 
 ## Phase 11: zerolog to log/slog
 

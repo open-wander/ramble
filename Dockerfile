@@ -14,16 +14,21 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
+# Tool versions: keep in step with SWAG_VERSION and TAILWIND_VERSION in the Makefile
+# (make check-pins, run in CI, fails if they differ).
+ARG SWAG_VERSION=v1.16.6
+ARG TAILWIND_VERSION=v4.1.18
+
 # Install swag for docs generation
-RUN go install github.com/swaggo/swag/cmd/swag@latest
+RUN go install github.com/swaggo/swag/cmd/swag@${SWAG_VERSION}
 
 # Install tailwind CLI dynamically based on BUILD architecture (must run on build host)
 RUN apt-get update && apt-get install -y curl && \
     if [ "$BUILDARCH" = "arm64" ]; then \
-      curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/download/v4.1.18/tailwindcss-linux-arm64; \
+      curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/download/${TAILWIND_VERSION}/tailwindcss-linux-arm64; \
       mv tailwindcss-linux-arm64 tailwindcss; \
     else \
-      curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/download/v4.1.18/tailwindcss-linux-x64; \
+      curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/download/${TAILWIND_VERSION}/tailwindcss-linux-x64; \
       mv tailwindcss-linux-x64 tailwindcss; \
     fi && \
     chmod +x tailwindcss
