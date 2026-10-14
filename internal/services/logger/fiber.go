@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -9,20 +10,21 @@ import (
 )
 
 // RequestLogger logs one http.request line per request through zerolog and
-// attaches a request-scoped logger carrying request_id to the request's user
-// context (read it with logger.FromContext(c.UserContext())). It must run
-// after the requestid middleware.
+// attaches request-scoped loggers carrying request_id to the request's user
+// context: base's as logger.FromContext(c.UserContext()), sbase's as
+// logger.SFromContext(c.UserContext()). It must run after the requestid
+// middleware.
 //
 // path is c.Path(), which excludes the query string, so tokens passed in a
 // URL never reach the logs. 5xx responses log at ERROR, everything else at
 // INFO, so scanner 404s stay out of the error stream.
-func RequestLogger(base *zerolog.Logger) fiber.Handler {
+func RequestLogger(base *zerolog.Logger, sbase *slog.Logger) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		start := time.Now()
 
 		rid, _ := c.Locals(requestid.ConfigDefault.ContextKey).(string)
 		reqLog := base.With().Str("request_id", rid).Logger()
-		c.SetUserContext(reqLog.WithContext(c.UserContext()))
+		c.SetUserContext(SWithContext(reqLog.WithContext(c.UserContext()), sbase.With(slog.String("request_id", rid))))
 
 		// Run the error handler here, as fiber's own logger middleware does,
 		// so the logged status is the one the client receives.

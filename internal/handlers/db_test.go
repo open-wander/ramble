@@ -23,7 +23,7 @@ import (
 func newRequestLogApp(base zerolog.Logger) *fiber.App {
 	app := fiber.New()
 	app.Use(requestid.New())
-	app.Use(logger.RequestLogger(&base))
+	app.Use(logger.RequestLogger(&base, logger.S))
 	return app
 }
 

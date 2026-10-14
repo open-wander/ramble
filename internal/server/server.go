@@ -504,7 +504,7 @@ func scrubSentryEvent(e *sentry.Event, _ *sentry.EventHint) *sentry.Event {
 // access line sees the 500 and the panic line carries the request_id.
 func useRequestLogging(app *fiber.App, base *zerolog.Logger) {
 	app.Use(requestid.New())
-	app.Use(logger.RequestLogger(base))
+	app.Use(logger.RequestLogger(base, logger.S))
 	app.Use(recoverPanics())
 }
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	stdlog "log"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -16,13 +17,18 @@ import (
 // Log is the global logger instance
 var Log zerolog.Logger
 
-func defaultLevelMarshal(l zerolog.Level) string { return l.String() }
+// S is the slog logger that replaces Log in phase 11 (renamed Log in 11.5).
+// Until Init runs it discards, so callers never see a nil logger.
+var S = slog.New(slog.DiscardHandler)
+
+// sloggerKey keys the request-scoped *slog.Logger in a context.
+type sloggerKey struct{}
 
 func upperLevelMarshal(l zerolog.Level) string { return strings.ToUpper(l.String()) }
 
 // Init initializes the structured logger. In production every line is one
-// JSON object on stdout with time, level (upper case) and msg; elsewhere a
-// console writer is used.
+// JSON object on stdout with time, level (upper case) and msg, in every
+// environment.
 func Init() { initWithWriter(os.Stdout) }
 
 // InitWithWriter is Init with an injectable output, for tests in other packages.
@@ -33,18 +39,15 @@ func initWithWriter(w io.Writer) {
 	zerolog.TimeFieldFormat = time.RFC3339Nano
 	zerolog.MessageFieldName = "msg"
 
-	if os.Getenv("ENV") != "production" {
-		// Pretty console output in development
-		zerolog.LevelFieldMarshalFunc = defaultLevelMarshal
-		Log = zerolog.New(zerolog.ConsoleWriter{
-			Out:        w,
-			TimeFormat: time.RFC3339,
-		}).With().Timestamp().Caller().Logger()
-	} else {
-		// JSON output in production
-		zerolog.LevelFieldMarshalFunc = upperLevelMarshal
-		Log = zerolog.New(w).With().Timestamp().Logger()
-	}
+	zerolog.LevelFieldMarshalFunc = upperLevelMarshal
+	Log = zerolog.New(w).With().Timestamp().Logger()
+
+	// Debug stays enabled, as it is for zerolog. No AddSource: it would add a
+	// key the output contract does not have.
+	S = slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{
+		Level:       slog.LevelDebug,
+		ReplaceAttr: replaceAttr,
+	}))
 
 	// Set as default logger
 	log.Logger = Log
@@ -53,6 +56,17 @@ func initWithWriter(w io.Writer) {
 	// it is JSON in production too.
 	stdlog.SetFlags(0)
 	stdlog.SetOutput(stdlibWriter{})
+}
+
+// replaceAttr keeps errors strings even for error types that implement
+// json.Marshaler, which the JSON handler would otherwise write as objects.
+func replaceAttr(_ []string, a slog.Attr) slog.Attr {
+	if a.Value.Kind() == slog.KindAny {
+		if err, ok := a.Value.Any().(error); ok {
+			return slog.String(a.Key, err.Error())
+		}
+	}
+	return a
 }
 
 // stdlibWriter adapts the stdlib log package to the global zerolog logger.
@@ -75,6 +89,26 @@ func FromContext(ctx context.Context) *zerolog.Logger {
 func FromContextOr(ctx context.Context, fallback *zerolog.Logger) *zerolog.Logger {
 	if ctx != nil {
 		if l := zerolog.Ctx(ctx); l.GetLevel() != zerolog.Disabled {
+			return l
+		}
+	}
+	return fallback
+}
+
+// SWithContext returns ctx carrying l (renamed WithContext in 11.5).
+func SWithContext(ctx context.Context, l *slog.Logger) context.Context {
+	return context.WithValue(ctx, sloggerKey{}, l)
+}
+
+// SFromContext returns the slog logger attached to ctx (for example the
+// request-scoped one carrying request_id), or S (renamed FromContext in 11.5).
+func SFromContext(ctx context.Context) *slog.Logger { return SFromContextOr(ctx, S) }
+
+// SFromContextOr returns the slog logger attached to ctx, or fallback when
+// there is none (renamed FromContextOr in 11.5).
+func SFromContextOr(ctx context.Context, fallback *slog.Logger) *slog.Logger {
+	if ctx != nil {
+		if l, ok := ctx.Value(sloggerKey{}).(*slog.Logger); ok && l != nil {
 			return l
 		}
 	}

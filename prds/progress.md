@@ -672,3 +672,20 @@ now uses `|| true` inside the substitution so the diff is shown. Verified both w
 
 User approved adding `artifact-metadata: write` to release.yml so attest-build-provenance v4 can
 create the artifact storage record instead of warning on every release. actionlint clean.
+
+## 2026-10-14 — 11.1 slog foundation
+
+logger.S (slog JSON handler, LevelDebug, no AddSource; discards until Init) with ReplaceAttr that
+keeps errors strings even for json.Marshaler error types. SWithContext/SFromContext/SFromContextOr
+(unexported sloggerKey). RequestLogger(base, sbase) attaches both loggers with the same request_id;
+http.request stays on zerolog until 11.3. zerolog development output switched to JSON (ConsoleWriter,
+defaultLevelMarshal and the dev-only Caller() removed), so both loggers are JSON everywhere now.
+Side effect: org_errors_test logHasEvent matched lower-case levels that only appeared because the
+dev marshaller leaked through a process-global; it now matches case-insensitively (pin the level
+when it moves to slog in 11.3).
+Mutations red: drop SWithContext attach; lower-case level via ReplaceAttr; SFromContextOr never
+returns the attached logger; drop the error-to-string ReplaceAttr; (orchestrator) drop the attach
+again and a wrong WithUser field after making TestWithUser/TestWithRequest assert.
+Note: server.go reads logger.S when useRequestLogging runs, after Init; reordering would send
+request slog lines to the discard handler. Goes away in 11.3.
+PATTERN: slog - look slog lines up by "msg"; logtest.Find uses zerolog.MessageFieldName until 11.4.

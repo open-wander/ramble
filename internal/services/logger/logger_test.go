@@ -4,13 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	stdlog "log"
+	"log/slog"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+
+	"rmbl/internal/testutil/logtest"
 )
 
 func TestInit_Development(t *testing.T) {
@@ -53,9 +58,8 @@ func TestWithUser(t *testing.T) {
 	userLogger.Info().Msg("user action")
 
 	output := outputBuf.String()
-	if !strings.Contains(output, "user_id") && !strings.Contains(output, "123") {
-		// In development mode, the console writer formats differently
-		// Just verify no panic
+	if !strings.Contains(output, `"user_id":123`) || !strings.Contains(output, `"username":"testuser"`) {
+		t.Errorf("user fields missing: %s", output)
 	}
 }
 
@@ -71,9 +75,8 @@ func TestWithRequest(t *testing.T) {
 	reqLogger.Info().Msg("request handled")
 
 	output := outputBuf.String()
-	if !strings.Contains(output, "request_id") && !strings.Contains(output, "req-123") {
-		// In development mode, the console writer formats differently
-		// Just verify no panic
+	if !strings.Contains(output, `"request_id":"req-123"`) || !strings.Contains(output, `"path":"/api/test"`) {
+		t.Errorf("request fields missing: %s", output)
 	}
 }
 
@@ -176,9 +179,12 @@ func TestLoggerWithFields(t *testing.T) {
 		Msg("message with fields")
 }
 
-func TestInit_ProductionFormat(t *testing.T) {
-	// Snapshot every global Init touches before calling it, and restore them.
+// saveGlobals snapshots every global Init touches and restores them when the
+// test ends.
+func saveGlobals(t *testing.T) {
+	t.Helper()
 	prevLog := Log
+	prevS := S
 	prevGlobal := log.Logger
 	prevMsg := zerolog.MessageFieldName
 	prevLevel := zerolog.LevelFieldMarshalFunc
@@ -187,6 +193,7 @@ func TestInit_ProductionFormat(t *testing.T) {
 	prevFlags := stdlog.Flags()
 	t.Cleanup(func() {
 		Log = prevLog
+		S = prevS
 		log.Logger = prevGlobal
 		zerolog.MessageFieldName = prevMsg
 		zerolog.LevelFieldMarshalFunc = prevLevel
@@ -194,6 +201,62 @@ func TestInit_ProductionFormat(t *testing.T) {
 		stdlog.SetOutput(prevOut)
 		stdlog.SetFlags(prevFlags)
 	})
+}
+
+// jsonErr is an error that would marshal as a JSON object if slog saw it raw.
+type jsonErr struct{}
+
+func (jsonErr) Error() string                { return "json boom" }
+func (jsonErr) MarshalJSON() ([]byte, error) { return []byte(`{"x":1}`), nil }
+
+func TestInitSlog_Format(t *testing.T) {
+	tests := []struct {
+		name    string
+		env     string // "" means unset
+		err     error
+		wantErr string
+	}{
+		{"production", "production", errors.New("boom"), "boom"},
+		{"env unset", "", errors.New("boom"), "boom"},
+		{"json marshaler error stays a string", "production", jsonErr{}, "json boom"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			saveGlobals(t)
+			t.Setenv("ENV", tt.env)
+			if tt.env == "" {
+				os.Unsetenv("ENV")
+			}
+			var buf bytes.Buffer
+			initWithWriter(&buf)
+
+			S.Warn("test.event", slog.Any("error", tt.err), slog.Int("n", 1))
+
+			if strings.Contains(buf.String(), "\x1b[") {
+				t.Fatalf("ANSI escape in output: %q", buf.String())
+			}
+			lines := logtest.Lines(t, &buf)
+			if len(lines) != 1 {
+				t.Fatalf("want 1 line, got %v", lines)
+			}
+			m := lines[0]
+			if ts, _ := m["time"].(string); ts == "" {
+				t.Errorf("missing time: %v", m)
+			} else if _, err := time.Parse(time.RFC3339Nano, ts); err != nil {
+				t.Errorf("time %q not RFC3339Nano: %v", ts, err)
+			}
+			if m["level"] != "WARN" || m["msg"] != "test.event" || m["n"] != float64(1) {
+				t.Errorf("level/msg/n = %v %v %v", m["level"], m["msg"], m["n"])
+			}
+			if m["error"] != tt.wantErr {
+				t.Errorf("error = %#v, want string %q", m["error"], tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestInit_ProductionFormat(t *testing.T) {
+	saveGlobals(t)
 
 	t.Setenv("ENV", "production")
 	var buf bytes.Buffer

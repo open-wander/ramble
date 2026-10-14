@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -44,13 +45,15 @@ func failingDB(t *testing.T, table string, op string) {
 	t.Cleanup(func() { database.DB = orig })
 }
 
+// logHasEvent matches level case-insensitively: Init may or may not have run
+// in this process, which switches the global level marshaller between cases.
 func logHasEvent(buf *bytes.Buffer, msg, level string) (map[string]any, bool) {
 	for line := range bytes.SplitSeq(bytes.TrimSpace(buf.Bytes()), []byte("\n")) {
 		var m map[string]any
 		if json.Unmarshal(line, &m) != nil {
 			continue
 		}
-		if m[zerolog.MessageFieldName] == msg && m[zerolog.LevelFieldName] == level {
+		if m[zerolog.MessageFieldName] == msg && strings.EqualFold(fmt.Sprint(m[zerolog.LevelFieldName]), level) {
 			return m, true
 		}
 	}
