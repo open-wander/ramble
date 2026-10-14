@@ -66,7 +66,7 @@ func TestUseRequestLogging(t *testing.T) {
 	app := fiber.New()
 	useRequestLogging(app, l)
 	app.Get("/x", func(c *fiber.Ctx) error {
-		logger.SFromContext(c.UserContext()).Info("handler.ran")
+		logger.FromContext(c.UserContext()).Info("handler.ran")
 		return c.SendStatus(fiber.StatusOK)
 	})
 

@@ -24,7 +24,7 @@ func newLoggedApp(t *testing.T) (*fiber.App, *bytes.Buffer) {
 	app.Get("/boom", func(c *fiber.Ctx) error { return fiber.NewError(fiber.StatusInternalServerError, "boom") })
 	app.Get("/bad", func(c *fiber.Ctx) error { return c.SendStatus(fiber.StatusBadRequest) })
 	app.Get("/inner", func(c *fiber.Ctx) error {
-		SFromContext(c.UserContext()).Info("handler.event")
+		FromContext(c.UserContext()).Info("handler.event")
 		return c.SendStatus(fiber.StatusNoContent)
 	})
 	return app, &buf
@@ -112,7 +112,7 @@ func TestRequestLoggerAttachesRequestIDToHandlerLogs(t *testing.T) {
 	}
 }
 
-func TestSFromContextOr(t *testing.T) {
+func TestFromContextOr(t *testing.T) {
 	fb := slog.New(slog.DiscardHandler)
 	attached := slog.New(slog.DiscardHandler)
 	var nilCtx context.Context
@@ -124,18 +124,18 @@ func TestSFromContextOr(t *testing.T) {
 	}{
 		{"no logger attached", context.Background(), fb},
 		{"nil context", nilCtx, fb},
-		{"attached logger", SWithContext(context.Background(), attached), attached},
-		{"attached nil logger", SWithContext(context.Background(), nil), fb},
+		{"attached logger", WithContext(context.Background(), attached), attached},
+		{"attached nil logger", WithContext(context.Background(), nil), fb},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := SFromContextOr(tt.ctx, fb); got != tt.want {
+			if got := FromContextOr(tt.ctx, fb); got != tt.want {
 				t.Errorf("got %p, want %p", got, tt.want)
 			}
 		})
 	}
-	if got := SFromContext(context.Background()); got != S {
-		t.Error("SFromContext without attached logger should return S")
+	if got := FromContext(context.Background()); got != Log {
+		t.Error("FromContext without attached logger should return S")
 	}
 }
 

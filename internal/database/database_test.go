@@ -98,11 +98,11 @@ func swapFailSeams(t *testing.T) (*bytes.Buffer, *[]int) {
 	t.Helper()
 	var buf bytes.Buffer
 	var codes []int
-	oldS, oldExit, oldDB := logger.S, exit, DB
-	logger.S = logger.NewJSON(&buf)
+	oldS, oldExit, oldDB := logger.Log, exit, DB
+	logger.Log = logger.NewJSON(&buf)
 	exit = func(code int) { codes = append(codes, code) }
 	t.Cleanup(func() {
-		logger.S, exit, DB = oldS, oldExit, oldDB
+		logger.Log, exit, DB = oldS, oldExit, oldDB
 	})
 	return &buf, &codes
 }

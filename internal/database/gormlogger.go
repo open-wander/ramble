@@ -43,7 +43,7 @@ func (g *gormLogger) LogMode(level gormlogger.LogLevel) gormlogger.Interface {
 }
 
 func (g *gormLogger) logger(ctx context.Context) *slog.Logger {
-	return logger.SFromContextOr(ctx, g.base)
+	return logger.FromContextOr(ctx, g.base)
 }
 
 // safeArg returns a value that is safe to format: an error's text, a scalar
@@ -136,5 +136,5 @@ func (g *gormLogger) ParamsFilter(_ context.Context, sql string, _ ...any) (stri
 // newDefaultGormLogger is the production configuration, writing through the
 // global slog logger, read when called (Connect runs after logger.Init).
 func newDefaultGormLogger() gormlogger.Interface {
-	return NewGormLogger(logger.S, SlowQueryThreshold)
+	return NewGormLogger(logger.Log, SlowQueryThreshold)
 }

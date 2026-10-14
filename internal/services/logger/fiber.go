@@ -10,7 +10,7 @@ import (
 
 // RequestLogger logs one http.request line per request through slog and
 // attaches a request-scoped logger carrying request_id to the request's user
-// context, read back with logger.SFromContext(c.UserContext()). It must run
+// context, read back with logger.FromContext(c.UserContext()). It must run
 // after the requestid middleware.
 //
 // path is c.Path(), which excludes the query string, so tokens passed in a
@@ -22,7 +22,7 @@ func RequestLogger(base *slog.Logger) fiber.Handler {
 
 		rid, _ := c.Locals(requestid.ConfigDefault.ContextKey).(string)
 		reqLog := base.With(slog.String("request_id", rid))
-		c.SetUserContext(SWithContext(c.UserContext(), reqLog))
+		c.SetUserContext(WithContext(c.UserContext(), reqLog))
 
 		// Run the error handler here, as fiber's own logger middleware does,
 		// so the logged status is the one the client receives.

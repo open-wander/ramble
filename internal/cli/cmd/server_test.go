@@ -5,25 +5,24 @@ import (
 	"encoding/json"
 	"errors"
 	stdlog "log"
+	"log/slog"
 	"strings"
 	"testing"
 
 	"rmbl/internal/server"
 	"rmbl/internal/services/logger"
 
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
-// captureLog swaps logger.S for the production JSON logger writing to the
+// captureLog swaps logger.Log for the production JSON logger writing to the
 // returned buffer. Tests that use it must not run in parallel.
 func captureLog(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var buf bytes.Buffer
-	oldS := logger.S
-	logger.S = logger.NewJSON(&buf)
-	t.Cleanup(func() { logger.S = oldS })
+	oldS := logger.Log
+	logger.Log = logger.NewJSON(&buf)
+	t.Cleanup(func() { logger.Log = oldS })
 	return &buf
 }
 
@@ -167,20 +166,13 @@ func TestServerCommandEndToEnd(t *testing.T) {
 func restoreLoggerGlobals(t *testing.T) {
 	t.Helper()
 	prevLog := logger.Log
-	prevS := logger.S
-	prevGlobal := log.Logger
-	prevMsg := zerolog.MessageFieldName
-	prevLevel := zerolog.LevelFieldMarshalFunc
-	prevTimeFmt := zerolog.TimeFieldFormat
+	prevDefault := slog.Default()
 	prevOut := stdlog.Writer()
 	prevFlags := stdlog.Flags()
 	t.Cleanup(func() {
 		logger.Log = prevLog
-		logger.S = prevS
-		log.Logger = prevGlobal
-		zerolog.MessageFieldName = prevMsg
-		zerolog.LevelFieldMarshalFunc = prevLevel
-		zerolog.TimeFieldFormat = prevTimeFmt
+		// SetDefault first: it rewrites the stdlib log output.
+		slog.SetDefault(prevDefault)
 		stdlog.SetOutput(prevOut)
 		stdlog.SetFlags(prevFlags)
 	})

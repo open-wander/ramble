@@ -21,7 +21,7 @@ func TestWithContext_QueryErrorUsesContextLogger(t *testing.T) {
 	svc := NewResourceService(db)
 
 	ctxLog := slog.New(slog.NewJSONHandler(&ctxBuf, &slog.HandlerOptions{Level: slog.LevelDebug})).With(slog.String("request_id", "rid-svc"))
-	ctx := logger.SWithContext(context.Background(), ctxLog)
+	ctx := logger.WithContext(context.Background(), ctxLog)
 
 	var x []map[string]any
 	_ = svc.WithContext(ctx).db.Raw("SELECT * FROM no_such_table_63").Scan(&x).Error

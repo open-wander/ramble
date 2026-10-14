@@ -90,14 +90,14 @@ func fetchLogHarness(t *testing.T) (reqBuf, baseBuf *lockedBuffer) {
 	reqBuf, baseBuf = &lockedBuffer{}, &lockedBuffer{}
 	baseLog := testSlog(baseBuf)
 
-	origDB, origSvc, origS := database.DB, resource.Service, logger.S
-	logger.S = baseLog
+	origDB, origSvc, origS := database.DB, resource.Service, logger.Log
+	logger.Log = baseLog
 	database.DB = origDB.Session(&gorm.Session{Logger: database.NewGormLogger(baseLog, time.Nanosecond)})
 	resource.Service = resource.NewResourceService(database.DB)
 	t.Cleanup(func() {
 		database.DB = origDB
 		resource.Service = origSvc
-		logger.S = origS
+		logger.Log = origS
 	})
 	return reqBuf, baseBuf
 }
@@ -268,9 +268,9 @@ func TestFetchVersionContent_NoContextLoggerUsesGlobal(t *testing.T) {
 	require.NoError(t, database.DB.Create(&models.ResourceVersion{ResourceID: res.ID, Version: "v1.0.0"}).Error)
 
 	var buf lockedBuffer
-	orig := logger.S
-	logger.S = testSlog(&buf)
-	t.Cleanup(func() { logger.S = orig })
+	orig := logger.Log
+	logger.Log = testSlog(&buf)
+	t.Cleanup(func() { logger.Log = orig })
 
 	fetchVersionContent(context.Background(), res.ID, "v1.0.0", failFastRepoURL, string(res.Type), res.Name, "")
 
@@ -282,7 +282,7 @@ func TestFetchVersionContent_NoContextLoggerUsesGlobal(t *testing.T) {
 // reqLogCtx builds a context carrying a request logger on w with request_id
 // rid, as logger.RequestLogger does.
 func reqLogCtx(w *lockedBuffer, rid string) context.Context {
-	return logger.SWithContext(context.Background(), testSlog(w).With(slog.String("request_id", rid)))
+	return logger.WithContext(context.Background(), testSlog(w).With(slog.String("request_id", rid)))
 }
 
 // requireSQLOnRequestLogger asserts that the db.slow_query line for the
@@ -346,7 +346,7 @@ func TestFetchVersionContent_SuccessUpdateCarriesRequestID(t *testing.T) {
 	assert.Equal(t, models.FetchStatusCompleted, v.FetchStatus)
 }
 
-// duration is milliseconds as a JSON float, as zerolog's Dur wrote it, not
+// duration is milliseconds as a JSON float, not
 // the integer nanoseconds slog.Duration would write. A nanosecond count is
 // orders of magnitude above the elapsed wall time in milliseconds.
 func TestFetchVersionContent_DurationIsMilliseconds(t *testing.T) {

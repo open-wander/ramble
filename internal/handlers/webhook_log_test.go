@@ -96,9 +96,9 @@ func TestHandleGitHubIssueWebhook_DBLinesCarryRequestID(t *testing.T) {
 	// Keep the global logger off the request buffer so a handler that falls
 	// back to it is detected rather than masked.
 	var globalBuf bytes.Buffer
-	origS := logger.S
-	logger.S = testSlog(&globalBuf)
-	t.Cleanup(func() { logger.S = origS })
+	origS := logger.Log
+	logger.Log = testSlog(&globalBuf)
+	t.Cleanup(func() { logger.Log = origS })
 
 	suffix := time.Now().UnixNano()
 	admin := models.User{

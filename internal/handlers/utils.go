@@ -55,7 +55,7 @@ func SetFlash(c *fiber.Ctx, flashType, message string) {
 	sess.Set("flash_type", flashType)
 	sess.Set("flash_message", message)
 	if err := sess.Save(); err != nil {
-		logger.SFromContext(c.UserContext()).Error("session.save_failed", logger.Err(err), slog.String("op", "set_flash"))
+		logger.FromContext(c.UserContext()).Error("session.save_failed", logger.Err(err), slog.String("op", "set_flash"))
 	}
 }
 

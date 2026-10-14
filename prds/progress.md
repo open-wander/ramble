@@ -725,3 +725,21 @@ detachedLogCtx drops logger; org.go wrong key; non-dotted key (guard); slog.Dura
 Orchestrator re-ran: http.panic via logger.S (TestUseRequestLoggingRecoversPanic and the Sentry test
 red); slog.Duration in background.go (TestFetchVersionContent_DurationIsMilliseconds red).
 Gap: github.sync_completed duration has no own test - 11.4 adds an AST guard against slog.Duration.
+
+## 2026-10-14 — 11.4 guards and 11.5 code: zerolog removed
+
+Final names: logger.Log (*slog.Logger), FromContext, FromContextOr, WithContext, ctxKey, Err, NewJSON.
+Deleted the zerolog Log, upperLevelMarshal, zerolog FromContext/FromContextOr, WithUser/WithRequest.
+initWithWriter: Log = NewJSON(w); slog.SetDefault(Log); THEN stdlog.SetFlags(0)/SetOutput(stdlibWriter)
+(SetDefault redirects stdlib log into slog with the raw text as msg). stdlibWriter logs
+stdlib.log with field text. Test restore helpers call slog.SetDefault(prev) before
+stdlog.SetOutput(prev) (otherwise stdlog stays pointed at a dead buffer handler; golang/go#61892
+deadlock class). go mod tidy removed rs/zerolog from go.mod/go.sum; TestMain MessageFieldName hacks gone.
+Guards (msgkey_test.go, hit/miss fixtures, resolved by import path so local `log` vars are not
+flagged): no os.Exit call in server code (database's `var exit = os.Exit` is a reference; internal/cli
+is skipped); no stdlib log and no zerolog import (non-test files); no package-level slog calls; no
+slog.Duration and no slog.Any("error", ...). Event-key guard: 79 calls checked (floor 40).
+Mutations red: SetDefault after SetOutput; SetDefault dropped; NewJSON at LevelInfo; os.Exit in
+database.go; slog.Error / slog.Any("error") / slog.Duration / zerolog import in server.go.
+Orchestrator re-ran: slog.Error in admin.go -> TestServerCodeDoesNotCallPackageLevelSlog red; tidy no-op.
+Open: whether dependencies emit stdlib/slog lines in prod - check `msg="stdlib.log"` in Loki after deploy.

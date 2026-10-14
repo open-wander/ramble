@@ -61,7 +61,7 @@ func stripURLUserinfo(s string) string {
 
 // downloadFileWithRetry wraps downloadFile with exponential backoff retry logic
 func downloadFileWithRetry(ctx context.Context, repoURL, fileName string) (string, error) {
-	log := logger.SFromContextOr(ctx, logger.S).With(
+	log := logger.FromContextOr(ctx, logger.Log).With(
 		slog.String("repo_url", stripURLUserinfo(repoURL)),
 		slog.String("file_name", fileName),
 	)
@@ -120,7 +120,7 @@ func downloadFileWithRetry(ctx context.Context, repoURL, fileName string) (strin
 // It is rebuilt on context.Background() so request cancellation never reaches
 // the goroutine, and it never captures c.
 func detachedLogCtx(c *fiber.Ctx) context.Context {
-	return logger.SWithContext(context.Background(), logger.SFromContext(c.UserContext()))
+	return logger.WithContext(context.Background(), logger.FromContext(c.UserContext()))
 }
 
 // fetchVersionHook, when set by tests, runs inside fetchVersionContent after the
@@ -132,7 +132,7 @@ var fetchVersionHook func()
 // ctx carries the logger of the request that triggered the fetch (see
 // detachedLogCtx); with none, the global logger is used.
 func fetchVersionContent(ctx context.Context, resID uint, versionStr, repoURL, resType, resName, filePath string) {
-	log := logger.SFromContextOr(ctx, logger.S).With(
+	log := logger.FromContextOr(ctx, logger.Log).With(
 		slog.String("operation", "version_fetch"),
 		slog.Uint64("resource_id", uint64(resID)),
 		slog.String("version", versionStr),

@@ -202,7 +202,7 @@ func HandleWebhook(c *fiber.Ctx) error {
 	}
 
 	// Create webhook logger
-	webhookLog := logger.SFromContext(c.UserContext()).With(
+	webhookLog := logger.FromContext(c.UserContext()).With(
 		slog.String("operation", "webhook"),
 		slog.Uint64("resource_id", uint64(idNum)),
 	)

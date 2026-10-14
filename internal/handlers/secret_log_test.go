@@ -30,12 +30,12 @@ func captureAllLogs(t *testing.T) (*bytes.Buffer, *slog.Logger) {
 	var buf bytes.Buffer
 	sbase := testSlog(&buf)
 
-	origS := logger.S
-	logger.S = sbase
+	origS := logger.Log
+	logger.Log = sbase
 	origDB := database.DB
 	database.DB = origDB.Session(&gorm.Session{Logger: database.NewGormLogger(sbase, 0)})
 	t.Cleanup(func() {
-		logger.S = origS
+		logger.Log = origS
 		database.DB = origDB
 	})
 	return &buf, sbase

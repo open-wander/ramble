@@ -13,7 +13,6 @@ require (
 	github.com/hashicorp/hcl/v2 v2.25.0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/markbates/goth v1.82.0
-	github.com/rs/zerolog v1.35.1
 	github.com/shareed2k/goth_fiber v0.5.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1

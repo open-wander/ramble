@@ -119,7 +119,7 @@ func TestGormLoggerSilentMode(t *testing.T) {
 func TestGormLoggerUsesContextLogger(t *testing.T) {
 	base, baseBuf := bufLogger()
 	reqLog, reqBuf := bufLogger()
-	ctx := logger.SWithContext(context.Background(), reqLog.With(slog.String("request_id", "req-42")))
+	ctx := logger.WithContext(context.Background(), reqLog.With(slog.String("request_id", "req-42")))
 
 	NewGormLogger(base, time.Millisecond).Trace(ctx, time.Now().Add(-time.Second), func() (string, int64) { return "SELECT 1", 1 }, nil)
 
@@ -164,13 +164,13 @@ func TestGormLoggerKeepsBindValuesOut(t *testing.T) {
 
 // TestGormConfigUsesSlogAdapter guards the production wiring: Connect must
 // open the database with the slog adapter, not GORM's default logger, and
-// must read logger.S when called, not at package init.
+// must read logger.Log when called, not at package init.
 func TestGormConfigUsesSlogAdapter(t *testing.T) {
 	// Swaps a global: no t.Parallel.
-	orig := logger.S
-	t.Cleanup(func() { logger.S = orig })
+	orig := logger.Log
+	t.Cleanup(func() { logger.Log = orig })
 	var buf bytes.Buffer
-	logger.S = slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	logger.Log = slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	cfg := gormConfig()
 	gl, ok := cfg.Logger.(*gormLogger)
@@ -183,8 +183,8 @@ func TestGormConfigUsesSlogAdapter(t *testing.T) {
 	if gl.level != gormlogger.Warn {
 		t.Errorf("level = %v, want Warn", gl.level)
 	}
-	if gl.base != logger.S {
-		t.Error("adapter base is not the global logger.S")
+	if gl.base != logger.Log {
+		t.Error("adapter base is not the global logger.Log")
 	}
 
 	ctx := context.Background()

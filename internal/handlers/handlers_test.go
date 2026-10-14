@@ -11,16 +11,11 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/template/html/v2"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 )
 
 // Global test app setup
 func TestMain(m *testing.M) {
-	// Init never runs here; slog writes "msg", so zerolog must too or lookups
-	// by zerolog.MessageFieldName silently miss slog lines.
-	zerolog.MessageFieldName = "msg"
-
 	// Setup Test DB (Container)
 	db, cleanup := database.SetupTestDB()
 

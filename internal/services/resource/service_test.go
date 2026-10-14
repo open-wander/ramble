@@ -7,7 +7,6 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"rmbl/internal/database"
@@ -15,10 +14,6 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	// Init never runs here; slog writes "msg", so zerolog must too or lookups
-	// by zerolog.MessageFieldName silently miss slog lines.
-	zerolog.MessageFieldName = "msg"
-
 	// Setup Test DB (Container)
 	_, cleanup := database.SetupTestDB()
 

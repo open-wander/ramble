@@ -22,13 +22,13 @@ func SeedInitialUser(db *gorm.DB) {
 	db.Model(&models.User{}).Where("email = ? OR username = ?", email, username).Count(&count)
 
 	if count > 0 {
-		logger.S.Info("seed.initial_user_exists")
+		logger.Log.Info("seed.initial_user_exists")
 		return
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		logger.S.Error("seed.hash_password_failed", logger.Err(err))
+		logger.Log.Error("seed.hash_password_failed", logger.Err(err))
 		return
 	}
 
@@ -41,8 +41,8 @@ func SeedInitialUser(db *gorm.DB) {
 	}
 
 	if err := db.Create(&user).Error; err != nil {
-		logger.S.Error("seed.create_user_failed", logger.Err(err))
+		logger.Log.Error("seed.create_user_failed", logger.Err(err))
 	} else {
-		logger.S.Info("seed.initial_user_created")
+		logger.Log.Info("seed.initial_user_created")
 	}
 }

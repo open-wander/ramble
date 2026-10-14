@@ -177,7 +177,7 @@ func AuditLog(c *fiber.Ctx, action string, targetType string, targetID uint, tar
 	if details != nil {
 		attrs = append(attrs, slog.Any("details", details))
 	}
-	logger.S.LogAttrs(c.UserContext(), slog.LevelInfo, "audit.recorded", attrs...)
+	logger.Log.LogAttrs(c.UserContext(), slog.LevelInfo, "audit.recorded", attrs...)
 
 	// Log to database
 	audit := models.AuditLog{
@@ -219,7 +219,7 @@ func AuditLogNoContext(action string, actorID uint, actorName string, targetType
 	if details != nil {
 		attrs = append(attrs, slog.Any("details", details))
 	}
-	logger.S.LogAttrs(context.Background(), slog.LevelInfo, "audit.recorded", attrs...)
+	logger.Log.LogAttrs(context.Background(), slog.LevelInfo, "audit.recorded", attrs...)
 
 	// Log to database
 	audit := models.AuditLog{

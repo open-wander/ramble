@@ -403,7 +403,7 @@ func PostUpdateRequestStatus(c *fiber.Ctx) error {
 	// Sync status to GitHub in background
 	go func(req models.PackRequest) {
 		if err := SyncRequestToGitHub(req); err != nil {
-			logger.S.Error("github.sync_request_failed",
+			logger.Log.Error("github.sync_request_failed",
 				logger.Err(err),
 				slog.String("operation", "github_sync"),
 				slog.Uint64("pack_request_id", uint64(req.ID)))

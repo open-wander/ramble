@@ -47,9 +47,9 @@ func Run(cfg Config) error {
 			env = "production"
 		}
 		if err := sentry.Init(sentryOptions(dsn, env, cfg.Version)); err != nil {
-			logger.S.Error("sentry.init_failed", logger.Err(err))
+			logger.Log.Error("sentry.init_failed", logger.Err(err))
 		} else {
-			logger.S.Info("sentry.enabled", slog.String("environment", env), slog.String("release", cfg.Version))
+			logger.Log.Info("sentry.enabled", slog.String("environment", env), slog.String("release", cfg.Version))
 			defer sentry.Flush(2 * time.Second)
 		}
 	}
@@ -103,10 +103,10 @@ func Run(cfg Config) error {
 	// 4. Middleware
 	// Outermost: a backstop for panics in the requestid and RequestLogger
 	// middleware (recoverPanics sits inside them), then Sentry when a DSN is set.
-	useOuterMiddleware(app, logger.S, os.Getenv("SENTRY_DSN") != "")
+	useOuterMiddleware(app, logger.Log, os.Getenv("SENTRY_DSN") != "")
 
 	// Request ID tracing + structured access log
-	useRequestLogging(app, logger.S)
+	useRequestLogging(app, logger.Log)
 
 	// HTTPS enforcement middleware (only in production)
 	app.Use(func(c *fiber.Ctx) error {
@@ -177,7 +177,7 @@ func Run(cfg Config) error {
 					if time.Since(time.Unix(created, 0)) > maxSessionLifetime {
 						// Session expired - destroy and redirect to login
 						if err := sess.Destroy(); err != nil {
-							logger.SFromContext(c.UserContext()).Error("session.destroy_expired_failed", logger.Err(err))
+							logger.FromContext(c.UserContext()).Error("session.destroy_expired_failed", logger.Err(err))
 						}
 						if c.Get("Accept") == "application/json" {
 							return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Session expired"})
@@ -199,7 +199,7 @@ func Run(cfg Config) error {
 							if !user.PasswordChangedAt.IsZero() && user.PasswordChangedAt.After(sessionTime) {
 								// Session is stale - password was changed after this session was created
 								if err := sess.Destroy(); err != nil {
-									logger.SFromContext(c.UserContext()).Error("session.destroy_stale_failed", logger.Err(err))
+									logger.FromContext(c.UserContext()).Error("session.destroy_stale_failed", logger.Err(err))
 								}
 								// Continue request without user context (will redirect to login on protected routes)
 								return c.Next()
@@ -221,7 +221,7 @@ func Run(cfg Config) error {
 				sess.Delete("flash_type")
 				sess.Delete("flash_message")
 				if err := sess.Save(); err != nil {
-					logger.SFromContext(c.UserContext()).Error("session.save_failed", logger.Err(err))
+					logger.FromContext(c.UserContext()).Error("session.save_failed", logger.Err(err))
 				}
 			}
 		}
@@ -240,7 +240,7 @@ func Run(cfg Config) error {
 		port = "3000"
 	}
 	addr := ":" + port
-	logStarted(logger.S, addr, cfg.Version)
+	logStarted(logger.Log, addr, cfg.Version)
 	return app.Listen(addr)
 }
 
@@ -518,7 +518,7 @@ func recoverPanics() fiber.Handler {
 			if r == nil {
 				return
 			}
-			logger.SFromContext(c.UserContext()).Error("http.panic",
+			logger.FromContext(c.UserContext()).Error("http.panic",
 				slog.String("panic", fmt.Sprint(r)),
 				slog.String("stack", string(debug.Stack())))
 			if hub := sentryfiber.GetHubFromContext(c); hub != nil {

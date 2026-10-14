@@ -210,13 +210,13 @@ func createGitHubIssueForRequest(db *gorm.DB, requestID uint) {
 	// Get token from environment variable (like other GitHub/GitLab secrets)
 	token := os.Getenv("GITHUB_REQUESTS_TOKEN")
 	if token == "" {
-		logger.S.Warn("github.requests_token_missing", slog.String("operation", "github_issue_create"))
+		logger.Log.Warn("github.requests_token_missing", slog.String("operation", "github_issue_create"))
 		return
 	}
 
 	var request models.PackRequest
 	if err := db.Preload("User").First(&request, requestID).Error; err != nil {
-		logger.S.Error("request.load_failed",
+		logger.Log.Error("request.load_failed",
 			logger.Err(err),
 			slog.String("operation", "github_issue_create"),
 			slog.Uint64("pack_request_id", uint64(requestID)))
@@ -226,7 +226,7 @@ func createGitHubIssueForRequest(db *gorm.DB, requestID uint) {
 	// Get repo from database settings (not a secret, can be configured in admin)
 	var repoSetting models.SiteSetting
 	if err := db.Where("key = ?", "github_requests_repo").First(&repoSetting).Error; err != nil {
-		logger.S.Warn("github.requests_repo_missing", slog.String("operation", "github_issue_create"))
+		logger.Log.Warn("github.requests_repo_missing", slog.String("operation", "github_issue_create"))
 		return
 	}
 
@@ -236,7 +236,7 @@ func createGitHubIssueForRequest(db *gorm.DB, requestID uint) {
 
 	parts := strings.Split(repoSetting.Value, "/")
 	if len(parts) != 2 {
-		logger.S.Warn("github.requests_repo_invalid",
+		logger.Log.Warn("github.requests_repo_invalid",
 			slog.String("operation", "github_issue_create"),
 			slog.String("repo", repoSetting.Value))
 		return
@@ -256,7 +256,7 @@ func createGitHubIssueForRequest(db *gorm.DB, requestID uint) {
 
 	resp, err := github.CreateIssue(token, parts[0], parts[1], issue)
 	if err != nil {
-		logger.S.Error("github.issue_create_failed",
+		logger.Log.Error("github.issue_create_failed",
 			logger.Err(err),
 			slog.String("operation", "github_issue_create"),
 			slog.Uint64("pack_request_id", uint64(requestID)))
