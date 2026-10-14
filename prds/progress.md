@@ -743,3 +743,12 @@ Mutations red: SetDefault after SetOutput; SetDefault dropped; NewJSON at LevelI
 database.go; slog.Error / slog.Any("error") / slog.Duration / zerolog import in server.go.
 Orchestrator re-ran: slog.Error in admin.go -> TestServerCodeDoesNotCallPackageLevelSlog red; tidy no-op.
 Open: whether dependencies emit stdlib/slog lines in prod - check `msg="stdlib.log"` in Loki after deploy.
+
+## 2026-10-14 — 11.5 shipped; Phase 11 collapsed
+
+#63 merged (f03561e), v0.5.22 released and deployed 08:50 UTC. Loki: server.started v0.5.22;
+no non-JSON and no stderr lines; by msg/level only INFO db.connected/migrate_*, sentry.enabled,
+http.request, server.started; an unsigned POST to /webhooks/github/issues -> 401 with
+webhook.signature_missing (WARN) carrying the access line's request_id; no stdlib.log lines.
+(An unsigned POST to a non-route gets 403 from CSRF, as before - not a regression.)
+Docs: ramble CLAUDE.md (in #63), infra docs/prod-logging.md f5b4f89, prod-logs skill.

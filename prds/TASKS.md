@@ -19,19 +19,4 @@ verification in [verification.md](verification.md). PRD: [done/prd-security-bugf
 
 ## Phase 10: CI and runtime maintenance — 3 tasks completed 2026-10-14 (see [TASKS-archive.md](TASKS-archive.md))
 
-## Phase 11: zerolog to log/slog
-
-Source: user request (2026-10-14), to match nectvia and havencast. Output contract unchanged:
-one JSON object per line, `time`, upper-case `level`, `msg`, ramble's event keys (`http.request`,
-`db.slow_query`, `db.query_error`, ...), `request_id` on every line of a request including SQL.
-Decisions (user): keep ramble's event keys (nectvia's GORM logger uses `gorm.*` keys and drops
-request_id - ramble keeps its stronger behaviour); JSON in every environment (development
-included) for one consistent format - no console/text handler.
-
-| # | Task | PRD | Status | Notes |
-|---|------|-----|--------|-------|
-| 11.1 | Logger package on slog: JSON handler in every environment (drop the dev console writer), request-scoped logger via context, RequestLogger attaches both loggers | user request | DONE | `logger.S`, `SFromContext`/`SFromContextOr`/`SWithContext` (temporary names). zerolog dev output now JSON too. stdlib bridge and panic recovery moved to 11.3/11.5. |
-| 11.2 | GORM adapter on slog: db.slow_query / db.query_error with request_id, `$n` placeholders, safeArg rendering | user request | DONE | (needs: 11.1) Sequential with 11.3: they share handler test helpers. Each stage ports the log-capturing tests its call sites break. |
-| 11.3 | Convert server call sites (~90 in 12 files) incl. http.request and panic recovery; goroutines take `*slog.Logger`; RequestLogger takes one `*slog.Logger` | user request | DONE | (needs: 11.1) |
-| 11.4 | Port guards (event keys, no direct stdout, no stdlib log, no fatal/panic) and the ~15 log-capturing test files | user request | DONE | (needs: 11.2, 11.3) Done with the 11.5 code changes (guards use the final names); the event-key guard was ported in 11.3. |
-| 11.5 | Rename S/SFromContext/SFromContextOr/SWithContext to Log/FromContext/FromContextOr/WithContext; stdlib log bridged to slog (msg stdlib.log); delete WithUser/WithRequest (unused); remove zerolog from go.mod; e2e production test unchanged and green; release; verify in Loki; update CLAUDE.md, infra doc, prod-logs skill | user request | ACTIVE | (needs: 11.4) |
+## Phase 11: zerolog to log/slog — 5 tasks completed 2026-10-14 (see [TASKS-archive.md](TASKS-archive.md))
