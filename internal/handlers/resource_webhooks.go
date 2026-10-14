@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"rmbl/internal/crypto"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 )
 
@@ -202,10 +202,10 @@ func HandleWebhook(c *fiber.Ctx) error {
 	}
 
 	// Create webhook logger
-	webhookLog := logger.FromContext(c.UserContext()).With().
-		Str("operation", "webhook").
-		Uint("resource_id", idNum).
-		Logger()
+	webhookLog := logger.FromContext(c.UserContext()).With(
+		slog.String("operation", "webhook"),
+		slog.Uint64("resource_id", uint64(idNum)),
+	)
 
 	// Extract authentication headers and query params
 	signature := c.Get("X-Hub-Signature-256")
@@ -219,7 +219,7 @@ func HandleWebhook(c *fiber.Ctx) error {
 
 	if !valid {
 		// Log validation failure with reason (for debugging)
-		webhookLog.Warn().Str("reason", reason).Msg("webhook.validation_failed")
+		webhookLog.Warn("webhook.validation_failed", slog.String("reason", reason))
 
 		// Record failure in database
 		resource.LastWebhookDelivery = time.Now()
@@ -234,10 +234,10 @@ func HandleWebhook(c *fiber.Ctx) error {
 	// Handle legacy auth deprecation warning
 	if isLegacy {
 		c.Set("X-Deprecation-Warning", "Query parameter authentication is deprecated. Migrate to X-Hub-Signature-256 headers.")
-		webhookLog.Warn().Msg("webhook.legacy_auth_deprecated")
+		webhookLog.Warn("webhook.legacy_auth_deprecated")
 	}
 
-	webhookLog.Info().Bool("legacy_auth", isLegacy).Msg("webhook.validated")
+	webhookLog.Info("webhook.validated", slog.Bool("legacy_auth", isLegacy))
 
 	// Initial success state (might be updated later if fetch fails)
 	resource.LastWebhookDelivery = time.Now()
@@ -289,7 +289,7 @@ func HandleWebhook(c *fiber.Ctx) error {
 			}
 			reqDB(c).Create(&version)
 
-			webhookLog.Info().Str("version", newVersion).Msg("webhook.version_received")
+			webhookLog.Info("webhook.version_received", slog.String("version", newVersion))
 
 			// Background Fetch for the NEW version with error propagation to webhook status
 			go finishWebhookFetch(detachedLogCtx(c), webhookLog, resource.ID, newVersion, resource.RepositoryURL, string(resource.Type), resource.Name, resource.FilePath)
@@ -302,7 +302,7 @@ func HandleWebhook(c *fiber.Ctx) error {
 	if len(resource.Versions) > 0 {
 		latest := resource.Versions[0]
 
-		webhookLog.Info().Str("version", latest.Version).Msg("webhook.latest_version_refresh")
+		webhookLog.Info("webhook.latest_version_refresh", slog.String("version", latest.Version))
 
 		// Background Fetch for refresh with error propagation to webhook status
 		go finishWebhookFetch(detachedLogCtx(c), webhookLog, resource.ID, latest.Version, resource.RepositoryURL, string(resource.Type), resource.Name, resource.FilePath)
@@ -312,7 +312,7 @@ func HandleWebhook(c *fiber.Ctx) error {
 }
 
 // finishWebhookFetch runs the version fetch for a webhook, then records a failed fetch on the resource's webhook status.
-func finishWebhookFetch(ctx context.Context, log zerolog.Logger, resID uint, vStr, repoURL, resType, resName, filePath string) {
+func finishWebhookFetch(ctx context.Context, log *slog.Logger, resID uint, vStr, repoURL, resType, resName, filePath string) {
 	fetchVersionContent(ctx, resID, vStr, repoURL, resType, resName, filePath)
 
 	// Check if the fetch failed and update webhook error status
@@ -325,10 +325,9 @@ func finishWebhookFetch(ctx context.Context, log zerolog.Logger, resID uint, vSt
 					"last_webhook_status": "failure",
 					"last_webhook_error":  "Fetch failed: " + version.FetchError,
 				})
-			log.Warn().
-				Str("version", vStr).
-				Str("fetch_error", version.FetchError).
-				Msg("webhook.fetch_failed")
+			log.Warn("webhook.fetch_failed",
+				slog.String("version", vStr),
+				slog.String("fetch_error", version.FetchError))
 		}
 	}
 }

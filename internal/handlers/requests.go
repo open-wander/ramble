@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"log/slog"
 	"math"
 	"os"
 	"rmbl/internal/database"
@@ -209,20 +210,23 @@ func createGitHubIssueForRequest(db *gorm.DB, requestID uint) {
 	// Get token from environment variable (like other GitHub/GitLab secrets)
 	token := os.Getenv("GITHUB_REQUESTS_TOKEN")
 	if token == "" {
-		logger.Log.Warn().Str("operation", "github_issue_create").Msg("github.requests_token_missing")
+		logger.Log.Warn("github.requests_token_missing", slog.String("operation", "github_issue_create"))
 		return
 	}
 
 	var request models.PackRequest
 	if err := db.Preload("User").First(&request, requestID).Error; err != nil {
-		logger.Log.Error().Err(err).Str("operation", "github_issue_create").Uint("pack_request_id", requestID).Msg("request.load_failed")
+		logger.Log.Error("request.load_failed",
+			logger.Err(err),
+			slog.String("operation", "github_issue_create"),
+			slog.Uint64("pack_request_id", uint64(requestID)))
 		return
 	}
 
 	// Get repo from database settings (not a secret, can be configured in admin)
 	var repoSetting models.SiteSetting
 	if err := db.Where("key = ?", "github_requests_repo").First(&repoSetting).Error; err != nil {
-		logger.Log.Warn().Str("operation", "github_issue_create").Msg("github.requests_repo_missing")
+		logger.Log.Warn("github.requests_repo_missing", slog.String("operation", "github_issue_create"))
 		return
 	}
 
@@ -232,7 +236,9 @@ func createGitHubIssueForRequest(db *gorm.DB, requestID uint) {
 
 	parts := strings.Split(repoSetting.Value, "/")
 	if len(parts) != 2 {
-		logger.Log.Warn().Str("operation", "github_issue_create").Str("repo", repoSetting.Value).Msg("github.requests_repo_invalid")
+		logger.Log.Warn("github.requests_repo_invalid",
+			slog.String("operation", "github_issue_create"),
+			slog.String("repo", repoSetting.Value))
 		return
 	}
 
@@ -250,7 +256,10 @@ func createGitHubIssueForRequest(db *gorm.DB, requestID uint) {
 
 	resp, err := github.CreateIssue(token, parts[0], parts[1], issue)
 	if err != nil {
-		logger.Log.Error().Err(err).Str("operation", "github_issue_create").Uint("pack_request_id", requestID).Msg("github.issue_create_failed")
+		logger.Log.Error("github.issue_create_failed",
+			logger.Err(err),
+			slog.String("operation", "github_issue_create"),
+			slog.Uint64("pack_request_id", uint64(requestID)))
 		return
 	}
 

@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
@@ -178,16 +179,16 @@ func syncRequestToGitHub(db *gorm.DB, request models.PackRequest) error {
 
 // syncRequestToGitHubWithRetry wraps SyncRequestToGitHub with exponential backoff retry
 func syncRequestToGitHubWithRetry(db *gorm.DB, request models.PackRequest) error {
-	log := logger.Log.With().
-		Str("operation", "sync_request_to_github").
-		Uint("request_id", request.ID).
-		Int("issue_num", request.GitHubIssueNum).
-		Logger()
+	log := logger.Log.With(
+		slog.String("operation", "sync_request_to_github"),
+		slog.Uint64("request_id", uint64(request.ID)),
+		slog.Int("issue_num", request.GitHubIssueNum),
+	)
 
 	var attempt int
 	operation := func() error {
 		attempt++
-		log.Debug().Int("attempt", attempt).Msg("github.sync_attempt")
+		log.Debug("github.sync_attempt", slog.Int("attempt", attempt))
 		return syncRequestToGitHub(db, request)
 	}
 
@@ -199,25 +200,25 @@ func syncRequestToGitHubWithRetry(db *gorm.DB, request models.PackRequest) error
 	b.RandomizationFactor = 0.5
 
 	if err := backoff.Retry(operation, backoff.WithMaxRetries(b, 3)); err != nil {
-		log.Error().Err(err).Int("attempts", attempt).Msg("github.sync_failed")
+		log.Error("github.sync_failed", logger.Err(err), slog.Int("attempts", attempt))
 		return err
 	}
 
 	if attempt > 1 {
-		log.Info().Int("attempts", attempt).Msg("github.sync_retry_succeeded")
+		log.Info("github.sync_retry_succeeded", slog.Int("attempts", attempt))
 	}
 	return nil
 }
 
 // runBidirectionalSync performs full bidirectional sync
 func runBidirectionalSync(db *gorm.DB) (*SyncResult, error) {
-	log := logger.Log.With().Str("operation", "github_sync").Logger()
+	log := logger.Log.With(slog.String("operation", "github_sync"))
 
 	result := &SyncResult{
 		SyncedAt: time.Now(),
 	}
 
-	log.Info().Msg("github.bidirectional_sync_started")
+	log.Info("github.bidirectional_sync_started")
 
 	cfg, err := getGitHubSyncConfig(db)
 	if err != nil {
@@ -230,7 +231,7 @@ func runBidirectionalSync(db *gorm.DB) (*SyncResult, error) {
 		return nil, fmt.Errorf("failed to list issues: %w", err)
 	}
 
-	log.Info().Int("issue_count", len(issues)).Msg("github.issues_fetched")
+	log.Info("github.issues_fetched", slog.Int("issue_count", len(issues)))
 
 	// Build a map of issue numbers to issues
 	issueMap := make(map[int]*github.Issue)
@@ -242,7 +243,7 @@ func runBidirectionalSync(db *gorm.DB) (*SyncResult, error) {
 	var requests []models.PackRequest
 	db.Where("github_issue_num > 0").Find(&requests)
 
-	log.Info().Int("request_count", len(requests)).Msg("github.linked_requests_loaded")
+	log.Info("github.linked_requests_loaded", slog.Int("request_count", len(requests)))
 
 	// Sync app -> GitHub: update issues based on request status
 	g := new(errgroup.Group)
@@ -269,7 +270,7 @@ func runBidirectionalSync(db *gorm.DB) (*SyncResult, error) {
 					mu.Lock()
 					syncErrors = append(syncErrors, fmt.Sprintf("Failed to sync request %d to GitHub: %v", request.ID, err))
 					mu.Unlock()
-					log.Warn().Err(err).Uint("request_id", request.ID).Msg("github.sync_request_failed")
+					log.Warn("github.sync_request_failed", logger.Err(err), slog.Uint64("request_id", uint64(request.ID)))
 					return nil // Don't fail entire sync
 				}
 				updatedCount.Add(1)
@@ -358,12 +359,11 @@ func runBidirectionalSync(db *gorm.DB) (*SyncResult, error) {
 		}
 	}
 
-	log.Info().
-		Int("created", result.CreatedRequests).
-		Int("updated_issues", result.UpdatedIssues).
-		Int("errors", len(result.Errors)).
-		Dur("duration", time.Since(result.SyncedAt)).
-		Msg("github.sync_completed")
+	log.Info("github.sync_completed",
+		slog.Int("created", result.CreatedRequests),
+		slog.Int("updated_issues", result.UpdatedIssues),
+		slog.Int("errors", len(result.Errors)),
+		slog.Float64("duration", float64(time.Since(result.SyncedAt))/float64(time.Millisecond)))
 
 	return result, nil
 }
@@ -406,7 +406,7 @@ func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
 	// Validate signature
 	secret := os.Getenv("GITHUB_WEBHOOK_SECRET")
 	if secret == "" {
-		log.Error().Msg("github.webhook_secret_missing")
+		log.Error("github.webhook_secret_missing")
 		return c.SendStatus(500)
 	}
 
@@ -418,7 +418,9 @@ func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
 		// New format: timestamp + signature with replay protection
 		valid, _, reason := ValidateWebhookRequest(c.Body(), signature, timestamp, "", secret)
 		if !valid {
-			log.Warn().Str("operation", "github_issue_webhook").Str("reason", reason).Msg("webhook.validation_failed")
+			log.Warn("webhook.validation_failed",
+				slog.String("operation", "github_issue_webhook"),
+				slog.String("reason", reason))
 			return c.Status(401).SendString("Invalid webhook signature")
 		}
 		isValid = valid
@@ -427,11 +429,11 @@ func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
 		// This maintains backward compatibility with GitHub's current webhook format
 		isValid = github.ValidateWebhookSignature(c.Body(), signature, secret)
 		if !isValid {
-			log.Warn().Str("operation", "github_issue_webhook").Msg("webhook.signature_invalid")
+			log.Warn("webhook.signature_invalid", slog.String("operation", "github_issue_webhook"))
 			return c.Status(401).SendString("Invalid webhook signature")
 		}
 	} else {
-		log.Warn().Str("operation", "github_issue_webhook").Msg("webhook.signature_missing")
+		log.Warn("webhook.signature_missing", slog.String("operation", "github_issue_webhook"))
 		return c.Status(401).SendString("Invalid webhook signature")
 	}
 
@@ -444,7 +446,7 @@ func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
 	// Parse payload
 	var payload IssueWebhookPayload
 	if err := json.Unmarshal(c.Body(), &payload); err != nil {
-		log.Error().Err(err).Str("operation", "github_issue_webhook").Msg("webhook.payload_parse_failed")
+		log.Error("webhook.payload_parse_failed", logger.Err(err), slog.String("operation", "github_issue_webhook"))
 		return c.Status(400).SendString("Invalid payload")
 	}
 
@@ -453,12 +455,18 @@ func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
 	case "opened":
 		// Check if this is an externally created issue we should track
 		if err := handleNewIssueDB(reqDB(c), payload.Issue); err != nil {
-			log.Error().Err(err).Str("operation", "github_issue_webhook").Int("issue_number", payload.Issue.Number).Msg("github.webhook_issue_open_failed")
+			log.Error("github.webhook_issue_open_failed",
+				logger.Err(err),
+				slog.String("operation", "github_issue_webhook"),
+				slog.Int("issue_number", payload.Issue.Number))
 		}
 	case "closed", "reopened", "labeled", "unlabeled":
 		// Update existing request status
 		if err := handleIssueStateChangeDB(reqDB(c), payload.Issue); err != nil {
-			log.Error().Err(err).Str("operation", "github_issue_webhook").Int("issue_number", payload.Issue.Number).Msg("github.webhook_issue_state_failed")
+			log.Error("github.webhook_issue_state_failed",
+				logger.Err(err),
+				slog.String("operation", "github_issue_webhook"),
+				slog.Int("issue_number", payload.Issue.Number))
 		}
 	}
 
@@ -469,7 +477,7 @@ func HandleGitHubIssueWebhook(c *fiber.Ctx) error {
 // so the webhook handler can pass a request-bound one.
 func handleNewIssueDB(db *gorm.DB, issue IssuePayload) error {
 	// Request-bound handles carry the request logger; others fall back to the global one.
-	log := logger.FromContextOr(db.Statement.Context, &logger.Log)
+	log := logger.FromContextOr(db.Statement.Context, logger.Log)
 	// Skip if it was created by our app
 	if strings.Contains(issue.Body, "automatically created from [RMBL]") {
 		return nil
@@ -522,11 +530,10 @@ func handleNewIssueDB(db *gorm.DB, issue IssuePayload) error {
 		return err
 	}
 
-	log.Info().
-		Str("operation", "github_issue_webhook").
-		Int("issue_number", issue.Number).
-		Str("type", string(reqType)).
-		Msg("github.webhook_request_created")
+	log.Info("github.webhook_request_created",
+		slog.String("operation", "github_issue_webhook"),
+		slog.Int("issue_number", issue.Number),
+		slog.String("type", string(reqType)))
 
 	return nil
 }
@@ -535,7 +542,7 @@ func handleNewIssueDB(db *gorm.DB, issue IssuePayload) error {
 // caller-supplied handle, so the webhook handler can pass a request-bound one.
 func handleIssueStateChangeDB(db *gorm.DB, issue IssuePayload) error {
 	// Request-bound handles carry the request logger; others fall back to the global one.
-	log := logger.FromContextOr(db.Statement.Context, &logger.Log)
+	log := logger.FromContextOr(db.Statement.Context, logger.Log)
 	var request models.PackRequest
 	if err := db.Where("github_issue_num = ?", issue.Number).First(&request).Error; err != nil {
 		return nil // Not tracking this issue
@@ -556,11 +563,10 @@ func handleIssueStateChangeDB(db *gorm.DB, issue IssuePayload) error {
 		request.Status = newStatus
 		db.Save(&request)
 
-		log.Info().
-			Str("operation", "github_issue_webhook").
-			Int("issue_number", issue.Number).
-			Str("new_status", string(newStatus)).
-			Msg("github.webhook_request_status_updated")
+		log.Info("github.webhook_request_status_updated",
+			slog.String("operation", "github_issue_webhook"),
+			slog.Int("issue_number", issue.Number),
+			slog.String("new_status", string(newStatus)))
 	}
 
 	return nil

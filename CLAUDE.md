@@ -11,7 +11,9 @@ shared rules: `TydeWhatMay/infra` `platform/alloy/README.md`.
 - Format: zerolog JSON on stdout since v0.5.17 (2026-10-10 21:00 UTC). Before
   that it was text: Fiber access lines and GORM SQL traces with ANSI colours.
   Since v0.5.18 each start logs one `server.started` line (`addr`, `version`)
-  instead of Fiber's text banner.
+  instead of Fiber's text banner. Since v0.5.22 the logger is `log/slog`
+  (same keys and fields; development logs JSON too). Stdlib `log` output from
+  dependencies is `msg="stdlib.log"` with the text in `text`.
 - Requests are `msg="http.request"` with `request_id`, `method`, `path`,
   `status`, `duration_ms`, `client_ip`. Database: `db.slow_query` (WARN,
   over 200 ms) and `db.query_error` (ERROR); fast queries are not logged.

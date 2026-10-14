@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"log/slog"
 	"sort"
 	"strconv"
 	"strings"
@@ -402,7 +403,10 @@ func PostUpdateRequestStatus(c *fiber.Ctx) error {
 	// Sync status to GitHub in background
 	go func(req models.PackRequest) {
 		if err := SyncRequestToGitHub(req); err != nil {
-			logger.Log.Error().Err(err).Str("operation", "github_sync").Uint("pack_request_id", req.ID).Msg("github.sync_request_failed")
+			logger.Log.Error("github.sync_request_failed",
+				logger.Err(err),
+				slog.String("operation", "github_sync"),
+				slog.Uint64("pack_request_id", uint64(req.ID)))
 		}
 	}(request)
 

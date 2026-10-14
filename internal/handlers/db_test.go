@@ -3,12 +3,13 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -20,26 +21,29 @@ import (
 // newRequestLogApp returns a fiber app wired like server.Run: requestid, then
 // the real logger.RequestLogger built from base, so handler tests exercise the
 // production middleware rather than a copy.
-func newRequestLogApp(base zerolog.Logger) *fiber.App {
+func newRequestLogApp(base *slog.Logger) *fiber.App {
 	app := fiber.New()
 	app.Use(requestid.New())
-	app.Use(logger.RequestLogger(&base))
+	app.Use(logger.RequestLogger(base))
 	return app
 }
+
+// testSlog returns the production JSON slog logger on w. A writer shared
+// with goroutines must be goroutine-safe (lockedBuffer).
+func testSlog(w io.Writer) *slog.Logger { return logger.NewJSON(w) }
 
 // TestReqDB_QueryErrorCarriesRequestID proves a query run through reqDB logs
 // via the request-scoped logger (and so carries request_id), not the global
 // GORM base logger.
 func TestReqDB_QueryErrorCarriesRequestID(t *testing.T) {
 	var baseBuf, reqBuf bytes.Buffer
-	baseLog := zerolog.New(&baseBuf)
-	reqBase := zerolog.New(&reqBuf)
+	baseLog := testSlog(&baseBuf)
 
 	orig := database.DB
-	database.DB = orig.Session(&gorm.Session{Logger: database.NewGormLogger(&baseLog, database.SlowQueryThreshold)})
+	database.DB = orig.Session(&gorm.Session{Logger: database.NewGormLogger(baseLog, database.SlowQueryThreshold)})
 	t.Cleanup(func() { database.DB = orig })
 
-	app := newRequestLogApp(reqBase)
+	app := newRequestLogApp(testSlog(&reqBuf))
 	app.Get("/q", func(c *fiber.Ctx) error {
 		var x []map[string]any
 		_ = reqDB(c).Raw("SELECT * FROM no_such_table_63").Scan(&x).Error
@@ -58,7 +62,7 @@ func TestReqDB_QueryErrorCarriesRequestID(t *testing.T) {
 		if json.Unmarshal(line, &m) != nil {
 			continue
 		}
-		if m[zerolog.MessageFieldName] == "db.query_error" {
+		if m["msg"] == "db.query_error" {
 			found = true
 			assert.Equal(t, "rid-63-test", m["request_id"])
 		}
@@ -73,13 +77,13 @@ func TestReqDB_QueryErrorCarriesRequestID(t *testing.T) {
 // the http.request line of a request carry the same generated request_id.
 func TestRequestChain_QueryErrorSharesRequestIDWithAccessLine(t *testing.T) {
 	var buf bytes.Buffer
-	base := zerolog.New(&buf)
+	sbase := testSlog(&buf)
 
 	orig := database.DB
-	database.DB = orig.Session(&gorm.Session{Logger: database.NewGormLogger(&base, database.SlowQueryThreshold)})
+	database.DB = orig.Session(&gorm.Session{Logger: database.NewGormLogger(sbase, database.SlowQueryThreshold)})
 	t.Cleanup(func() { database.DB = orig })
 
-	app := newRequestLogApp(base)
+	app := newRequestLogApp(sbase)
 	app.Get("/chain", func(c *fiber.Ctx) error {
 		var x []map[string]any
 		_ = reqDB(c).Raw("SELECT * FROM no_such_table_81").Scan(&x).Error
@@ -97,7 +101,7 @@ func TestRequestChain_QueryErrorSharesRequestIDWithAccessLine(t *testing.T) {
 		for line := range bytes.SplitSeq(bytes.TrimSpace(buf.Bytes()), []byte("\n")) {
 			var m map[string]any
 			require.NoError(t, json.Unmarshal(line, &m), "non-JSON line: %s", line)
-			switch m[zerolog.MessageFieldName] {
+			switch m["msg"] {
 			case "http.request":
 				nAccess++
 				access = m

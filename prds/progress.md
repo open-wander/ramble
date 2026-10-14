@@ -672,3 +672,74 @@ now uses `|| true` inside the substitution so the diff is shown. Verified both w
 
 User approved adding `artifact-metadata: write` to release.yml so attest-build-provenance v4 can
 create the artifact storage record instead of warning on every release. actionlint clean.
+
+## 2026-10-14 — 11.1 slog foundation
+
+logger.S (slog JSON handler, LevelDebug, no AddSource; discards until Init) with ReplaceAttr that
+keeps errors strings even for json.Marshaler error types. SWithContext/SFromContext/SFromContextOr
+(unexported sloggerKey). RequestLogger(base, sbase) attaches both loggers with the same request_id;
+http.request stays on zerolog until 11.3. zerolog development output switched to JSON (ConsoleWriter,
+defaultLevelMarshal and the dev-only Caller() removed), so both loggers are JSON everywhere now.
+Side effect: org_errors_test logHasEvent matched lower-case levels that only appeared because the
+dev marshaller leaked through a process-global; it now matches case-insensitively (pin the level
+when it moves to slog in 11.3).
+Mutations red: drop SWithContext attach; lower-case level via ReplaceAttr; SFromContextOr never
+returns the attached logger; drop the error-to-string ReplaceAttr; (orchestrator) drop the attach
+again and a wrong WithUser field after making TestWithUser/TestWithRequest assert.
+Note: server.go reads logger.S when useRequestLogging runs, after Init; reordering would send
+request slog lines to the discard handler. Goes away in 11.3.
+PATTERN: slog - look slog lines up by "msg"; logtest.Find uses zerolog.MessageFieldName until 11.4.
+
+## 2026-10-14 — 11.2 GORM logger on slog
+
+gormlogger.go uses slog (LogAttrs; error written as slog.String so it stays a string without the
+production ReplaceAttr); events, fields, levels, safeArg/formatText/ParamsFilter unchanged;
+newDefaultGormLogger reads logger.S at call time. Advisor caught a spec gap: detachedLogCtx
+(background.go) rebuilt the goroutine context with only the zerolog logger, so fetch/webhook SQL
+would have lost request_id; it now carries both. Test ports: gormlogger_test, database_test
+(swapFailSeams swaps S; migrate test now requires db.query_error at ERROR), handlers db_test,
+secret_log_test (captureAllLogs swaps S so "absent from all output" is not vacuous), fetch_log,
+params, webhook_log, flash_log, org_errors, resource withcontext/service tests. handlers and
+resource TestMains set zerolog.MessageFieldName="msg" (as Init does) so mixed buffers share a key.
+Mutations red: logger ignores ctx; ParamsFilter returns params; slow query at INFO;
+ErrRecordNotFound logged; detachedLogCtx without SWithContext (webhook latest_refresh/new_tag).
+Orchestrator re-ran the ctx mutation: TestReqDB_QueryErrorCarriesRequestID,
+TestRequestChain_QueryErrorSharesRequestIDWithAccessLine, TestHandleWebhook_FetchLogsCarryRequestID red.
+Note for 11.3/11.4: the rid-810 fetch tests build their ctx with reqLogCtx by hand, so only
+TestHandleWebhook_FetchLogsCarryRequestID guards detachedLogCtx.
+
+## 2026-10-14 — 11.3 call sites on slog
+
+All non-test zerolog use is gone except internal/services/logger/logger.go (Log, stdlib bridge,
+FromContext/FromContextOr, WithUser/WithRequest; removed in 11.5). logger.Err(err) slog.Attr (zero
+Attr for nil, string otherwise) for every error field; logger.NewJSON(w) builds the production
+handler (Init and tests use it). RequestLogger(base *slog.Logger); levelForStatus returns slog.Level;
+detachedLogCtx carries only slog; http.panic via SFromContext. audit.recorded and
+syncRequestToGitHubWithRetry stay on logger.S because they set their own request_id (a request
+logger would emit the key twice). zerolog .Stack() dropped: it was a no-op (no .Err, no
+ErrorStackMarshaler). Advisor caught: slog.Duration writes int nanoseconds where zerolog Dur wrote
+float ms - durations are slog.Float64 ms; the event-key guard (msgkey_test) only scanned .Msg and
+would go red - ported to slog Debug/Info/Warn/Error (+Context, Log/LogAttrs) with TestScanFileMsgKeys.
+Mutations red: 5xx at INFO; RequestLogger no attach; http.panic without request_id; Err as slog.Any;
+detachedLogCtx drops logger; org.go wrong key; non-dotted key (guard); slog.Duration.
+Orchestrator re-ran: http.panic via logger.S (TestUseRequestLoggingRecoversPanic and the Sentry test
+red); slog.Duration in background.go (TestFetchVersionContent_DurationIsMilliseconds red).
+Gap: github.sync_completed duration has no own test - 11.4 adds an AST guard against slog.Duration.
+
+## 2026-10-14 — 11.4 guards and 11.5 code: zerolog removed
+
+Final names: logger.Log (*slog.Logger), FromContext, FromContextOr, WithContext, ctxKey, Err, NewJSON.
+Deleted the zerolog Log, upperLevelMarshal, zerolog FromContext/FromContextOr, WithUser/WithRequest.
+initWithWriter: Log = NewJSON(w); slog.SetDefault(Log); THEN stdlog.SetFlags(0)/SetOutput(stdlibWriter)
+(SetDefault redirects stdlib log into slog with the raw text as msg). stdlibWriter logs
+stdlib.log with field text. Test restore helpers call slog.SetDefault(prev) before
+stdlog.SetOutput(prev) (otherwise stdlog stays pointed at a dead buffer handler; golang/go#61892
+deadlock class). go mod tidy removed rs/zerolog from go.mod/go.sum; TestMain MessageFieldName hacks gone.
+Guards (msgkey_test.go, hit/miss fixtures, resolved by import path so local `log` vars are not
+flagged): no os.Exit call in server code (database's `var exit = os.Exit` is a reference; internal/cli
+is skipped); no stdlib log and no zerolog import (non-test files); no package-level slog calls; no
+slog.Duration and no slog.Any("error", ...). Event-key guard: 79 calls checked (floor 40).
+Mutations red: SetDefault after SetOutput; SetDefault dropped; NewJSON at LevelInfo; os.Exit in
+database.go; slog.Error / slog.Any("error") / slog.Duration / zerolog import in server.go.
+Orchestrator re-ran: slog.Error in admin.go -> TestServerCodeDoesNotCallPackageLevelSlog red; tidy no-op.
+Open: whether dependencies emit stdlib/slog lines in prod - check `msg="stdlib.log"` in Loki after deploy.

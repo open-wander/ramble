@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -25,20 +25,20 @@ import (
 // captureAllLogs routes the global logger, the request logger and every SQL
 // statement (slow threshold 0, so all of them are logged) into one buffer, so
 // "absent from the buffer" means absent from all output.
-func captureAllLogs(t *testing.T) (*bytes.Buffer, zerolog.Logger) {
+func captureAllLogs(t *testing.T) (*bytes.Buffer, *slog.Logger) {
 	t.Helper()
 	var buf bytes.Buffer
-	base := zerolog.New(&buf)
+	sbase := testSlog(&buf)
 
-	origLog := logger.Log
-	logger.Log = base
+	origS := logger.Log
+	logger.Log = sbase
 	origDB := database.DB
-	database.DB = origDB.Session(&gorm.Session{Logger: database.NewGormLogger(&base, 0)})
+	database.DB = origDB.Session(&gorm.Session{Logger: database.NewGormLogger(sbase, 0)})
 	t.Cleanup(func() {
-		logger.Log = origLog
+		logger.Log = origS
 		database.DB = origDB
 	})
-	return &buf, base
+	return &buf, sbase
 }
 
 func requireMsg(t *testing.T, buf *bytes.Buffer, msg string) map[string]any {
@@ -155,10 +155,10 @@ func TestAuditLog_RedactsSensitiveDetails(t *testing.T) {
 	}
 
 	t.Run("AuditLog", func(t *testing.T) {
-		buf, base := captureAllLogs(t)
+		buf, sbase := captureAllLogs(t)
 		const action = "secret.audit_with_ctx"
 		t.Cleanup(func() { database.DB.Exec("DELETE FROM audit_logs WHERE action = ?", action) })
-		app := newRequestLogApp(base)
+		app := newRequestLogApp(sbase)
 		app.Get("/a", func(c *fiber.Ctx) error {
 			AuditLog(c, action, "t", 1, "n", newDetails())
 			return c.SendStatus(200)
@@ -185,8 +185,8 @@ func TestFailedLogin_NeverLogsPassword(t *testing.T) {
 
 	for _, email := range []string{"nobody@test.com", "secretlogin@test.com"} {
 		t.Run(email, func(t *testing.T) {
-			buf, base := captureAllLogs(t)
-			app := newRequestLogApp(base)
+			buf, sbase := captureAllLogs(t)
+			app := newRequestLogApp(sbase)
 			app.Post("/login", PostLogin)
 
 			req := httptest.NewRequest("POST", "/login", strings.NewReader(url.Values{"email": {email}, "password": {pw}}.Encode()))
@@ -208,8 +208,8 @@ func TestForgotPassword_NeverLogsResetLink(t *testing.T) {
 	createTestUser(t, "secretforgot")
 	t.Setenv("BASE_URL", "https://SENTINELHOST.example")
 
-	buf, base := captureAllLogs(t)
-	app := newRequestLogApp(base)
+	buf, sbase := captureAllLogs(t)
+	app := newRequestLogApp(sbase)
 	app.Post("/forgot-password", PostForgotPassword)
 
 	req := httptest.NewRequest("POST", "/forgot-password", strings.NewReader(url.Values{"email": {"secretforgot@test.com"}}.Encode()))
@@ -227,8 +227,8 @@ func TestResetPassword_NeverLogsToken(t *testing.T) {
 	const tokPost, tokGet = "SENTINEL_RESET_POST", "SENTINEL_RESET_GET"
 
 	t.Run("POST invalid token", func(t *testing.T) {
-		buf, base := captureAllLogs(t)
-		app := newRequestLogApp(base)
+		buf, sbase := captureAllLogs(t)
+		app := newRequestLogApp(sbase)
 		app.Post("/reset-password", PostResetPassword)
 
 		form := url.Values{"token": {tokPost}, "password": {"Str0ng!Passw0rd#2026"}}
@@ -244,8 +244,8 @@ func TestResetPassword_NeverLogsToken(t *testing.T) {
 	})
 
 	t.Run("GET query token reaches http.request as path only", func(t *testing.T) {
-		buf, base := captureAllLogs(t)
-		app := newRequestLogApp(base)
+		buf, sbase := captureAllLogs(t)
+		app := newRequestLogApp(sbase)
 		app.Get("/reset-password", GetResetPassword)
 
 		resp, err := app.Test(httptest.NewRequest("GET", "/reset-password?token="+tokGet, nil))
@@ -273,8 +273,8 @@ func TestWebhooks_NeverLogSecretsOrSignatures(t *testing.T) {
 		res := models.NomadResource{Name: "secret-wh-pack", Type: models.ResourceTypePack, UserID: user.ID, WebhookSecret: resSecret}
 		require.NoError(t, database.DB.Create(&res).Error)
 
-		buf, base := captureAllLogs(t)
-		app := newRequestLogApp(base)
+		buf, sbase := captureAllLogs(t)
+		app := newRequestLogApp(sbase)
 		app.Post("/webhook/:id", HandleWebhook)
 
 		req := httptest.NewRequest("POST", "/webhook/"+toString(res.ID)+"?secret="+qSecret, nil)
@@ -290,8 +290,8 @@ func TestWebhooks_NeverLogSecretsOrSignatures(t *testing.T) {
 
 	t.Run("HandleGitHubIssueWebhook", func(t *testing.T) {
 		t.Setenv("GITHUB_WEBHOOK_SECRET", ghSecret)
-		buf, base := captureAllLogs(t)
-		app := newRequestLogApp(base)
+		buf, sbase := captureAllLogs(t)
+		app := newRequestLogApp(sbase)
 		app.Post("/webhooks/github/issues", HandleGitHubIssueWebhook)
 
 		for _, ts := range []string{"", "1"} {

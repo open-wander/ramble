@@ -5,28 +5,24 @@ import (
 	"encoding/json"
 	"errors"
 	stdlog "log"
+	"log/slog"
 	"strings"
 	"testing"
 
 	"rmbl/internal/server"
 	"rmbl/internal/services/logger"
 
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
-// captureLog swaps logger.Log for a JSON logger writing to the returned buffer.
+// captureLog swaps logger.Log for the production JSON logger writing to the
+// returned buffer. Tests that use it must not run in parallel.
 func captureLog(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var buf bytes.Buffer
-	oldLog, oldField := logger.Log, zerolog.MessageFieldName
-	zerolog.MessageFieldName = "msg"
-	logger.Log = zerolog.New(&buf)
-	t.Cleanup(func() {
-		logger.Log = oldLog
-		zerolog.MessageFieldName = oldField
-	})
+	oldS := logger.Log
+	logger.Log = logger.NewJSON(&buf)
+	t.Cleanup(func() { logger.Log = oldS })
 	return &buf
 }
 
@@ -90,7 +86,7 @@ func TestRunServerCmd(t *testing.T) {
 		if e := json.Unmarshal([]byte(lines[0]), &rec); e != nil {
 			t.Fatalf("log line is not JSON: %v", e)
 		}
-		if lvl, _ := rec["level"].(string); !strings.EqualFold(lvl, "error") {
+		if rec["level"] != "ERROR" {
 			t.Errorf("level = %v", rec["level"])
 		}
 		if rec["msg"] != "server.exit_error" {
@@ -170,18 +166,13 @@ func TestServerCommandEndToEnd(t *testing.T) {
 func restoreLoggerGlobals(t *testing.T) {
 	t.Helper()
 	prevLog := logger.Log
-	prevGlobal := log.Logger
-	prevMsg := zerolog.MessageFieldName
-	prevLevel := zerolog.LevelFieldMarshalFunc
-	prevTimeFmt := zerolog.TimeFieldFormat
+	prevDefault := slog.Default()
 	prevOut := stdlog.Writer()
 	prevFlags := stdlog.Flags()
 	t.Cleanup(func() {
 		logger.Log = prevLog
-		log.Logger = prevGlobal
-		zerolog.MessageFieldName = prevMsg
-		zerolog.LevelFieldMarshalFunc = prevLevel
-		zerolog.TimeFieldFormat = prevTimeFmt
+		// SetDefault first: it rewrites the stdlib log output.
+		slog.SetDefault(prevDefault)
 		stdlog.SetOutput(prevOut)
 		stdlog.SetFlags(prevFlags)
 	})

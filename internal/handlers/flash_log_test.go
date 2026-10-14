@@ -11,7 +11,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/session"
-	"github.com/rs/zerolog"
 )
 
 // failingStorage lets sessions load (nothing stored) but fails every save.
@@ -30,9 +29,7 @@ func TestSetFlash_SaveFailureLogsWithRequestID(t *testing.T) {
 	t.Cleanup(func() { Store = orig })
 
 	var buf bytes.Buffer
-	l := zerolog.New(&buf)
-
-	app := newRequestLogApp(l)
+	app := newRequestLogApp(testSlog(&buf))
 	app.Get("/flash", func(c *fiber.Ctx) error {
 		SetFlash(c, "success", "hi")
 		return c.SendStatus(fiber.StatusOK)

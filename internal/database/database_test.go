@@ -10,7 +10,6 @@ import (
 	"rmbl/internal/models"
 	"rmbl/internal/services/logger"
 
-	"github.com/rs/zerolog"
 	postgresDriver "gorm.io/driver/postgres"
 )
 
@@ -99,12 +98,11 @@ func swapFailSeams(t *testing.T) (*bytes.Buffer, *[]int) {
 	t.Helper()
 	var buf bytes.Buffer
 	var codes []int
-	oldLog, oldField, oldExit, oldDB := logger.Log, zerolog.MessageFieldName, exit, DB
-	zerolog.MessageFieldName = "msg"
-	logger.Log = zerolog.New(&buf)
+	oldS, oldExit, oldDB := logger.Log, exit, DB
+	logger.Log = logger.NewJSON(&buf)
 	exit = func(code int) { codes = append(codes, code) }
 	t.Cleanup(func() {
-		logger.Log, zerolog.MessageFieldName, exit, DB = oldLog, oldField, oldExit, oldDB
+		logger.Log, exit, DB = oldS, oldExit, oldDB
 	})
 	return &buf, &codes
 }
@@ -127,7 +125,7 @@ func TestConnectConnectFailed(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &rec); err != nil {
 		t.Fatal(err)
 	}
-	if rec["level"] != "error" || rec["msg"] != "db.connect_failed" {
+	if rec["level"] != "ERROR" || rec["msg"] != "db.connect_failed" {
 		t.Errorf("record = %v", rec)
 	}
 	if s, _ := rec["error"].(string); s == "" {
@@ -152,7 +150,7 @@ func TestConnectCredentialsMissing(t *testing.T) {
 	if err := json.Unmarshal([]byte(strings.TrimSpace(buf.String())), &rec); err != nil {
 		t.Fatalf("want exactly one JSON line: %v: %q", err, buf.String())
 	}
-	if rec["level"] != "error" || rec["msg"] != "db.credentials_missing" {
+	if rec["level"] != "ERROR" || rec["msg"] != "db.credentials_missing" {
 		t.Errorf("record = %v", rec)
 	}
 	if _, has := rec["error"]; has {
@@ -203,7 +201,7 @@ func TestConnectMigrateFailed(t *testing.T) {
 		t.Fatalf("exit calls = %v, want exactly [1]", *codes)
 	}
 	// gorm's logger emits db.query_error first, so look for the migrate line.
-	var found bool
+	var found, queryErr bool
 	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
 		var rec map[string]any
 		if err := json.Unmarshal([]byte(line), &rec); err != nil {
@@ -212,12 +210,22 @@ func TestConnectMigrateFailed(t *testing.T) {
 		if rec["msg"] == "db.migrate_completed" {
 			t.Errorf("migrate_completed logged after a failed migration: %v", rec)
 		}
+		if rec["msg"] == "db.query_error" {
+			// slog-origin line: upper-case level, error as a string.
+			queryErr = true
+			if rec["level"] != "ERROR" {
+				t.Errorf("db.query_error level = %v, want ERROR", rec["level"])
+			}
+			if s, _ := rec["error"].(string); s == "" {
+				t.Errorf("db.query_error error missing or not a string: %v", rec)
+			}
+		}
 		if rec["msg"] != "db.migrate_failed" {
 			continue
 		}
 		found = true
-		if rec["level"] != "error" {
-			t.Errorf("level = %v, want error", rec["level"])
+		if rec["level"] != "ERROR" {
+			t.Errorf("level = %v, want ERROR", rec["level"])
 		}
 		if s, _ := rec["error"].(string); s == "" {
 			t.Errorf("error field missing: %v", rec)
@@ -227,5 +235,8 @@ func TestConnectMigrateFailed(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("no db.migrate_failed line in %q", buf.String())
+	}
+	if !queryErr {
+		t.Errorf("no db.query_error line in %q", buf.String())
 	}
 }

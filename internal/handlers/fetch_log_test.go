@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,7 +14,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -54,7 +54,7 @@ func (b *lockedBuffer) String() string {
 func (b *lockedBuffer) findLogLine(msg string, sqlParts ...string) map[string]any {
 	for line := range strings.SplitSeq(b.String(), "\n") {
 		var m map[string]any
-		if json.Unmarshal([]byte(line), &m) != nil || m[zerolog.MessageFieldName] != msg {
+		if json.Unmarshal([]byte(line), &m) != nil || m["msg"] != msg {
 			continue
 		}
 		sql, _ := m["sql"].(string)
@@ -88,14 +88,16 @@ func eventually(cond func() bool) bool {
 func fetchLogHarness(t *testing.T) (reqBuf, baseBuf *lockedBuffer) {
 	t.Helper()
 	reqBuf, baseBuf = &lockedBuffer{}, &lockedBuffer{}
-	baseLog := zerolog.New(baseBuf)
+	baseLog := testSlog(baseBuf)
 
-	origDB, origSvc := database.DB, resource.Service
-	database.DB = origDB.Session(&gorm.Session{Logger: database.NewGormLogger(&baseLog, time.Nanosecond)})
+	origDB, origSvc, origS := database.DB, resource.Service, logger.Log
+	logger.Log = baseLog
+	database.DB = origDB.Session(&gorm.Session{Logger: database.NewGormLogger(baseLog, time.Nanosecond)})
 	resource.Service = resource.NewResourceService(database.DB)
 	t.Cleanup(func() {
 		database.DB = origDB
 		resource.Service = origSvc
+		logger.Log = origS
 	})
 	return reqBuf, baseBuf
 }
@@ -161,7 +163,7 @@ func TestHandleWebhook_FetchLogsCarryRequestID(t *testing.T) {
 			}
 
 			reqBuf, baseBuf := fetchLogHarness(t)
-			app := newRequestLogApp(zerolog.New(reqBuf))
+			app := newRequestLogApp(testSlog(reqBuf))
 			app.Post("/webhook/:id", HandleWebhook)
 
 			ts := fmt.Sprintf("%d", time.Now().Unix())
@@ -235,7 +237,7 @@ func TestRequestTriggeredFetch_LogsCarryRequestID(t *testing.T) {
 			reqBuf, baseBuf := fetchLogHarness(t)
 
 			InitSession()
-			app := newRequestLogApp(zerolog.New(reqBuf))
+			app := newRequestLogApp(testSlog(reqBuf))
 			app.Use(func(c *fiber.Ctx) error {
 				sess, _ := Store.Get(c)
 				sess.Set("user_id", user.ID)
@@ -267,7 +269,7 @@ func TestFetchVersionContent_NoContextLoggerUsesGlobal(t *testing.T) {
 
 	var buf lockedBuffer
 	orig := logger.Log
-	logger.Log = zerolog.New(&buf)
+	logger.Log = testSlog(&buf)
 	t.Cleanup(func() { logger.Log = orig })
 
 	fetchVersionContent(context.Background(), res.ID, "v1.0.0", failFastRepoURL, string(res.Type), res.Name, "")
@@ -275,6 +277,12 @@ func TestFetchVersionContent_NoContextLoggerUsesGlobal(t *testing.T) {
 	line := buf.findLogLine("version_fetch.failed")
 	require.NotNil(t, line, "version_fetch.failed not on the global logger: %s", buf.String())
 	assert.NotContains(t, line, "request_id")
+}
+
+// reqLogCtx builds a context carrying a request logger on w with request_id
+// rid, as logger.RequestLogger does.
+func reqLogCtx(w *lockedBuffer, rid string) context.Context {
+	return logger.WithContext(context.Background(), testSlog(w).With(slog.String("request_id", rid)))
 }
 
 // requireSQLOnRequestLogger asserts that the db.slow_query line for the
@@ -302,7 +310,7 @@ func TestFetchVersionContent_PanicRecordCarriesRequestID(t *testing.T) {
 	fetchVersionHook = func() { panic("boom") }
 	t.Cleanup(func() { fetchVersionHook = nil })
 
-	ctx := zerolog.New(reqBuf).With().Str("request_id", "rid-810-panic").Logger().WithContext(context.Background())
+	ctx := reqLogCtx(reqBuf, "rid-810-panic")
 	fetchVersionContent(ctx, res.ID, "v1.0.0", failFastRepoURL, string(res.Type), res.Name, "")
 
 	line := reqBuf.findLogLine("version_fetch.panic")
@@ -325,7 +333,7 @@ func TestFetchVersionContent_SuccessUpdateCarriesRequestID(t *testing.T) {
 	require.NoError(t, database.DB.Create(&models.ResourceVersion{ResourceID: res.ID, Version: "v1.0.0"}).Error)
 
 	reqBuf, baseBuf := fetchLogHarness(t)
-	ctx := zerolog.New(reqBuf).With().Str("request_id", "rid-810-ok").Logger().WithContext(context.Background())
+	ctx := reqLogCtx(reqBuf, "rid-810-ok")
 	fetchVersionContent(ctx, res.ID, "v1.0.0", "", string(res.Type), res.Name, "")
 
 	line := reqBuf.findLogLine("version_fetch.completed")
@@ -336,4 +344,39 @@ func TestFetchVersionContent_SuccessUpdateCarriesRequestID(t *testing.T) {
 	var v models.ResourceVersion
 	require.NoError(t, database.DB.Where("resource_id = ? AND version = ?", res.ID, "v1.0.0").First(&v).Error)
 	assert.Equal(t, models.FetchStatusCompleted, v.FetchStatus)
+}
+
+// duration is milliseconds as a JSON float, not
+// the integer nanoseconds slog.Duration would write. A nanosecond count is
+// orders of magnitude above the elapsed wall time in milliseconds.
+func TestFetchVersionContent_DurationIsMilliseconds(t *testing.T) {
+	tests := []struct {
+		name    string
+		resType models.ResourceType
+		msg     string
+	}{
+		{"completed", models.ResourceType("other"), "version_fetch.completed"},
+		{"failed", models.ResourceTypePack, "version_fetch.failed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer cleanupTestData(t)
+			user := createTestUser(t, "fetchdur-"+tt.name)
+			res := models.NomadResource{Name: "fetch-dur-" + tt.name, Type: tt.resType, UserID: user.ID, RepositoryURL: failFastRepoURL}
+			require.NoError(t, database.DB.Create(&res).Error)
+			require.NoError(t, database.DB.Create(&models.ResourceVersion{ResourceID: res.ID, Version: "v1.0.0"}).Error)
+
+			var buf lockedBuffer
+			start := time.Now()
+			fetchVersionContent(reqLogCtx(&buf, "rid-dur"), res.ID, "v1.0.0", failFastRepoURL, string(tt.resType), res.Name, "")
+			elapsedMs := float64(time.Since(start)) / float64(time.Millisecond)
+
+			line := buf.findLogLine(tt.msg)
+			require.NotNil(t, line, "%s not logged: %s", tt.msg, buf.String())
+			d, ok := line["duration"].(float64)
+			require.True(t, ok, "duration is not a JSON number: %v", line["duration"])
+			assert.Greater(t, d, 0.0)
+			assert.LessOrEqual(t, d, elapsedMs, "duration is not in milliseconds")
+		})
+	}
 }

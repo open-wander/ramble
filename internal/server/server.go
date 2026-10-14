@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"regexp"
 	"runtime/debug"
@@ -18,7 +19,6 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"github.com/gofiber/swagger"
 	"github.com/gofiber/template/html/v2"
-	"github.com/rs/zerolog"
 	_ "rmbl/api-docs"
 	"rmbl/internal/database"
 	"rmbl/internal/handlers"
@@ -47,9 +47,9 @@ func Run(cfg Config) error {
 			env = "production"
 		}
 		if err := sentry.Init(sentryOptions(dsn, env, cfg.Version)); err != nil {
-			logger.Log.Error().Err(err).Msg("sentry.init_failed")
+			logger.Log.Error("sentry.init_failed", logger.Err(err))
 		} else {
-			logger.Log.Info().Str("environment", env).Str("release", cfg.Version).Msg("sentry.enabled")
+			logger.Log.Info("sentry.enabled", slog.String("environment", env), slog.String("release", cfg.Version))
 			defer sentry.Flush(2 * time.Second)
 		}
 	}
@@ -103,10 +103,10 @@ func Run(cfg Config) error {
 	// 4. Middleware
 	// Outermost: a backstop for panics in the requestid and RequestLogger
 	// middleware (recoverPanics sits inside them), then Sentry when a DSN is set.
-	useOuterMiddleware(app, &logger.Log, os.Getenv("SENTRY_DSN") != "")
+	useOuterMiddleware(app, logger.Log, os.Getenv("SENTRY_DSN") != "")
 
 	// Request ID tracing + structured access log
-	useRequestLogging(app, &logger.Log)
+	useRequestLogging(app, logger.Log)
 
 	// HTTPS enforcement middleware (only in production)
 	app.Use(func(c *fiber.Ctx) error {
@@ -177,7 +177,7 @@ func Run(cfg Config) error {
 					if time.Since(time.Unix(created, 0)) > maxSessionLifetime {
 						// Session expired - destroy and redirect to login
 						if err := sess.Destroy(); err != nil {
-							logger.FromContext(c.UserContext()).Error().Err(err).Msg("session.destroy_expired_failed")
+							logger.FromContext(c.UserContext()).Error("session.destroy_expired_failed", logger.Err(err))
 						}
 						if c.Get("Accept") == "application/json" {
 							return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Session expired"})
@@ -199,7 +199,7 @@ func Run(cfg Config) error {
 							if !user.PasswordChangedAt.IsZero() && user.PasswordChangedAt.After(sessionTime) {
 								// Session is stale - password was changed after this session was created
 								if err := sess.Destroy(); err != nil {
-									logger.FromContext(c.UserContext()).Error().Err(err).Msg("session.destroy_stale_failed")
+									logger.FromContext(c.UserContext()).Error("session.destroy_stale_failed", logger.Err(err))
 								}
 								// Continue request without user context (will redirect to login on protected routes)
 								return c.Next()
@@ -221,7 +221,7 @@ func Run(cfg Config) error {
 				sess.Delete("flash_type")
 				sess.Delete("flash_message")
 				if err := sess.Save(); err != nil {
-					logger.FromContext(c.UserContext()).Error().Err(err).Msg("session.save_failed")
+					logger.FromContext(c.UserContext()).Error("session.save_failed", logger.Err(err))
 				}
 			}
 		}
@@ -240,7 +240,7 @@ func Run(cfg Config) error {
 		port = "3000"
 	}
 	addr := ":" + port
-	logStarted(&logger.Log, addr, cfg.Version)
+	logStarted(logger.Log, addr, cfg.Version)
 	return app.Listen(addr)
 }
 
@@ -436,7 +436,7 @@ func fiberConfig(views fiber.Views) fiber.Config {
 // the sentryfiber hub. Repanic is true so a panic in a middleware outside
 // recoverPanics reaches recoverOuter instead of being swallowed as a 200;
 // handler panics are recovered inside and never re-panic.
-func useOuterMiddleware(app *fiber.App, base *zerolog.Logger, withSentry bool) {
+func useOuterMiddleware(app *fiber.App, base *slog.Logger, withSentry bool) {
 	app.Use(recoverOuter(base))
 	if withSentry {
 		app.Use(sentryfiber.New(sentryfiber.Options{Repanic: true}))
@@ -446,18 +446,17 @@ func useOuterMiddleware(app *fiber.App, base *zerolog.Logger, withSentry bool) {
 // recoverOuter turns a panic from the request logging middleware itself into
 // a 500. No request context exists this far out, so it logs through base and
 // marks the line outer. The panic value stays out of the response body.
-func recoverOuter(base *zerolog.Logger) fiber.Handler {
+func recoverOuter(base *slog.Logger) fiber.Handler {
 	return func(c *fiber.Ctx) (err error) {
 		defer func() {
 			r := recover()
 			if r == nil {
 				return
 			}
-			base.Error().
-				Bool("outer", true).
-				Str("panic", fmt.Sprint(r)).
-				Str("stack", string(debug.Stack())).
-				Msg("http.panic")
+			base.Error("http.panic",
+				slog.Bool("outer", true),
+				slog.String("panic", fmt.Sprint(r)),
+				slog.String("stack", string(debug.Stack())))
 			err = fiber.ErrInternalServerError
 		}()
 		return c.Next()
@@ -502,7 +501,7 @@ func scrubSentryEvent(e *sentry.Event, _ *sentry.EventHint) *sentry.Event {
 // and panic recovery, in that order. requestid must run first: RequestLogger
 // reads the ID it stores. recoverPanics must sit inside RequestLogger so the
 // access line sees the 500 and the panic line carries the request_id.
-func useRequestLogging(app *fiber.App, base *zerolog.Logger) {
+func useRequestLogging(app *fiber.App, base *slog.Logger) {
 	app.Use(requestid.New())
 	app.Use(logger.RequestLogger(base))
 	app.Use(recoverPanics())
@@ -519,10 +518,9 @@ func recoverPanics() fiber.Handler {
 			if r == nil {
 				return
 			}
-			logger.FromContext(c.UserContext()).Error().
-				Str("panic", fmt.Sprint(r)).
-				Str("stack", string(debug.Stack())).
-				Msg("http.panic")
+			logger.FromContext(c.UserContext()).Error("http.panic",
+				slog.String("panic", fmt.Sprint(r)),
+				slog.String("stack", string(debug.Stack())))
 			if hub := sentryfiber.GetHubFromContext(c); hub != nil {
 				hub.RecoverWithContext(context.WithValue(c.UserContext(), sentry.RequestContextKey, c), r)
 			}
@@ -533,8 +531,8 @@ func recoverPanics() fiber.Handler {
 }
 
 // logStarted emits the single startup line that replaces Fiber's banner.
-func logStarted(l *zerolog.Logger, addr, version string) {
-	l.Info().Str("addr", addr).Str("version", version).Msg("server.started")
+func logStarted(l *slog.Logger, addr, version string) {
+	l.Info("server.started", slog.String("addr", addr), slog.String("version", version))
 }
 
 // defaultTrustedProxies covers loopback and the RFC1918 ranges, which is where a reverse
