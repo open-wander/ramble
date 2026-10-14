@@ -635,3 +635,18 @@ copies root-owned read-only assets, USER 10001:10001 (numeric). Server writes no
 Worker verified the server in the container against postgres:17 (server.started, / /login /docs
 200, no permission errors). TestDockerfileRuntimeRunsNonRoot (internal/security) guards USER,
 WORKDIR, uid and no --chown. Orchestrator: build, id, touch denied; mutation USER root -> red.
+
+## 2026-10-14 — 10.1 GitHub Actions current
+
+Majors: checkout v5->v7, setup-go v6->v7, docker setup-qemu/setup-buildx/login v3->v4,
+build-push v6->v7, attest-build-provenance v2->v4, goreleaser-action v6->v7 (codeql v4 current).
+Release notes read per major; no input/permission changes required. Notes: checkout v6 keeps
+persisted credentials under $RUNNER_TEMP (bump-version git push still works); attest v4 on an
+org repo with push-to-registry tries to create a storage record needing `artifact-metadata:
+write` - it only warns, permissions left unchanged pending a decision. Hosted jobs ubuntu-latest
+-> ubuntu-26.04 (user decision; GA per actions/runner-images). Self-hosted runner already runs
+node24 actions (checkout@v5), so it meets v2.327.1. actionlint v1.7.12 does not know
+ubuntu-26.04: .github/actionlint.yaml declares it (remove when actionlint ships the label);
+quoted $GITHUB_OUTPUT (SC2086) so actionlint exits 0.
+Orchestrator dropped the worker's internal/workflows/workflows_test.go: it hard-coded action
+majors in the Go suite, so every bump would break go test. actionlint in CI (10.2) is the guard.
