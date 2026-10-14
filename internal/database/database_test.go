@@ -3,6 +3,7 @@ package database
 import (
 	"bytes"
 	"encoding/json"
+	"log/slog"
 	"reflect"
 	"strings"
 	"testing"
@@ -99,12 +100,14 @@ func swapFailSeams(t *testing.T) (*bytes.Buffer, *[]int) {
 	t.Helper()
 	var buf bytes.Buffer
 	var codes []int
-	oldLog, oldField, oldExit, oldDB := logger.Log, zerolog.MessageFieldName, exit, DB
+	oldLog, oldS, oldField, oldExit, oldDB := logger.Log, logger.S, zerolog.MessageFieldName, exit, DB
 	zerolog.MessageFieldName = "msg"
 	logger.Log = zerolog.New(&buf)
+	// The GORM logger (db.query_error) writes through slog.
+	logger.S = slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	exit = func(code int) { codes = append(codes, code) }
 	t.Cleanup(func() {
-		logger.Log, zerolog.MessageFieldName, exit, DB = oldLog, oldField, oldExit, oldDB
+		logger.Log, logger.S, zerolog.MessageFieldName, exit, DB = oldLog, oldS, oldField, oldExit, oldDB
 	})
 	return &buf, &codes
 }
@@ -203,7 +206,7 @@ func TestConnectMigrateFailed(t *testing.T) {
 		t.Fatalf("exit calls = %v, want exactly [1]", *codes)
 	}
 	// gorm's logger emits db.query_error first, so look for the migrate line.
-	var found bool
+	var found, queryErr bool
 	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
 		var rec map[string]any
 		if err := json.Unmarshal([]byte(line), &rec); err != nil {
@@ -211,6 +214,16 @@ func TestConnectMigrateFailed(t *testing.T) {
 		}
 		if rec["msg"] == "db.migrate_completed" {
 			t.Errorf("migrate_completed logged after a failed migration: %v", rec)
+		}
+		if rec["msg"] == "db.query_error" {
+			// slog-origin line: upper-case level, error as a string.
+			queryErr = true
+			if rec["level"] != "ERROR" {
+				t.Errorf("db.query_error level = %v, want ERROR", rec["level"])
+			}
+			if s, _ := rec["error"].(string); s == "" {
+				t.Errorf("db.query_error error missing or not a string: %v", rec)
+			}
 		}
 		if rec["msg"] != "db.migrate_failed" {
 			continue
@@ -227,5 +240,8 @@ func TestConnectMigrateFailed(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("no db.migrate_failed line in %q", buf.String())
+	}
+	if !queryErr {
+		t.Errorf("no db.query_error line in %q", buf.String())
 	}
 }

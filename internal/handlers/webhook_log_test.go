@@ -47,7 +47,7 @@ func TestHandleGitHubIssueWebhook_LogsCarryRequestID(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("GITHUB_WEBHOOK_SECRET", tt.secret)
 			var buf bytes.Buffer
-			app := newRequestLogApp(zerolog.New(&buf))
+			app := newRequestLogApp(zerolog.New(&buf), testSlog(&buf))
 			app.Post("/webhooks/github/issues", HandleGitHubIssueWebhook)
 
 			req := httptest.NewRequest("POST", "/webhooks/github/issues", nil)
@@ -76,7 +76,7 @@ func TestHandleWebhook_LogsCarryRequestID(t *testing.T) {
 	require.NoError(t, database.DB.Create(&resource).Error)
 
 	var buf bytes.Buffer
-	app := newRequestLogApp(zerolog.New(&buf))
+	app := newRequestLogApp(zerolog.New(&buf), testSlog(&buf))
 	app.Post("/webhook/:id", HandleWebhook)
 
 	req := httptest.NewRequest("POST", "/webhook/"+toString(resource.ID)+"?secret=wrong-secret", nil)
@@ -119,7 +119,7 @@ func TestHandleGitHubIssueWebhook_DBLinesCarryRequestID(t *testing.T) {
 	})
 
 	var buf bytes.Buffer
-	app := newRequestLogApp(zerolog.New(&buf))
+	app := newRequestLogApp(zerolog.New(&buf), testSlog(&buf))
 	app.Post("/webhooks/github/issues", HandleGitHubIssueWebhook)
 
 	send := func(action, state string, labels []LabelPayload) {

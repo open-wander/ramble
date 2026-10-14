@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/rs/zerolog"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
@@ -20,10 +20,9 @@ import (
 	"rmbl/internal/services/logger"
 )
 
-func bufLogger() (*zerolog.Logger, *bytes.Buffer) {
+func bufLogger() (*slog.Logger, *bytes.Buffer) {
 	var buf bytes.Buffer
-	l := zerolog.New(&buf).With().Timestamp().Logger()
-	return &l, &buf
+	return slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})), &buf
 }
 
 func decodeLines(t *testing.T, buf *bytes.Buffer) []map[string]any {
@@ -56,11 +55,11 @@ func TestGormLoggerTrace(t *testing.T) {
 		{name: "fast query is silent", elapsed: time.Millisecond},
 		{name: "record not found is silent", elapsed: time.Millisecond, err: gorm.ErrRecordNotFound},
 		// A miss is not an error, but a slow miss is still a slow query.
-		{name: "slow record not found warns as slow", elapsed: time.Second, err: gorm.ErrRecordNotFound, wantMsg: "db.slow_query", wantLevel: "warn"},
+		{name: "slow record not found warns as slow", elapsed: time.Second, err: gorm.ErrRecordNotFound, wantMsg: "db.slow_query", wantLevel: "WARN"},
 		{name: "wrapped record not found is silent", elapsed: time.Millisecond, err: errors.Join(errors.New("ctx"), gorm.ErrRecordNotFound)},
-		{name: "slow query warns", elapsed: 350 * time.Millisecond, wantMsg: "db.slow_query", wantLevel: "warn"},
-		{name: "query error errors", elapsed: time.Millisecond, err: errors.New("relation does not exist"), wantMsg: "db.query_error", wantLevel: "error"},
-		{name: "slow query error is one error line", elapsed: time.Second, err: errors.New("timeout"), wantMsg: "db.query_error", wantLevel: "error"},
+		{name: "slow query warns", elapsed: 350 * time.Millisecond, wantMsg: "db.slow_query", wantLevel: "WARN"},
+		{name: "query error errors", elapsed: time.Millisecond, err: errors.New("relation does not exist"), wantMsg: "db.query_error", wantLevel: "ERROR"},
+		{name: "slow query error is one error line", elapsed: time.Second, err: errors.New("timeout"), wantMsg: "db.query_error", wantLevel: "ERROR"},
 	}
 
 	for _, tt := range tests {
@@ -88,8 +87,8 @@ func TestGormLoggerTrace(t *testing.T) {
 				t.Fatalf("want 1 line, got %d: %v", len(lines), lines)
 			}
 			got := lines[0]
-			if got[zerolog.MessageFieldName] != tt.wantMsg {
-				t.Errorf("msg = %v, want %s", got[zerolog.MessageFieldName], tt.wantMsg)
+			if got["msg"] != tt.wantMsg {
+				t.Errorf("msg = %v, want %s", got["msg"], tt.wantMsg)
 			}
 			if got["level"] != tt.wantLevel {
 				t.Errorf("level = %v, want %s", got["level"], tt.wantLevel)
@@ -120,8 +119,7 @@ func TestGormLoggerSilentMode(t *testing.T) {
 func TestGormLoggerUsesContextLogger(t *testing.T) {
 	base, baseBuf := bufLogger()
 	reqLog, reqBuf := bufLogger()
-	withID := reqLog.With().Str("request_id", "req-42").Logger()
-	ctx := withID.WithContext(context.Background())
+	ctx := logger.SWithContext(context.Background(), reqLog.With(slog.String("request_id", "req-42")))
 
 	NewGormLogger(base, time.Millisecond).Trace(ctx, time.Now().Add(-time.Second), func() (string, int64) { return "SELECT 1", 1 }, nil)
 
@@ -164,9 +162,16 @@ func TestGormLoggerKeepsBindValuesOut(t *testing.T) {
 	}
 }
 
-// TestGormConfigUsesZerologAdapter guards the production wiring: Connect must
-// open the database with the zerolog adapter, not GORM's default logger.
-func TestGormConfigUsesZerologAdapter(t *testing.T) {
+// TestGormConfigUsesSlogAdapter guards the production wiring: Connect must
+// open the database with the slog adapter, not GORM's default logger, and
+// must read logger.S when called, not at package init.
+func TestGormConfigUsesSlogAdapter(t *testing.T) {
+	// Swaps a global: no t.Parallel.
+	orig := logger.S
+	t.Cleanup(func() { logger.S = orig })
+	var buf bytes.Buffer
+	logger.S = slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
 	cfg := gormConfig()
 	gl, ok := cfg.Logger.(*gormLogger)
 	if !ok {
@@ -178,15 +183,9 @@ func TestGormConfigUsesZerologAdapter(t *testing.T) {
 	if gl.level != gormlogger.Warn {
 		t.Errorf("level = %v, want Warn", gl.level)
 	}
-	if gl.base != &logger.Log {
-		t.Error("adapter base is not the global logger.Log")
+	if gl.base != logger.S {
+		t.Error("adapter base is not the global logger.S")
 	}
-
-	// Swaps a global: no t.Parallel.
-	orig := logger.Log
-	t.Cleanup(func() { logger.Log = orig })
-	var buf bytes.Buffer
-	logger.Log = zerolog.New(&buf)
 
 	ctx := context.Background()
 	query := func() (string, int64) { return "SELECT 1 WHERE id = $1", 0 }
@@ -202,7 +201,7 @@ func TestGormConfigUsesZerologAdapter(t *testing.T) {
 		t.Fatalf("got %d lines, want 1: %v", len(lines), lines)
 	}
 	l := lines[0]
-	if l["message"] != "db.query_error" || l["level"] != "error" || l["error"] != "boom" {
+	if l["msg"] != "db.query_error" || l["level"] != "ERROR" || l["error"] != "boom" {
 		t.Errorf("unexpected line: %v", l)
 	}
 	if sql, _ := l["sql"].(string); !strings.Contains(sql, "$1") {
@@ -240,9 +239,9 @@ func TestGormLoggerMessageArgsNotSerialised(t *testing.T) {
 		msg   string
 		level string
 	}{
-		{func(g gormlogger.Interface, m string, a ...any) { g.Info(context.Background(), m, a...) }, "db.info", "info"},
-		{func(g gormlogger.Interface, m string, a ...any) { g.Warn(context.Background(), m, a...) }, "db.warn", "warn"},
-		{func(g gormlogger.Interface, m string, a ...any) { g.Error(context.Background(), m, a...) }, "db.error", "error"},
+		{func(g gormlogger.Interface, m string, a ...any) { g.Info(context.Background(), m, a...) }, "db.info", "INFO"},
+		{func(g gormlogger.Interface, m string, a ...any) { g.Warn(context.Background(), m, a...) }, "db.warn", "WARN"},
+		{func(g gormlogger.Interface, m string, a ...any) { g.Error(context.Background(), m, a...) }, "db.error", "ERROR"},
 	}
 	for _, tt := range tests {
 		for _, lv := range levels {
@@ -263,8 +262,8 @@ func TestGormLoggerMessageArgsNotSerialised(t *testing.T) {
 				if _, ok := m["args"]; ok {
 					t.Errorf("args key present: %v", m)
 				}
-				if m["message"] != lv.msg || m["level"] != lv.level {
-					t.Errorf("got message=%v level=%v, want %s/%s", m["message"], m["level"], lv.msg, lv.level)
+				if m["msg"] != lv.msg || m["level"] != lv.level {
+					t.Errorf("got msg=%v level=%v, want %s/%s", m["msg"], m["level"], lv.msg, lv.level)
 				}
 				if text, _ := m["text"].(string); !tt.wantText(text) {
 					t.Errorf("unexpected text %q", text)
@@ -299,7 +298,7 @@ func TestGormOpenConnectFailureKeepsPasswordOut(t *testing.T) {
 	}
 	m := lines[0]
 	text, _ := m["text"].(string)
-	if m["message"] != "db.error" || m["level"] != "error" ||
+	if m["msg"] != "db.error" || m["level"] != "ERROR" ||
 		!strings.Contains(text, "failed to initialize database") || !strings.Contains(text, "failed to connect") {
 		t.Errorf("unexpected line: %v", m)
 	}

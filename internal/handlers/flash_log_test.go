@@ -32,7 +32,7 @@ func TestSetFlash_SaveFailureLogsWithRequestID(t *testing.T) {
 	var buf bytes.Buffer
 	l := zerolog.New(&buf)
 
-	app := newRequestLogApp(l)
+	app := newRequestLogApp(l, testSlog(&buf))
 	app.Get("/flash", func(c *fiber.Ctx) error {
 		SetFlash(c, "success", "hi")
 		return c.SendStatus(fiber.StatusOK)

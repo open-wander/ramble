@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"reflect"
 	"time"
 
-	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 
@@ -17,14 +17,14 @@ import (
 // SlowQueryThreshold is the duration above which a query is logged as slow.
 const SlowQueryThreshold = 200 * time.Millisecond
 
-// gormLogger writes GORM events through zerolog. Successful fast queries are
+// gormLogger writes GORM events through slog. Successful fast queries are
 // never logged; slow queries go out at WARN as db.slow_query and failures
 // (other than gorm.ErrRecordNotFound) at ERROR as db.query_error. SQL is
 // logged with placeholders, never with bound values, so user data stays out
 // of the logs. Info/Warn/Error args are rendered into text and never
 // serialised.
 type gormLogger struct {
-	base          *zerolog.Logger
+	base          *slog.Logger
 	slowThreshold time.Duration
 	level         gormlogger.LogLevel
 }
@@ -32,7 +32,7 @@ type gormLogger struct {
 // NewGormLogger returns a GORM logger that writes to base, or to the logger
 // attached to the query's context when there is one (so request-scoped
 // queries carry request_id).
-func NewGormLogger(base *zerolog.Logger, slowThreshold time.Duration) gormlogger.Interface {
+func NewGormLogger(base *slog.Logger, slowThreshold time.Duration) gormlogger.Interface {
 	return &gormLogger{base: base, slowThreshold: slowThreshold, level: gormlogger.Warn}
 }
 
@@ -42,8 +42,8 @@ func (g *gormLogger) LogMode(level gormlogger.LogLevel) gormlogger.Interface {
 	return &c
 }
 
-func (g *gormLogger) logger(ctx context.Context) *zerolog.Logger {
-	return logger.FromContextOr(ctx, g.base)
+func (g *gormLogger) logger(ctx context.Context) *slog.Logger {
+	return logger.SFromContextOr(ctx, g.base)
 }
 
 // safeArg returns a value that is safe to format: an error's text, a scalar
@@ -85,19 +85,19 @@ func formatText(msg string, args []any) string {
 
 func (g *gormLogger) Info(ctx context.Context, msg string, args ...any) {
 	if g.level >= gormlogger.Info {
-		g.logger(ctx).Info().Str("text", formatText(msg, args)).Msg("db.info")
+		g.logger(ctx).LogAttrs(ctx, slog.LevelInfo, "db.info", slog.String("text", formatText(msg, args)))
 	}
 }
 
 func (g *gormLogger) Warn(ctx context.Context, msg string, args ...any) {
 	if g.level >= gormlogger.Warn {
-		g.logger(ctx).Warn().Str("text", formatText(msg, args)).Msg("db.warn")
+		g.logger(ctx).LogAttrs(ctx, slog.LevelWarn, "db.warn", slog.String("text", formatText(msg, args)))
 	}
 }
 
 func (g *gormLogger) Error(ctx context.Context, msg string, args ...any) {
 	if g.level >= gormlogger.Error {
-		g.logger(ctx).Error().Str("text", formatText(msg, args)).Msg("db.error")
+		g.logger(ctx).LogAttrs(ctx, slog.LevelError, "db.error", slog.String("text", formatText(msg, args)))
 	}
 }
 
@@ -111,18 +111,19 @@ func (g *gormLogger) Trace(ctx context.Context, begin time.Time, fc func() (stri
 	switch {
 	case err != nil && g.level >= gormlogger.Error && !errors.Is(err, gorm.ErrRecordNotFound):
 		sql, rows := fc()
-		g.logger(ctx).Error().Err(err).
-			Float64("elapsed_ms", elapsedMS).
-			Int64("rows", rows).
-			Str("sql", sql).
-			Msg("db.query_error")
+		// error is written as a string so the contract holds without the
+		// production ReplaceAttr (json.Marshaler errors would become objects).
+		g.logger(ctx).LogAttrs(ctx, slog.LevelError, "db.query_error",
+			slog.String("error", err.Error()),
+			slog.Float64("elapsed_ms", elapsedMS),
+			slog.Int64("rows", rows),
+			slog.String("sql", sql))
 	case g.slowThreshold > 0 && elapsed > g.slowThreshold && g.level >= gormlogger.Warn:
 		sql, rows := fc()
-		g.logger(ctx).Warn().
-			Float64("elapsed_ms", elapsedMS).
-			Int64("rows", rows).
-			Str("sql", sql).
-			Msg("db.slow_query")
+		g.logger(ctx).LogAttrs(ctx, slog.LevelWarn, "db.slow_query",
+			slog.Float64("elapsed_ms", elapsedMS),
+			slog.Int64("rows", rows),
+			slog.String("sql", sql))
 	}
 }
 
@@ -133,7 +134,7 @@ func (g *gormLogger) ParamsFilter(_ context.Context, sql string, _ ...any) (stri
 }
 
 // newDefaultGormLogger is the production configuration, writing through the
-// global zerolog logger.
+// global slog logger, read when called (Connect runs after logger.Init).
 func newDefaultGormLogger() gormlogger.Interface {
-	return NewGormLogger(&logger.Log, SlowQueryThreshold)
+	return NewGormLogger(logger.S, SlowQueryThreshold)
 }

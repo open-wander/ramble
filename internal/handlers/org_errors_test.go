@@ -63,7 +63,7 @@ func logHasEvent(buf *bytes.Buffer, msg, level string) (map[string]any, bool) {
 func orgAppAs(t *testing.T, user models.User, buf *bytes.Buffer) *fiber.App {
 	t.Helper()
 	InitSession()
-	app := newRequestLogApp(zerolog.New(buf))
+	app := newRequestLogApp(zerolog.New(buf), testSlog(buf))
 	app.Use(func(c *fiber.Ctx) error {
 		sess, _ := Store.Get(c)
 		sess.Set("user_id", user.ID)

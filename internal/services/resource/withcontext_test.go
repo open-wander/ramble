@@ -4,23 +4,24 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"testing"
 
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 
 	"rmbl/internal/database"
+	"rmbl/internal/services/logger"
 )
 
 func TestWithContext_QueryErrorUsesContextLogger(t *testing.T) {
 	var baseBuf, ctxBuf bytes.Buffer
-	baseLog := zerolog.New(&baseBuf)
-	db := database.DB.Session(&gorm.Session{Logger: database.NewGormLogger(&baseLog, database.SlowQueryThreshold)})
+	baseLog := slog.New(slog.NewJSONHandler(&baseBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	db := database.DB.Session(&gorm.Session{Logger: database.NewGormLogger(baseLog, database.SlowQueryThreshold)})
 	svc := NewResourceService(db)
 
-	ctxLog := zerolog.New(&ctxBuf).With().Str("request_id", "rid-svc").Logger()
-	ctx := ctxLog.WithContext(context.Background())
+	ctxLog := slog.New(slog.NewJSONHandler(&ctxBuf, &slog.HandlerOptions{Level: slog.LevelDebug})).With(slog.String("request_id", "rid-svc"))
+	ctx := logger.SWithContext(context.Background(), ctxLog)
 
 	var x []map[string]any
 	_ = svc.WithContext(ctx).db.Raw("SELECT * FROM no_such_table_63").Scan(&x).Error

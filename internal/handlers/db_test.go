@@ -3,6 +3,8 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http/httptest"
 	"testing"
 
@@ -20,11 +22,17 @@ import (
 // newRequestLogApp returns a fiber app wired like server.Run: requestid, then
 // the real logger.RequestLogger built from base, so handler tests exercise the
 // production middleware rather than a copy.
-func newRequestLogApp(base zerolog.Logger) *fiber.App {
+func newRequestLogApp(base zerolog.Logger, sbase *slog.Logger) *fiber.App {
 	app := fiber.New()
 	app.Use(requestid.New())
-	app.Use(logger.RequestLogger(&base, logger.S))
+	app.Use(logger.RequestLogger(&base, sbase))
 	return app
+}
+
+// testSlog returns a JSON slog logger on w at DEBUG, like production gating.
+// A writer shared with goroutines must be goroutine-safe (lockedBuffer).
+func testSlog(w io.Writer) *slog.Logger {
+	return slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }
 
 // TestReqDB_QueryErrorCarriesRequestID proves a query run through reqDB logs
@@ -32,14 +40,14 @@ func newRequestLogApp(base zerolog.Logger) *fiber.App {
 // GORM base logger.
 func TestReqDB_QueryErrorCarriesRequestID(t *testing.T) {
 	var baseBuf, reqBuf bytes.Buffer
-	baseLog := zerolog.New(&baseBuf)
+	baseLog := testSlog(&baseBuf)
 	reqBase := zerolog.New(&reqBuf)
 
 	orig := database.DB
-	database.DB = orig.Session(&gorm.Session{Logger: database.NewGormLogger(&baseLog, database.SlowQueryThreshold)})
+	database.DB = orig.Session(&gorm.Session{Logger: database.NewGormLogger(baseLog, database.SlowQueryThreshold)})
 	t.Cleanup(func() { database.DB = orig })
 
-	app := newRequestLogApp(reqBase)
+	app := newRequestLogApp(reqBase, testSlog(&reqBuf))
 	app.Get("/q", func(c *fiber.Ctx) error {
 		var x []map[string]any
 		_ = reqDB(c).Raw("SELECT * FROM no_such_table_63").Scan(&x).Error
@@ -74,12 +82,13 @@ func TestReqDB_QueryErrorCarriesRequestID(t *testing.T) {
 func TestRequestChain_QueryErrorSharesRequestIDWithAccessLine(t *testing.T) {
 	var buf bytes.Buffer
 	base := zerolog.New(&buf)
+	sbase := testSlog(&buf)
 
 	orig := database.DB
-	database.DB = orig.Session(&gorm.Session{Logger: database.NewGormLogger(&base, database.SlowQueryThreshold)})
+	database.DB = orig.Session(&gorm.Session{Logger: database.NewGormLogger(sbase, database.SlowQueryThreshold)})
 	t.Cleanup(func() { database.DB = orig })
 
-	app := newRequestLogApp(base)
+	app := newRequestLogApp(base, sbase)
 	app.Get("/chain", func(c *fiber.Ctx) error {
 		var x []map[string]any
 		_ = reqDB(c).Raw("SELECT * FROM no_such_table_81").Scan(&x).Error

@@ -689,3 +689,21 @@ again and a wrong WithUser field after making TestWithUser/TestWithRequest asser
 Note: server.go reads logger.S when useRequestLogging runs, after Init; reordering would send
 request slog lines to the discard handler. Goes away in 11.3.
 PATTERN: slog - look slog lines up by "msg"; logtest.Find uses zerolog.MessageFieldName until 11.4.
+
+## 2026-10-14 — 11.2 GORM logger on slog
+
+gormlogger.go uses slog (LogAttrs; error written as slog.String so it stays a string without the
+production ReplaceAttr); events, fields, levels, safeArg/formatText/ParamsFilter unchanged;
+newDefaultGormLogger reads logger.S at call time. Advisor caught a spec gap: detachedLogCtx
+(background.go) rebuilt the goroutine context with only the zerolog logger, so fetch/webhook SQL
+would have lost request_id; it now carries both. Test ports: gormlogger_test, database_test
+(swapFailSeams swaps S; migrate test now requires db.query_error at ERROR), handlers db_test,
+secret_log_test (captureAllLogs swaps S so "absent from all output" is not vacuous), fetch_log,
+params, webhook_log, flash_log, org_errors, resource withcontext/service tests. handlers and
+resource TestMains set zerolog.MessageFieldName="msg" (as Init does) so mixed buffers share a key.
+Mutations red: logger ignores ctx; ParamsFilter returns params; slow query at INFO;
+ErrRecordNotFound logged; detachedLogCtx without SWithContext (webhook latest_refresh/new_tag).
+Orchestrator re-ran the ctx mutation: TestReqDB_QueryErrorCarriesRequestID,
+TestRequestChain_QueryErrorSharesRequestIDWithAccessLine, TestHandleWebhook_FetchLogsCarryRequestID red.
+Note for 11.3/11.4: the rid-810 fetch tests build their ctx with reqLogCtx by hand, so only
+TestHandleWebhook_FetchLogsCarryRequestID guards detachedLogCtx.

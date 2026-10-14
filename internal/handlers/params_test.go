@@ -228,9 +228,9 @@ func TestIDHandlers_RejectInjectionPayloads(t *testing.T) {
 	})
 
 	var buf lockedBuffer
-	base := zerolog.New(&buf)
+	base := testSlog(&buf)
 	orig := database.DB
-	database.DB = orig.Session(&gorm.Session{Logger: database.NewGormLogger(&base, time.Nanosecond)})
+	database.DB = orig.Session(&gorm.Session{Logger: database.NewGormLogger(base, time.Nanosecond)})
 	t.Cleanup(func() { database.DB = orig })
 
 	adminUser := models.User{ID: admin.ID, Username: admin.Username, IsAdmin: true}

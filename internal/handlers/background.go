@@ -114,12 +114,13 @@ func downloadFileWithRetry(ctx context.Context, repoURL, fileName string) (strin
 	return result, nil
 }
 
-// detachedLogCtx returns a context carrying the request logger (and so its
-// request_id) for a goroutine that outlives the request. It is rebuilt on
-// context.Background() so request cancellation never reaches the goroutine,
-// and it never captures c.
+// detachedLogCtx returns a context carrying the request's zerolog and slog
+// loggers (and so its request_id) for a goroutine that outlives the request.
+// It is rebuilt on context.Background() so request cancellation never reaches
+// the goroutine, and it never captures c.
 func detachedLogCtx(c *fiber.Ctx) context.Context {
-	return logger.FromContext(c.UserContext()).WithContext(context.Background())
+	uc := c.UserContext()
+	return logger.SWithContext(logger.FromContext(uc).WithContext(context.Background()), logger.SFromContext(uc))
 }
 
 // fetchVersionHook, when set by tests, runs inside fetchVersionContent after the

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -88,10 +89,10 @@ func eventually(cond func() bool) bool {
 func fetchLogHarness(t *testing.T) (reqBuf, baseBuf *lockedBuffer) {
 	t.Helper()
 	reqBuf, baseBuf = &lockedBuffer{}, &lockedBuffer{}
-	baseLog := zerolog.New(baseBuf)
+	baseLog := testSlog(baseBuf)
 
 	origDB, origSvc := database.DB, resource.Service
-	database.DB = origDB.Session(&gorm.Session{Logger: database.NewGormLogger(&baseLog, time.Nanosecond)})
+	database.DB = origDB.Session(&gorm.Session{Logger: database.NewGormLogger(baseLog, time.Nanosecond)})
 	resource.Service = resource.NewResourceService(database.DB)
 	t.Cleanup(func() {
 		database.DB = origDB
@@ -161,7 +162,7 @@ func TestHandleWebhook_FetchLogsCarryRequestID(t *testing.T) {
 			}
 
 			reqBuf, baseBuf := fetchLogHarness(t)
-			app := newRequestLogApp(zerolog.New(reqBuf))
+			app := newRequestLogApp(zerolog.New(reqBuf), testSlog(reqBuf))
 			app.Post("/webhook/:id", HandleWebhook)
 
 			ts := fmt.Sprintf("%d", time.Now().Unix())
@@ -235,7 +236,7 @@ func TestRequestTriggeredFetch_LogsCarryRequestID(t *testing.T) {
 			reqBuf, baseBuf := fetchLogHarness(t)
 
 			InitSession()
-			app := newRequestLogApp(zerolog.New(reqBuf))
+			app := newRequestLogApp(zerolog.New(reqBuf), testSlog(reqBuf))
 			app.Use(func(c *fiber.Ctx) error {
 				sess, _ := Store.Get(c)
 				sess.Set("user_id", user.ID)
@@ -277,6 +278,13 @@ func TestFetchVersionContent_NoContextLoggerUsesGlobal(t *testing.T) {
 	assert.NotContains(t, line, "request_id")
 }
 
+// reqLogCtx builds a context carrying zerolog and slog request loggers on w
+// with request_id rid, as logger.RequestLogger does.
+func reqLogCtx(w *lockedBuffer, rid string) context.Context {
+	ctx := zerolog.New(w).With().Str("request_id", rid).Logger().WithContext(context.Background())
+	return logger.SWithContext(ctx, testSlog(w).With(slog.String("request_id", rid)))
+}
+
 // requireSQLOnRequestLogger asserts that the db.slow_query line for the
 // statement matching sqlParts is on the request logger with rid, and that no
 // such statement went through the global logger (which is where it lands when
@@ -302,7 +310,7 @@ func TestFetchVersionContent_PanicRecordCarriesRequestID(t *testing.T) {
 	fetchVersionHook = func() { panic("boom") }
 	t.Cleanup(func() { fetchVersionHook = nil })
 
-	ctx := zerolog.New(reqBuf).With().Str("request_id", "rid-810-panic").Logger().WithContext(context.Background())
+	ctx := reqLogCtx(reqBuf, "rid-810-panic")
 	fetchVersionContent(ctx, res.ID, "v1.0.0", failFastRepoURL, string(res.Type), res.Name, "")
 
 	line := reqBuf.findLogLine("version_fetch.panic")
@@ -325,7 +333,7 @@ func TestFetchVersionContent_SuccessUpdateCarriesRequestID(t *testing.T) {
 	require.NoError(t, database.DB.Create(&models.ResourceVersion{ResourceID: res.ID, Version: "v1.0.0"}).Error)
 
 	reqBuf, baseBuf := fetchLogHarness(t)
-	ctx := zerolog.New(reqBuf).With().Str("request_id", "rid-810-ok").Logger().WithContext(context.Background())
+	ctx := reqLogCtx(reqBuf, "rid-810-ok")
 	fetchVersionContent(ctx, res.ID, "v1.0.0", "", string(res.Type), res.Name, "")
 
 	line := reqBuf.findLogLine("version_fetch.completed")
