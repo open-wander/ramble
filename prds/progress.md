@@ -707,3 +707,21 @@ Orchestrator re-ran the ctx mutation: TestReqDB_QueryErrorCarriesRequestID,
 TestRequestChain_QueryErrorSharesRequestIDWithAccessLine, TestHandleWebhook_FetchLogsCarryRequestID red.
 Note for 11.3/11.4: the rid-810 fetch tests build their ctx with reqLogCtx by hand, so only
 TestHandleWebhook_FetchLogsCarryRequestID guards detachedLogCtx.
+
+## 2026-10-14 — 11.3 call sites on slog
+
+All non-test zerolog use is gone except internal/services/logger/logger.go (Log, stdlib bridge,
+FromContext/FromContextOr, WithUser/WithRequest; removed in 11.5). logger.Err(err) slog.Attr (zero
+Attr for nil, string otherwise) for every error field; logger.NewJSON(w) builds the production
+handler (Init and tests use it). RequestLogger(base *slog.Logger); levelForStatus returns slog.Level;
+detachedLogCtx carries only slog; http.panic via SFromContext. audit.recorded and
+syncRequestToGitHubWithRetry stay on logger.S because they set their own request_id (a request
+logger would emit the key twice). zerolog .Stack() dropped: it was a no-op (no .Err, no
+ErrorStackMarshaler). Advisor caught: slog.Duration writes int nanoseconds where zerolog Dur wrote
+float ms - durations are slog.Float64 ms; the event-key guard (msgkey_test) only scanned .Msg and
+would go red - ported to slog Debug/Info/Warn/Error (+Context, Log/LogAttrs) with TestScanFileMsgKeys.
+Mutations red: 5xx at INFO; RequestLogger no attach; http.panic without request_id; Err as slog.Any;
+detachedLogCtx drops logger; org.go wrong key; non-dotted key (guard); slog.Duration.
+Orchestrator re-ran: http.panic via logger.S (TestUseRequestLoggingRecoversPanic and the Sentry test
+red); slog.Duration in background.go (TestFetchVersionContent_DurationIsMilliseconds red).
+Gap: github.sync_completed duration has no own test - 11.4 adds an AST guard against slog.Duration.

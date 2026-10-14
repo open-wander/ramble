@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"reflect"
 	"strings"
 	"time"
@@ -162,21 +164,20 @@ func AuditLog(c *fiber.Ctx, action string, targetType string, targetID uint, tar
 	}
 
 	// Log to structured logger
-	logEvent := logger.Log.Info().
-		Str("action", action).
-		Uint("actor_id", actorID).
-		Str("actor_name", actorName).
-		Str("target_type", targetType).
-		Uint("target_id", targetID).
-		Str("target_name", targetName).
-		Str("ip", c.IP()).
-		Str("request_id", requestID)
-
-	if details != nil {
-		logEvent = logEvent.Interface("details", details)
+	attrs := []slog.Attr{
+		slog.String("action", action),
+		slog.Uint64("actor_id", uint64(actorID)),
+		slog.String("actor_name", actorName),
+		slog.String("target_type", targetType),
+		slog.Uint64("target_id", uint64(targetID)),
+		slog.String("target_name", targetName),
+		slog.String("ip", c.IP()),
+		slog.String("request_id", requestID),
 	}
-
-	logEvent.Msg("audit.recorded")
+	if details != nil {
+		attrs = append(attrs, slog.Any("details", details))
+	}
+	logger.S.LogAttrs(c.UserContext(), slog.LevelInfo, "audit.recorded", attrs...)
 
 	// Log to database
 	audit := models.AuditLog{
@@ -207,19 +208,18 @@ func AuditLogNoContext(action string, actorID uint, actorName string, targetType
 	}
 
 	// Log to structured logger
-	logEvent := logger.Log.Info().
-		Str("action", action).
-		Uint("actor_id", actorID).
-		Str("actor_name", actorName).
-		Str("target_type", targetType).
-		Uint("target_id", targetID).
-		Str("target_name", targetName)
-
-	if details != nil {
-		logEvent = logEvent.Interface("details", details)
+	attrs := []slog.Attr{
+		slog.String("action", action),
+		slog.Uint64("actor_id", uint64(actorID)),
+		slog.String("actor_name", actorName),
+		slog.String("target_type", targetType),
+		slog.Uint64("target_id", uint64(targetID)),
+		slog.String("target_name", targetName),
 	}
-
-	logEvent.Msg("audit.recorded")
+	if details != nil {
+		attrs = append(attrs, slog.Any("details", details))
+	}
+	logger.S.LogAttrs(context.Background(), slog.LevelInfo, "audit.recorded", attrs...)
 
 	// Log to database
 	audit := models.AuditLog{

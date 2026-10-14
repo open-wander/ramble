@@ -3,7 +3,6 @@ package database
 import (
 	"bytes"
 	"encoding/json"
-	"log/slog"
 	"reflect"
 	"strings"
 	"testing"
@@ -11,7 +10,6 @@ import (
 	"rmbl/internal/models"
 	"rmbl/internal/services/logger"
 
-	"github.com/rs/zerolog"
 	postgresDriver "gorm.io/driver/postgres"
 )
 
@@ -100,14 +98,11 @@ func swapFailSeams(t *testing.T) (*bytes.Buffer, *[]int) {
 	t.Helper()
 	var buf bytes.Buffer
 	var codes []int
-	oldLog, oldS, oldField, oldExit, oldDB := logger.Log, logger.S, zerolog.MessageFieldName, exit, DB
-	zerolog.MessageFieldName = "msg"
-	logger.Log = zerolog.New(&buf)
-	// The GORM logger (db.query_error) writes through slog.
-	logger.S = slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	oldS, oldExit, oldDB := logger.S, exit, DB
+	logger.S = logger.NewJSON(&buf)
 	exit = func(code int) { codes = append(codes, code) }
 	t.Cleanup(func() {
-		logger.Log, logger.S, zerolog.MessageFieldName, exit, DB = oldLog, oldS, oldField, oldExit, oldDB
+		logger.S, exit, DB = oldS, oldExit, oldDB
 	})
 	return &buf, &codes
 }
@@ -130,7 +125,7 @@ func TestConnectConnectFailed(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &rec); err != nil {
 		t.Fatal(err)
 	}
-	if rec["level"] != "error" || rec["msg"] != "db.connect_failed" {
+	if rec["level"] != "ERROR" || rec["msg"] != "db.connect_failed" {
 		t.Errorf("record = %v", rec)
 	}
 	if s, _ := rec["error"].(string); s == "" {
@@ -155,7 +150,7 @@ func TestConnectCredentialsMissing(t *testing.T) {
 	if err := json.Unmarshal([]byte(strings.TrimSpace(buf.String())), &rec); err != nil {
 		t.Fatalf("want exactly one JSON line: %v: %q", err, buf.String())
 	}
-	if rec["level"] != "error" || rec["msg"] != "db.credentials_missing" {
+	if rec["level"] != "ERROR" || rec["msg"] != "db.credentials_missing" {
 		t.Errorf("record = %v", rec)
 	}
 	if _, has := rec["error"]; has {
@@ -229,8 +224,8 @@ func TestConnectMigrateFailed(t *testing.T) {
 			continue
 		}
 		found = true
-		if rec["level"] != "error" {
-			t.Errorf("level = %v, want error", rec["level"])
+		if rec["level"] != "ERROR" {
+			t.Errorf("level = %v, want ERROR", rec["level"])
 		}
 		if s, _ := rec["error"].(string); s == "" {
 			t.Errorf("error field missing: %v", rec)

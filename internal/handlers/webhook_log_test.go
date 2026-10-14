@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -47,7 +46,7 @@ func TestHandleGitHubIssueWebhook_LogsCarryRequestID(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("GITHUB_WEBHOOK_SECRET", tt.secret)
 			var buf bytes.Buffer
-			app := newRequestLogApp(zerolog.New(&buf), testSlog(&buf))
+			app := newRequestLogApp(testSlog(&buf))
 			app.Post("/webhooks/github/issues", HandleGitHubIssueWebhook)
 
 			req := httptest.NewRequest("POST", "/webhooks/github/issues", nil)
@@ -76,7 +75,7 @@ func TestHandleWebhook_LogsCarryRequestID(t *testing.T) {
 	require.NoError(t, database.DB.Create(&resource).Error)
 
 	var buf bytes.Buffer
-	app := newRequestLogApp(zerolog.New(&buf), testSlog(&buf))
+	app := newRequestLogApp(testSlog(&buf))
 	app.Post("/webhook/:id", HandleWebhook)
 
 	req := httptest.NewRequest("POST", "/webhook/"+toString(resource.ID)+"?secret=wrong-secret", nil)
@@ -97,9 +96,9 @@ func TestHandleGitHubIssueWebhook_DBLinesCarryRequestID(t *testing.T) {
 	// Keep the global logger off the request buffer so a handler that falls
 	// back to it is detected rather than masked.
 	var globalBuf bytes.Buffer
-	origLog := logger.Log
-	logger.Log = zerolog.New(&globalBuf)
-	t.Cleanup(func() { logger.Log = origLog })
+	origS := logger.S
+	logger.S = testSlog(&globalBuf)
+	t.Cleanup(func() { logger.S = origS })
 
 	suffix := time.Now().UnixNano()
 	admin := models.User{
@@ -119,7 +118,7 @@ func TestHandleGitHubIssueWebhook_DBLinesCarryRequestID(t *testing.T) {
 	})
 
 	var buf bytes.Buffer
-	app := newRequestLogApp(zerolog.New(&buf), testSlog(&buf))
+	app := newRequestLogApp(testSlog(&buf))
 	app.Post("/webhooks/github/issues", HandleGitHubIssueWebhook)
 
 	send := func(action, state string, labels []LabelPayload) {
@@ -154,7 +153,7 @@ func TestHandleGitHubIssueWebhook_DBLinesCarryRequestID(t *testing.T) {
 		t.Helper()
 		var n int
 		for _, m := range logtest.Lines(t, &buf) {
-			switch m[zerolog.MessageFieldName] {
+			switch m["msg"] {
 			case "http.request":
 				httpRID, _ = m["request_id"].(string)
 			case msg:
@@ -191,7 +190,7 @@ func TestHandleGitHubIssueWebhook_DBLinesCarryRequestID(t *testing.T) {
 	assert.NotEqual(t, createdRID, updatedRID, "each request has its own id")
 
 	for _, m := range logtest.Lines(t, &globalBuf) {
-		msg := m[zerolog.MessageFieldName]
+		msg := m["msg"]
 		assert.NotEqual(t, "github.webhook_request_created", msg)
 		assert.NotEqual(t, "github.webhook_request_status_updated", msg)
 	}

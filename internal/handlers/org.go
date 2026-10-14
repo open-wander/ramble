@@ -89,7 +89,7 @@ func RequireOrgOwner(c *fiber.Ctx) error {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return c.Status(403).SendString("You must be an owner of this organization")
 		}
-		logger.FromContext(c.UserContext()).Error().Err(err).Msg("org.membership_load_failed")
+		logger.SFromContext(c.UserContext()).Error("org.membership_load_failed", logger.Err(err))
 		return c.Status(500).SendString("Internal server error")
 	}
 
@@ -103,7 +103,7 @@ func orgLoadError(c *fiber.Ctx, err error) error {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return c.Status(404).SendString("Organization not found")
 	}
-	logger.FromContext(c.UserContext()).Error().Err(err).Msg("org.load_failed")
+	logger.SFromContext(c.UserContext()).Error("org.load_failed", logger.Err(err))
 	return c.Status(500).SendString("Internal server error")
 }
 
@@ -154,7 +154,7 @@ func PostAddMember(c *fiber.Ctx) error {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return c.Status(404).SendString("User not found")
 		}
-		logger.FromContext(c.UserContext()).Error().Err(err).Msg("org.member_lookup_failed")
+		logger.SFromContext(c.UserContext()).Error("org.member_lookup_failed", logger.Err(err))
 		return c.Status(500).SendString("Internal server error")
 	}
 
@@ -176,7 +176,7 @@ func PostAddMember(c *fiber.Ctx) error {
 		err = reqDB(c).Create(&membership).Error
 	}
 	if err != nil {
-		logger.FromContext(c.UserContext()).Error().Err(err).Msg("org.member_add_failed")
+		logger.SFromContext(c.UserContext()).Error("org.member_add_failed", logger.Err(err))
 		return c.Status(500).SendString("Failed to add member")
 	}
 

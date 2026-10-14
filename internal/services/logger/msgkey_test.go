@@ -57,26 +57,37 @@ func walkServerFiles(t *testing.T, roots []string, extraSkip []string, visit fun
 	return checked
 }
 
-// scanMsgKeys walks roots and returns the number of zerolog Msg/Msgf calls
-// inspected plus a list of violations (file:line description).
-func scanMsgKeys(t *testing.T, roots ...string) (int, []string) {
-	t.Helper()
+// slogMsgArg maps the slog Logger methods to the index of their msg argument.
+var slogMsgArg = map[string]int{
+	"Debug": 0, "Info": 0, "Warn": 0, "Error": 0,
+	"DebugContext": 1, "InfoContext": 1, "WarnContext": 1, "ErrorContext": 1,
+	"Log": 2, "LogAttrs": 2,
+}
+
+// scanFileMsgKeys inspects the log calls in f: zerolog Msg/Msgf, and slog
+// Debug/Info/Warn/Error (msg is argument 1), their *Context variants (2) and
+// Log/LogAttrs (3). Calls too short to carry a msg (a zero-argument Error()
+// on an error value) are not log calls and are skipped. It returns the number
+// of calls inspected and a list of violations (file:line description).
+func scanFileMsgKeys(fset *token.FileSet, f *ast.File) (int, []string) {
 	var checked int
 	var bad []string
-	walkServerFiles(t, roots, nil, func(fset *token.FileSet, f *ast.File) {
-		ast.Inspect(f, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok || (sel.Sel.Name != "Msg" && sel.Sel.Name != "Msgf") {
-				return true
-			}
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		pos := fset.Position(call.Pos())
+		where := pos.Filename + ":" + strconv.Itoa(pos.Line)
+		var msg ast.Expr
+		switch name := sel.Sel.Name; name {
+		case "Msg", "Msgf":
 			checked++
-			pos := fset.Position(call.Pos())
-			where := pos.Filename + ":" + strconv.Itoa(pos.Line)
-			if sel.Sel.Name == "Msgf" {
+			if name == "Msgf" {
 				bad = append(bad, where+": Msgf is not allowed; use Msg with fields")
 				return true
 			}
@@ -84,17 +95,39 @@ func scanMsgKeys(t *testing.T, roots ...string) (int, []string) {
 				bad = append(bad, where+": Msg needs exactly one argument")
 				return true
 			}
-			lit, ok := call.Args[0].(*ast.BasicLit)
-			if !ok || lit.Kind != token.STRING {
-				bad = append(bad, where+": Msg argument must be a string literal")
+			msg = call.Args[0]
+		default:
+			idx, isSlog := slogMsgArg[name]
+			if !isSlog || len(call.Args) <= idx {
 				return true
 			}
-			s, uerr := strconv.Unquote(lit.Value)
-			if uerr != nil || !eventKeyRe.MatchString(s) {
-				bad = append(bad, where+": message "+lit.Value+" is not a dotted event key")
-			}
+			checked++
+			msg = call.Args[idx]
+		}
+		lit, ok := msg.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			bad = append(bad, where+": "+sel.Sel.Name+" message must be a string literal")
 			return true
-		})
+		}
+		s, uerr := strconv.Unquote(lit.Value)
+		if uerr != nil || !eventKeyRe.MatchString(s) {
+			bad = append(bad, where+": message "+lit.Value+" is not a dotted event key")
+		}
+		return true
+	})
+	return checked, bad
+}
+
+// scanMsgKeys walks roots and returns the number of log calls inspected plus
+// a list of violations.
+func scanMsgKeys(t *testing.T, roots ...string) (int, []string) {
+	t.Helper()
+	var checked int
+	var bad []string
+	walkServerFiles(t, roots, nil, func(fset *token.FileSet, f *ast.File) {
+		c, b := scanFileMsgKeys(fset, f)
+		checked += c
+		bad = append(bad, b...)
 	})
 	return checked, bad
 }
@@ -104,10 +137,41 @@ func scanMsgKeys(t *testing.T, roots ...string) (int, []string) {
 func TestServerLogMessagesAreEventKeys(t *testing.T) {
 	checked, bad := scanMsgKeys(t, "../..", "../../../cmd")
 	if checked < 40 {
-		t.Fatalf("only %d Msg calls inspected; walk roots are probably wrong", checked)
+		t.Fatalf("only %d log calls inspected; walk roots are probably wrong", checked)
 	}
 	for _, b := range bad {
 		t.Error(b)
+	}
+}
+
+func TestScanFileMsgKeys(t *testing.T) {
+	src := `package x
+func f(l L, ctx C, err error) {
+	l.Info("a.b")
+	l.Warn("a.b", "k", 1)
+	l.Debug("a.b")
+	l.Error("a.b", logger.Err(err))
+	l.ErrorContext(ctx, "a.b")
+	l.Log(ctx, 0, "a.b")
+	l.LogAttrs(ctx, 0, "a.b")
+	l.Info().Msg("a.b")
+	_ = err.Error()
+	l.Info(msg)
+	l.Info("nodot")
+	l.Info("Has.Upper")
+	l.InfoContext(ctx, msg)
+	l.Log(ctx, 0, "nodot")
+	l.Info().Msgf("a.b")
+	l.Info().Msg(msg)
+}`
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "x.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked, bad := scanFileMsgKeys(fset, file)
+	if checked != 15 || len(bad) != 7 {
+		t.Fatalf("checked=%d bad=%d, want 15 and 7: %v", checked, len(bad), bad)
 	}
 }
 
@@ -169,7 +233,7 @@ func TestServerCodeDoesNotWriteStdout(t *testing.T) {
 		t.Fatalf("only %d files inspected; walk roots are wrong", checked)
 	}
 	for _, h := range hits {
-		t.Errorf("direct stdout/stderr write in server code (use logger.FromContext / logger.Log): %s", h)
+		t.Errorf("direct stdout/stderr write in server code (use logger.SFromContext / logger.S): %s", h)
 	}
 }
 

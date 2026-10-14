@@ -2,6 +2,7 @@ package database
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 var DB *gorm.DB
 
 // exit is a seam so tests can observe fatal startup failures. Startup
-// failures log at ERROR (zerolog Fatal is level FATAL, outside the
+// failures log at ERROR (a fatal level is outside the
 // DEBUG|INFO|WARN|ERROR standard) and then exit 1.
 var exit = os.Exit
 
@@ -48,7 +49,7 @@ func Connect() {
 			dsn = fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
 				host, user, password, dbname, port, sslmode)
 		} else if os.Getenv("ENV") == "production" {
-			logger.Log.Error().Msg("db.credentials_missing")
+			logger.S.Error("db.credentials_missing")
 			exit(1)
 			return
 		} else {
@@ -61,15 +62,15 @@ func Connect() {
 	DB, err = gorm.Open(postgres.Open(dsn), gormConfig())
 
 	if err != nil {
-		logger.Log.Error().Err(err).Msg("db.connect_failed")
+		logger.S.Error("db.connect_failed", logger.Err(err))
 		exit(1)
 		return
 	}
 
-	logger.Log.Info().Msg("db.connected")
+	logger.S.Info("db.connected")
 
 	// Auto Migrate
-	logger.Log.Info().Msg("db.migrate_started")
+	logger.S.Info("db.migrate_started")
 	err = DB.AutoMigrate(
 		&models.User{},
 		&models.Organization{},
@@ -82,16 +83,16 @@ func Connect() {
 		&models.AuditLog{},
 	)
 	if err != nil {
-		logger.Log.Error().Err(err).Msg("db.migrate_failed")
+		logger.S.Error("db.migrate_failed", logger.Err(err))
 		exit(1)
 		return
 	}
-	logger.Log.Info().Msg("db.migrate_completed")
+	logger.S.Info("db.migrate_completed")
 
 	// Not fatal: the handlers already reject case-variant names, so a failure
 	// here (an existing duplicate) must not take the app down.
 	if err := ensureCaseInsensitiveNameIndexes(DB); err != nil {
-		logger.Log.Error().Err(err).Msg("db.name_index_failed")
+		logger.S.Error("db.name_index_failed", logger.Err(err))
 	}
 
 	// Backfill fetch status for existing resource versions
@@ -129,7 +130,7 @@ func cleanupExpiredTokens(db *gorm.DB) {
 			"reset_token_used_at": nil,
 		})
 	if result.RowsAffected > 0 {
-		logger.Log.Info().Int64("count", result.RowsAffected).Msg("db.reset_tokens_cleared")
+		logger.S.Info("db.reset_tokens_cleared", slog.Int64("count", result.RowsAffected))
 	}
 }
 
@@ -141,6 +142,6 @@ func backfillFetchStatus(db *gorm.DB) {
 		Where("fetch_status = '' OR fetch_status IS NULL").
 		Update("fetch_status", models.FetchStatusCompleted)
 	if result.RowsAffected > 0 {
-		logger.Log.Info().Int64("count", result.RowsAffected).Msg("db.fetch_status_backfilled")
+		logger.S.Info("db.fetch_status_backfilled", slog.Int64("count", result.RowsAffected))
 	}
 }

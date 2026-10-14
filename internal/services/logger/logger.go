@@ -42,12 +42,7 @@ func initWithWriter(w io.Writer) {
 	zerolog.LevelFieldMarshalFunc = upperLevelMarshal
 	Log = zerolog.New(w).With().Timestamp().Logger()
 
-	// Debug stays enabled, as it is for zerolog. No AddSource: it would add a
-	// key the output contract does not have.
-	S = slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{
-		Level:       slog.LevelDebug,
-		ReplaceAttr: replaceAttr,
-	}))
+	S = NewJSON(w)
 
 	// Set as default logger
 	log.Logger = Log
@@ -56,6 +51,17 @@ func initWithWriter(w io.Writer) {
 	// it is JSON in production too.
 	stdlog.SetFlags(0)
 	stdlog.SetOutput(stdlibWriter{})
+}
+
+// NewJSON returns the production slog logger writing to w. Debug stays
+// enabled, as it was for zerolog. No AddSource: it would add a key the output
+// contract does not have. Tests that need exact output build their logger
+// with it.
+func NewJSON(w io.Writer) *slog.Logger {
+	return slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{
+		Level:       slog.LevelDebug,
+		ReplaceAttr: replaceAttr,
+	}))
 }
 
 // replaceAttr keeps errors strings even for error types that implement
@@ -113,6 +119,16 @@ func SFromContextOr(ctx context.Context, fallback *slog.Logger) *slog.Logger {
 		}
 	}
 	return fallback
+}
+
+// Err returns the standard error attribute: key "error" with the message as a
+// string, whatever the handler options. A nil error returns the zero Attr,
+// which handlers drop.
+func Err(err error) slog.Attr {
+	if err == nil {
+		return slog.Attr{}
+	}
+	return slog.String("error", err.Error())
 }
 
 // WithUser creates a logger with user context

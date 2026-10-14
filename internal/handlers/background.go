@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 	"time"
@@ -60,10 +61,10 @@ func stripURLUserinfo(s string) string {
 
 // downloadFileWithRetry wraps downloadFile with exponential backoff retry logic
 func downloadFileWithRetry(ctx context.Context, repoURL, fileName string) (string, error) {
-	log := logger.FromContextOr(ctx, &logger.Log).With().
-		Str("repo_url", stripURLUserinfo(repoURL)).
-		Str("file_name", fileName).
-		Logger()
+	log := logger.SFromContextOr(ctx, logger.S).With(
+		slog.String("repo_url", stripURLUserinfo(repoURL)),
+		slog.String("file_name", fileName),
+	)
 
 	// Configure exponential backoff
 	expBackoff := backoff.NewExponentialBackOff()
@@ -83,44 +84,43 @@ func downloadFileWithRetry(ctx context.Context, repoURL, fileName string) (strin
 
 	operation := func() error {
 		attempt++
-		log.Debug().Int("attempt", attempt).Msg("download.attempt")
+		log.Debug("download.attempt", slog.Int("attempt", attempt))
 
 		content, err := downloadFile(repoURL, fileName)
 		if err != nil {
 			lastErr = err
 
 			if isPermanentError(err) {
-				log.Warn().Err(err).Int("attempt", attempt).Msg("download.permanent_error")
+				log.Warn("download.permanent_error", logger.Err(err), slog.Int("attempt", attempt))
 				return backoff.Permanent(err)
 			}
 
-			log.Warn().Err(err).Int("attempt", attempt).Msg("download.transient_error")
+			log.Warn("download.transient_error", logger.Err(err), slog.Int("attempt", attempt))
 			return err
 		}
 
 		result = content
 		if attempt > 1 {
-			log.Info().Int("total_attempts", attempt).Msg("download.retry_succeeded")
+			log.Info("download.retry_succeeded", slog.Int("total_attempts", attempt))
 		}
 		return nil
 	}
 
 	err := backoff.Retry(operation, b)
 	if err != nil {
-		log.Error().Err(err).Int("total_attempts", attempt).Msg("download.failed")
+		log.Error("download.failed", logger.Err(err), slog.Int("total_attempts", attempt))
 		return "", lastErr
 	}
 
 	return result, nil
 }
 
-// detachedLogCtx returns a context carrying the request's zerolog and slog
-// loggers (and so its request_id) for a goroutine that outlives the request.
+// detachedLogCtx returns a context carrying the request's logger (and so its
+// request_id) for a goroutine that outlives the request.
 // It is rebuilt on context.Background() so request cancellation never reaches
 // the goroutine, and it never captures c.
 func detachedLogCtx(c *fiber.Ctx) context.Context {
-	uc := c.UserContext()
-	return logger.SWithContext(logger.FromContext(uc).WithContext(context.Background()), logger.SFromContext(uc))
+	return logger.SWithContext(context.Background(), logger.SFromContext(c.UserContext()))
 }
 
 // fetchVersionHook, when set by tests, runs inside fetchVersionContent after the
@@ -132,23 +132,20 @@ var fetchVersionHook func()
 // ctx carries the logger of the request that triggered the fetch (see
 // detachedLogCtx); with none, the global logger is used.
 func fetchVersionContent(ctx context.Context, resID uint, versionStr, repoURL, resType, resName, filePath string) {
-	log := logger.FromContextOr(ctx, &logger.Log).With().
-		Str("operation", "version_fetch").
-		Uint("resource_id", resID).
-		Str("version", versionStr).
-		Logger()
+	log := logger.SFromContextOr(ctx, logger.S).With(
+		slog.String("operation", "version_fetch"),
+		slog.Uint64("resource_id", uint64(resID)),
+		slog.String("version", versionStr),
+	)
 
 	// Catch panics to ensure we always record failures
 	defer func() {
 		if r := recover(); r != nil {
-			log.Error().
-				Interface("panic", r).
-				Stack().
-				Msg("version_fetch.panic")
+			log.Error("version_fetch.panic", slog.Any("panic", r))
 
 			// Persist panic as failure
 			if err := resource.Service.WithContext(ctx).RecordFetchFailed(resID, versionStr, fmt.Sprintf("panic: %v", r)); err != nil {
-				log.Error().Err(err).Msg("version_fetch.panic_record_failed")
+				log.Error("version_fetch.panic_record_failed", logger.Err(err))
 			}
 		}
 	}()
@@ -228,25 +225,23 @@ func fetchVersionContent(ctx context.Context, resID uint, versionStr, repoURL, r
 	if err := g.Wait(); err != nil {
 		// Primary content failed
 		duration := time.Since(startTime)
-		log.Error().
-			Err(err).
-			Dur("duration", duration).
-			Msg("version_fetch.failed")
+		log.Error("version_fetch.failed",
+			logger.Err(err),
+			slog.Float64("duration", float64(duration)/float64(time.Millisecond)))
 
 		if recErr := resource.Service.WithContext(ctx).RecordFetchFailed(resID, versionStr, err.Error()); recErr != nil {
-			log.Error().Err(recErr).Msg("version_fetch.failure_record_failed")
+			log.Error("version_fetch.failure_record_failed", logger.Err(recErr))
 		}
 		return
 	}
 
 	// Success - update with all fetched content
 	duration := time.Since(startTime)
-	log.Info().
-		Dur("duration", duration).
-		Bool("readme_fetched", readmeErr == nil).
-		Bool("content_fetched", contentErr == nil).
-		Bool("variables_fetched", varsErr == nil).
-		Msg("version_fetch.completed")
+	log.Info("version_fetch.completed",
+		slog.Float64("duration", float64(duration)/float64(time.Millisecond)),
+		slog.Bool("readme_fetched", readmeErr == nil),
+		slog.Bool("content_fetched", contentErr == nil),
+		slog.Bool("variables_fetched", varsErr == nil))
 
 	now = time.Now()
 	database.DB.WithContext(ctx).Model(&models.ResourceVersion{}).

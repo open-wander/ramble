@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -54,7 +55,7 @@ func SetFlash(c *fiber.Ctx, flashType, message string) {
 	sess.Set("flash_type", flashType)
 	sess.Set("flash_message", message)
 	if err := sess.Save(); err != nil {
-		logger.FromContext(c.UserContext()).Error().Err(err).Str("op", "set_flash").Msg("session.save_failed")
+		logger.SFromContext(c.UserContext()).Error("session.save_failed", logger.Err(err), slog.String("op", "set_flash"))
 	}
 }
 

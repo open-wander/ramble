@@ -81,7 +81,7 @@ func TestConnectNameIndexFailureIsNotFatal(t *testing.T) {
 		if err := json.Unmarshal([]byte(line), &rec); err != nil {
 			t.Fatalf("non-JSON line %q: %v", line, err)
 		}
-		if rec["msg"] == "db.name_index_failed" && rec["level"] == "error" {
+		if rec["msg"] == "db.name_index_failed" && rec["level"] == "ERROR" {
 			failed = true
 		}
 	}

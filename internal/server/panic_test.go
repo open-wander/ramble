@@ -13,8 +13,8 @@ import (
 
 	sentry "github.com/getsentry/sentry-go"
 	"github.com/gofiber/fiber/v2"
-	"github.com/rs/zerolog"
 
+	"rmbl/internal/services/logger"
 	"rmbl/internal/testutil/logtest"
 )
 
@@ -23,10 +23,10 @@ const panicSecret = "boom-secret-xyz"
 func panicApp(t *testing.T, withSentry bool) (*fiber.App, *bytes.Buffer) {
 	t.Helper()
 	var buf bytes.Buffer
-	l := zerolog.New(&buf).With().Timestamp().Logger()
+	l := logger.NewJSON(&buf)
 	app := fiber.New()
-	useOuterMiddleware(app, &l, withSentry)
-	useRequestLogging(app, &l)
+	useOuterMiddleware(app, l, withSentry)
+	useRequestLogging(app, l)
 	app.Get("/boom", func(c *fiber.Ctx) error { panic(panicSecret) })
 	app.Get("/ok", func(c *fiber.Ctx) error { return c.SendString("ok") })
 	return app, &buf
@@ -58,12 +58,12 @@ func assertPanicRecovered(t *testing.T, app *fiber.App, buf *bytes.Buffer) {
 	var panics, reqs int
 	for _, m := range lines {
 		if m["request_id"] != rid {
-			t.Errorf("%v request_id = %v, want %q", m[zerolog.MessageFieldName], m["request_id"], rid)
+			t.Errorf("%v request_id = %v, want %q", m["msg"], m["request_id"], rid)
 		}
-		switch m[zerolog.MessageFieldName] {
+		switch m["msg"] {
 		case "http.panic":
 			panics++
-			if m["level"] != "error" {
+			if m["level"] != "ERROR" {
 				t.Errorf("http.panic level = %v", m["level"])
 			}
 			if m["panic"] != panicSecret {
@@ -179,16 +179,16 @@ func TestOuterBackstop(t *testing.T) {
 				tr = useSentryCapture(t)
 			}
 			var buf bytes.Buffer
-			l := zerolog.New(&buf)
+			l := logger.NewJSON(&buf)
 			app := fiber.New()
-			useOuterMiddleware(app, &l, withSentry)
+			useOuterMiddleware(app, l, withSentry)
 			app.Use(func(c *fiber.Ctx) error {
 				if c.Path() == "/boom" {
 					panic(panicSecret)
 				}
 				return c.Next()
 			})
-			useRequestLogging(app, &l)
+			useRequestLogging(app, l)
 			app.Get("/ok", func(c *fiber.Ctx) error { return c.SendString("ok") })
 
 			resp, err := app.Test(httptest.NewRequest("GET", "/boom", nil), -1)
@@ -207,7 +207,7 @@ func TestOuterBackstop(t *testing.T) {
 				t.Fatalf("got %d log lines, want 1: %s", len(lines), buf.String())
 			}
 			m := lines[0]
-			if m[zerolog.MessageFieldName] != "http.panic" || m["outer"] != true || m["level"] != "error" || m["panic"] != panicSecret {
+			if m["msg"] != "http.panic" || m["outer"] != true || m["level"] != "ERROR" || m["panic"] != panicSecret {
 				t.Errorf("unexpected line: %v", m)
 			}
 			if s, _ := m["stack"].(string); !strings.Contains(s, "panic") {
@@ -268,10 +268,10 @@ func TestScrubSentryEvent(t *testing.T) {
 func TestSentryEventsCarryNoRequestSecrets(t *testing.T) {
 	tr := useSentryCapture(t)
 	var buf bytes.Buffer
-	l := zerolog.New(&buf)
+	l := logger.NewJSON(&buf)
 	app := fiber.New()
-	useOuterMiddleware(app, &l, true)
-	useRequestLogging(app, &l)
+	useOuterMiddleware(app, l, true)
+	useRequestLogging(app, l)
 	app.Post("/boom", func(c *fiber.Ctx) error { panic(panicSecret) })
 	req := httptest.NewRequest("POST", "/boom?q="+sentinel, strings.NewReader("f="+sentinel))
 	req.Header.Set("Cookie", "theme="+sentinel)

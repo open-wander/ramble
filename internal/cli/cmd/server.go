@@ -17,7 +17,7 @@ var initLogger = logger.Init
 // RunE, so the logger is not initialised yet.
 func serverFlagError(_ *cobra.Command, err error) error {
 	initLogger()
-	logger.Log.Error().Err(err).Msg("server.flag_error")
+	logger.S.Error("server.flag_error", logger.Err(err))
 	return loggedError{err}
 }
 
@@ -32,7 +32,7 @@ func (e loggedError) Unwrap() error { return e.err }
 // must happen after run returns: run initialises the logger.
 func runServerCmd(run func(server.Config) error, cfg server.Config) error {
 	if err := run(cfg); err != nil {
-		logger.Log.Error().Err(err).Msg("server.exit_error")
+		logger.S.Error("server.exit_error", logger.Err(err))
 		return loggedError{err}
 	}
 	return nil

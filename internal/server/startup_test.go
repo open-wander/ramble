@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/rs/zerolog"
 
 	"rmbl/internal/services/logger"
 	"rmbl/internal/testutil/logtest"
@@ -34,8 +33,8 @@ func TestFiberConfigDisablesStartupMessage(t *testing.T) {
 
 func TestLogStarted(t *testing.T) {
 	var buf bytes.Buffer
-	l := zerolog.New(&buf).With().Timestamp().Logger()
-	logStarted(&l, ":3000", "v1.2.3")
+	l := logger.NewJSON(&buf)
+	logStarted(l, ":3000", "v1.2.3")
 
 	lines := logtest.Lines(t, &buf)
 	if len(lines) != 1 {
@@ -43,17 +42,17 @@ func TestLogStarted(t *testing.T) {
 	}
 	line := lines[0]
 	want := map[string]string{
-		zerolog.MessageFieldName: "server.started",
-		zerolog.LevelFieldName:   "info",
-		"addr":                   ":3000",
-		"version":                "v1.2.3",
+		"msg":     "server.started",
+		"level":   "INFO",
+		"addr":    ":3000",
+		"version": "v1.2.3",
 	}
 	for k, v := range want {
 		if line[k] != v {
 			t.Errorf("%s = %v, want %q", k, line[k], v)
 		}
 	}
-	if _, ok := line[zerolog.TimestampFieldName]; !ok {
+	if _, ok := line["time"]; !ok {
 		t.Error("time field missing")
 	}
 }
@@ -62,12 +61,12 @@ func TestLogStarted(t *testing.T) {
 // access line and a handler line share the id echoed in X-Request-ID.
 func TestUseRequestLogging(t *testing.T) {
 	var buf bytes.Buffer
-	l := zerolog.New(&buf)
+	l := logger.NewJSON(&buf)
 
 	app := fiber.New()
-	useRequestLogging(app, &l)
+	useRequestLogging(app, l)
 	app.Get("/x", func(c *fiber.Ctx) error {
-		logger.FromContext(c.UserContext()).Info().Msg("handler.ran")
+		logger.SFromContext(c.UserContext()).Info("handler.ran")
 		return c.SendStatus(fiber.StatusOK)
 	})
 
@@ -87,7 +86,7 @@ func TestUseRequestLogging(t *testing.T) {
 	}
 	count := map[string]int{}
 	for _, m := range lines {
-		msg, _ := m[zerolog.MessageFieldName].(string)
+		msg, _ := m["msg"].(string)
 		count[msg]++
 		if id, _ := m["request_id"].(string); id == "" || id != hdr {
 			t.Errorf("%s: request_id = %v, want %q", msg, m["request_id"], hdr)

@@ -16,17 +16,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// captureLog swaps logger.Log for a JSON logger writing to the returned buffer.
+// captureLog swaps logger.S for the production JSON logger writing to the
+// returned buffer. Tests that use it must not run in parallel.
 func captureLog(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var buf bytes.Buffer
-	oldLog, oldField := logger.Log, zerolog.MessageFieldName
-	zerolog.MessageFieldName = "msg"
-	logger.Log = zerolog.New(&buf)
-	t.Cleanup(func() {
-		logger.Log = oldLog
-		zerolog.MessageFieldName = oldField
-	})
+	oldS := logger.S
+	logger.S = logger.NewJSON(&buf)
+	t.Cleanup(func() { logger.S = oldS })
 	return &buf
 }
 
@@ -90,7 +87,7 @@ func TestRunServerCmd(t *testing.T) {
 		if e := json.Unmarshal([]byte(lines[0]), &rec); e != nil {
 			t.Fatalf("log line is not JSON: %v", e)
 		}
-		if lvl, _ := rec["level"].(string); !strings.EqualFold(lvl, "error") {
+		if rec["level"] != "ERROR" {
 			t.Errorf("level = %v", rec["level"])
 		}
 		if rec["msg"] != "server.exit_error" {
@@ -170,6 +167,7 @@ func TestServerCommandEndToEnd(t *testing.T) {
 func restoreLoggerGlobals(t *testing.T) {
 	t.Helper()
 	prevLog := logger.Log
+	prevS := logger.S
 	prevGlobal := log.Logger
 	prevMsg := zerolog.MessageFieldName
 	prevLevel := zerolog.LevelFieldMarshalFunc
@@ -178,6 +176,7 @@ func restoreLoggerGlobals(t *testing.T) {
 	prevFlags := stdlog.Flags()
 	t.Cleanup(func() {
 		logger.Log = prevLog
+		logger.S = prevS
 		log.Logger = prevGlobal
 		zerolog.MessageFieldName = prevMsg
 		zerolog.LevelFieldMarshalFunc = prevLevel

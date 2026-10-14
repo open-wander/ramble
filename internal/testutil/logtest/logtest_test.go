@@ -10,11 +10,11 @@ func TestLinesAndFind(t *testing.T) {
 	if got := Lines(t, &empty); got != nil {
 		t.Errorf("empty buffer: got %v", got)
 	}
-	buf := bytes.NewBufferString("{\"message\":\"a\",\"n\":1}\n{\"message\":\"b\"}\n")
+	buf := bytes.NewBufferString("{\"msg\":\"a\",\"n\":1}\n{\"msg\":\"b\"}\n")
 	if got := Lines(t, buf); len(got) != 2 {
 		t.Fatalf("got %d lines", len(got))
 	}
-	if m := Find(t, buf, "b"); m == nil || m["message"] != "b" {
+	if m := Find(t, buf, "b"); m == nil || m["msg"] != "b" {
 		t.Errorf("Find b = %v", m)
 	}
 	if m := Find(t, buf, "zzz"); m != nil {

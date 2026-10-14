@@ -4,13 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/postgres"
@@ -45,15 +43,14 @@ func failingDB(t *testing.T, table string, op string) {
 	t.Cleanup(func() { database.DB = orig })
 }
 
-// logHasEvent matches level case-insensitively: Init may or may not have run
-// in this process, which switches the global level marshaller between cases.
+// logHasEvent matches the level exactly, as the slog handler writes it.
 func logHasEvent(buf *bytes.Buffer, msg, level string) (map[string]any, bool) {
 	for line := range bytes.SplitSeq(bytes.TrimSpace(buf.Bytes()), []byte("\n")) {
 		var m map[string]any
 		if json.Unmarshal(line, &m) != nil {
 			continue
 		}
-		if m[zerolog.MessageFieldName] == msg && strings.EqualFold(fmt.Sprint(m[zerolog.LevelFieldName]), level) {
+		if m["msg"] == msg && m["level"] == level {
 			return m, true
 		}
 	}
@@ -63,7 +60,7 @@ func logHasEvent(buf *bytes.Buffer, msg, level string) (map[string]any, bool) {
 func orgAppAs(t *testing.T, user models.User, buf *bytes.Buffer) *fiber.App {
 	t.Helper()
 	InitSession()
-	app := newRequestLogApp(zerolog.New(buf), testSlog(buf))
+	app := newRequestLogApp(testSlog(buf))
 	app.Use(func(c *fiber.Ctx) error {
 		sess, _ := Store.Get(c)
 		sess.Set("user_id", user.ID)
@@ -93,7 +90,7 @@ func TestRequireOrgOwner_DBErrorIs500(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 500, resp.StatusCode)
 
-	m, ok := logHasEvent(&buf, "org.load_failed", "error")
+	m, ok := logHasEvent(&buf, "org.load_failed", "ERROR")
 	require.True(t, ok, "expected org.load_failed ERROR line: %s", buf.String())
 	assert.Equal(t, "rid-org-err", m["request_id"])
 }
@@ -114,7 +111,7 @@ func TestRequireOrgOwner_MembershipDBErrorIs500(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	assert.Equal(t, 500, resp.StatusCode)
-	_, ok := logHasEvent(&buf, "org.membership_load_failed", "error")
+	_, ok := logHasEvent(&buf, "org.membership_load_failed", "ERROR")
 	assert.True(t, ok, buf.String())
 }
 
@@ -155,7 +152,7 @@ func TestOrgHandlers_LoadErrorIs500(t *testing.T) {
 			resp, err := app.Test(req)
 			require.NoError(t, err)
 			assert.Equal(t, 500, resp.StatusCode)
-			m, ok := logHasEvent(&buf, "org.load_failed", "error")
+			m, ok := logHasEvent(&buf, "org.load_failed", "ERROR")
 			require.True(t, ok, buf.String())
 			assert.Equal(t, "rid-"+tc.name, m["request_id"])
 		})
@@ -203,7 +200,7 @@ func TestPostAddMember_CreateErrorIs500(t *testing.T) {
 	app := addMemberApp(t, owner, &buf)
 	failingDB(t, "memberships", "create")
 	assert.Equal(t, 500, postAddMember(t, app, org.Name, "username="+target.Username))
-	_, ok := logHasEvent(&buf, "org.member_add_failed", "error")
+	_, ok := logHasEvent(&buf, "org.member_add_failed", "ERROR")
 	assert.True(t, ok, buf.String())
 
 	var n int64

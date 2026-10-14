@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"regexp"
 	"rmbl/internal/crypto"
@@ -389,7 +390,7 @@ func PostSignup(c *fiber.Ctx) error {
 
 	if err := email.SendVerificationEmail(user.Email, verificationLink); err != nil {
 		// Log error but don't fail signup
-		logger.FromContext(c.UserContext()).Error().Err(err).Uint("user_id", user.ID).Msg("email.verification_send_failed")
+		logger.SFromContext(c.UserContext()).Error("email.verification_send_failed", logger.Err(err), slog.Uint64("user_id", uint64(user.ID)))
 	}
 
 	// Auto login
@@ -493,7 +494,7 @@ func PostForgotPassword(c *fiber.Ctx) error {
 	resetLink := fmt.Sprintf("%s/reset-password?token=%s", baseURL, token)
 
 	if err := email.SendResetEmail(user.Email, resetLink); err != nil {
-		logger.FromContext(c.UserContext()).Error().Err(err).Uint("user_id", user.ID).Msg("email.reset_send_failed")
+		logger.SFromContext(c.UserContext()).Error("email.reset_send_failed", logger.Err(err), slog.Uint64("user_id", uint64(user.ID)))
 		return c.Status(fiber.StatusInternalServerError).SendString("Failed to send reset email. Please try again later.")
 	}
 
@@ -648,7 +649,7 @@ func PostResendVerification(c *fiber.Ctx) error {
 	verificationLink := fmt.Sprintf("%s/verify-email?token=%s", baseURL, verificationToken)
 
 	if err := email.SendVerificationEmail(user.Email, verificationLink); err != nil {
-		logger.FromContext(c.UserContext()).Error().Err(err).Uint("user_id", user.ID).Msg("email.verification_send_failed")
+		logger.SFromContext(c.UserContext()).Error("email.verification_send_failed", logger.Err(err), slog.Uint64("user_id", uint64(user.ID)))
 		return c.Status(fiber.StatusInternalServerError).SendString("Failed to send verification email")
 	}
 

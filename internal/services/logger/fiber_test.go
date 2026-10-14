@@ -10,7 +10,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
-	"github.com/rs/zerolog"
 
 	"rmbl/internal/testutil/logtest"
 )
@@ -18,22 +17,14 @@ import (
 func newLoggedApp(t *testing.T) (*fiber.App, *bytes.Buffer) {
 	t.Helper()
 	var buf bytes.Buffer
-	base := zerolog.New(&buf).With().Timestamp().Logger()
-
-	sbase := slog.New(slog.NewJSONHandler(&buf, nil))
-
 	app := fiber.New()
 	app.Use(requestid.New())
-	app.Use(RequestLogger(&base, sbase))
+	app.Use(RequestLogger(NewJSON(&buf)))
 	app.Get("/ok", func(c *fiber.Ctx) error { return c.SendString("ok") })
 	app.Get("/boom", func(c *fiber.Ctx) error { return fiber.NewError(fiber.StatusInternalServerError, "boom") })
 	app.Get("/bad", func(c *fiber.Ctx) error { return c.SendStatus(fiber.StatusBadRequest) })
 	app.Get("/inner", func(c *fiber.Ctx) error {
-		FromContext(c.UserContext()).Info().Msg("handler.event")
-		return c.SendStatus(fiber.StatusNoContent)
-	})
-	app.Get("/sinner", func(c *fiber.Ctx) error {
-		SFromContext(c.UserContext()).Info("handler.slog_event")
+		SFromContext(c.UserContext()).Info("handler.event")
 		return c.SendStatus(fiber.StatusNoContent)
 	})
 	return app, &buf
@@ -47,11 +38,11 @@ func TestRequestLogger(t *testing.T) {
 		wantStatus int
 		wantLevel  string
 	}{
-		{"ok", "/ok", "/ok", 200, "info"},
-		{"query string stripped", "/ok?token=s3cret&email=a%40b.c", "/ok", 200, "info"},
-		{"client error stays info", "/bad", "/bad", 400, "info"},
-		{"unknown route 404 stays info", "/wp-login.php?x=1", "/wp-login.php", 404, "info"},
-		{"returned error logs error with handled status", "/boom", "/boom", 500, "error"},
+		{"ok", "/ok", "/ok", 200, "INFO"},
+		{"query string stripped", "/ok?token=s3cret&email=a%40b.c", "/ok", 200, "INFO"},
+		{"client error stays info", "/bad", "/bad", 400, "INFO"},
+		{"unknown route 404 stays info", "/wp-login.php?x=1", "/wp-login.php", 404, "INFO"},
+		{"returned error logs error with handled status", "/boom", "/boom", 500, "ERROR"},
 	}
 
 	for _, tt := range tests {
@@ -75,13 +66,13 @@ func TestRequestLogger(t *testing.T) {
 				t.Fatalf("want 1 line, got %d: %v", len(lines), lines)
 			}
 			got := lines[0]
-			for _, k := range []string{"time", "level", zerolog.MessageFieldName, "request_id", "method", "path", "status", "duration_ms", "client_ip"} {
+			for _, k := range []string{"time", "level", "msg", "request_id", "method", "path", "status", "duration_ms", "client_ip"} {
 				if _, ok := got[k]; !ok {
 					t.Errorf("missing field %q in %v", k, got)
 				}
 			}
-			if got[zerolog.MessageFieldName] != "http.request" {
-				t.Errorf("msg = %v, want http.request", got[zerolog.MessageFieldName])
+			if got["msg"] != "http.request" {
+				t.Errorf("msg = %v, want http.request", got["msg"])
 			}
 			if got["level"] != tt.wantLevel {
 				t.Errorf("level = %v, want %s", got["level"], tt.wantLevel)
@@ -111,44 +102,13 @@ func TestRequestLoggerAttachesRequestIDToHandlerLogs(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("want handler line + access line, got %v", lines)
 	}
-	if lines[0][zerolog.MessageFieldName] != "handler.event" {
+	if lines[0]["msg"] != "handler.event" {
 		t.Fatalf("first line = %v, want handler.event", lines[0])
 	}
 	for _, l := range lines {
 		if l["request_id"] != rid {
-			t.Errorf("line %v: request_id = %v, want %q", l[zerolog.MessageFieldName], l["request_id"], rid)
+			t.Errorf("line %v: request_id = %v, want %q", l["msg"], l["request_id"], rid)
 		}
-	}
-}
-
-func TestRequestLoggerAttachesSlogLoggerWithRequestID(t *testing.T) {
-	app, buf := newLoggedApp(t)
-	resp, err := app.Test(httptest.NewRequest("GET", "/sinner", nil))
-	if err != nil {
-		t.Fatalf("request: %v", err)
-	}
-	rid := resp.Header.Get(fiber.HeaderXRequestID)
-
-	// The zerolog line's message key depends on whether Init ran, the slog
-	// line's is always "msg", so look each up by its own key.
-	var slogLine, accessLine map[string]any
-	lines := logtest.Lines(t, buf)
-	for _, l := range lines {
-		if l["msg"] == "handler.slog_event" {
-			slogLine = l
-		}
-		if l[zerolog.MessageFieldName] == "http.request" {
-			accessLine = l
-		}
-	}
-	if len(lines) != 2 || slogLine == nil || accessLine == nil {
-		t.Fatalf("want slog handler line + access line, got %v", lines)
-	}
-	if rid == "" || slogLine["request_id"] != rid || accessLine["request_id"] != rid {
-		t.Errorf("request_id slog=%v access=%v, want %q", slogLine["request_id"], accessLine["request_id"], rid)
-	}
-	if slogLine["level"] != "INFO" {
-		t.Errorf("level = %v, want INFO", slogLine["level"])
 	}
 }
 
@@ -182,15 +142,15 @@ func TestSFromContextOr(t *testing.T) {
 func TestLevelForStatus(t *testing.T) {
 	tests := []struct {
 		status int
-		want   zerolog.Level
+		want   slog.Level
 	}{
-		{200, zerolog.InfoLevel},
-		{301, zerolog.InfoLevel},
-		{404, zerolog.InfoLevel},
-		{429, zerolog.InfoLevel},
-		{499, zerolog.InfoLevel},
-		{500, zerolog.ErrorLevel},
-		{503, zerolog.ErrorLevel},
+		{200, slog.LevelInfo},
+		{301, slog.LevelInfo},
+		{404, slog.LevelInfo},
+		{429, slog.LevelInfo},
+		{499, slog.LevelInfo},
+		{500, slog.LevelError},
+		{503, slog.LevelError},
 	}
 	for _, tt := range tests {
 		if got := levelForStatus(tt.status); got != tt.want {

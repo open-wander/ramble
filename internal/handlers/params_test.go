@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -312,7 +311,7 @@ func TestIDHandlers_RejectInjectionPayloads(t *testing.T) {
 						if json.Unmarshal([]byte(line), &m) != nil {
 							continue
 						}
-						msg, _ := m[zerolog.MessageFieldName].(string)
+						msg, _ := m["msg"].(string)
 						sql, _ := m["sql"].(string)
 						if strings.HasPrefix(msg, "db.") && strings.Contains(sql, bad) {
 							t.Errorf("payload %q reached SQL for %s: %s", bad, u, line)

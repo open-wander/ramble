@@ -1,4 +1,4 @@
-// Package logtest parses the JSON log lines zerolog writes in tests. It must
+// Package logtest parses the JSON log lines the app writes in tests. It must
 // not import anything under rmbl, so any test package can use it.
 package logtest
 
@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-
-	"github.com/rs/zerolog"
 )
 
 // Lines decodes every line in buf; a non-JSON line fails the test. An empty
@@ -34,7 +32,7 @@ func Lines(t testing.TB, buf *bytes.Buffer) []map[string]any {
 func Find(t testing.TB, buf *bytes.Buffer, msg string) map[string]any {
 	t.Helper()
 	for _, m := range Lines(t, buf) {
-		if m[zerolog.MessageFieldName] == msg {
+		if m["msg"] == msg {
 			return m
 		}
 	}
