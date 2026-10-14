@@ -43,14 +43,21 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build \
 # Stage 2: Final Image
 FROM alpine:3.24
 
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates \
+ && addgroup -S -g 10001 ramble \
+ && adduser -S -D -H -u 10001 -G ramble -s /sbin/nologin ramble
 
-WORKDIR /root/
+WORKDIR /app
 
+# Copied without changing ownership: the app only reads views, public and docs, so root ownership
+# keeps a compromised process from rewriting templates or static assets.
 COPY --from=builder /app/ramble .
 COPY --from=builder /app/views ./views
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/docs ./docs
+
+# Numeric so runAsNonRoot-style checks can verify it without reading /etc/passwd.
+USER 10001:10001
 
 EXPOSE 3000
 

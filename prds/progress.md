@@ -624,3 +624,14 @@ x/crypto 0.58. Dockerfile runtime alpine:latest -> alpine:3.24 (3.24.2 today; pa
 rebuild, no surprise minor bumps). Checks: mod verify, vet (both tags), gofmt, go fix, make
 staticcheck, make gosec (0 issues), govulncheck (exit 0; GO-2026-5932 in x/crypto has no fix and
 is not called), full suite incl. e2e, docker build + binary runs on alpine 3.24.2.
+
+## 2026-10-14 — Phase 10 planned; 10.3 non-root container
+
+Phase 10 (CI/runtime maintenance) and 11 (slog) planned with the user: ubuntu-26.04 for hosted
+jobs; slog keeps ramble's event keys and request_id on SQL lines; JSON in every environment.
+10.3: Dockerfile runtime stage creates ramble (uid/gid 10001, nologin, no home), WORKDIR /app,
+copies root-owned read-only assets, USER 10001:10001 (numeric). Server writes nothing to disk
+(internal/pack and internal/nomad are CLI-only). Nomad job unchanged (port 3000, no volumes).
+Worker verified the server in the container against postgres:17 (server.started, / /login /docs
+200, no permission errors). TestDockerfileRuntimeRunsNonRoot (internal/security) guards USER,
+WORKDIR, uid and no --chown. Orchestrator: build, id, touch denied; mutation USER root -> red.
