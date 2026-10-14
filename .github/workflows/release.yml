@@ -22,6 +22,9 @@ permissions:
   packages: write
   id-token: write
   attestations: write
+  # attest-build-provenance v4 records the image attestation as an artifact
+  # storage record on org repositories; without this it warns on every release.
+  artifact-metadata: write
 
 jobs:
   bump-version:
