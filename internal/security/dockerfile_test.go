@@ -15,7 +15,7 @@ func runtimeStage(t *testing.T) string {
 		t.Fatal(err)
 	}
 	var stage []string
-	for _, l := range strings.Split(string(data), "\n") {
+	for l := range strings.SplitSeq(string(data), "\n") {
 		if strings.HasPrefix(l, "FROM ") {
 			stage = nil
 		}

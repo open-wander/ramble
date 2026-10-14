@@ -41,7 +41,8 @@ jobs:
         if [ -n "$unformatted" ]; then
           echo "gofmt needed on:"; echo "$unformatted"; exit 1
         fi
-        fixes=$(go fix -diff ./...; go fix -tags=security -diff ./...)
+        # go fix -diff exits non-zero when it has changes; keep going so the diff is printed.
+        fixes=$(go fix -diff ./... || true; go fix -tags=security -diff ./... || true)
         if [ -n "$fixes" ]; then
           echo "$fixes"; echo "Run 'go fix ./...' and 'go fix -tags=security ./...' and commit the changes."; exit 1
         fi

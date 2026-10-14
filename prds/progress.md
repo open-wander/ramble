@@ -663,3 +663,7 @@ Checks: check-pins drift mutation (Dockerfile tailwind v4.3.3) -> exit 2; make s
 api-docs diff; docker build ok; suite ok (handlers/database hit testcontainers startup timeouts
 while ~34 containers from other sessions shared Docker; re-run green).
 Release workflow changes (10.1) are only proven by the next release.
+PR #61 CI: the go fix gate caught strings.Split -> SplitSeq in the new dockerfile_test.go (the
+orchestrator ran the fix/gofmt checks before 10.3 landed, not after). The gate also failed
+silently: go fix -diff exits non-zero on changes and bash -e aborted before printing; the step
+now uses `|| true` inside the substitution so the diff is shown. Verified both ways locally.
