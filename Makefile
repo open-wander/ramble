@@ -24,7 +24,7 @@ test:
 
 # Generate Swagger documentation
 swagger:
-	go run github.com/swaggo/swag/cmd/swag@latest init -g main.go --output api-docs --dir ./cmd/ramble,./internal/handlers,./internal/models --parseDependency --parseInternal
+	go run github.com/swaggo/swag/cmd/swag@$(SWAG_VERSION) init -g main.go --output api-docs --dir ./cmd/ramble,./internal/handlers,./internal/models --parseDependency --parseInternal
 
 # Static analysis tools. Pinned so a PR never fails because a tool changed
 # overnight; the weekly security workflow runs both at master so new checks and
@@ -32,6 +32,25 @@ swagger:
 # commits because no tagged release reads Go 1.27 export data yet.
 GOSEC_VERSION ?= v2.29.1-0.20261009120814-7b1b5cebe007
 STATICCHECK_VERSION ?= v0.7.0-0.dev.0.20261009230814-452d5bb86b45
+ACTIONLINT_VERSION ?= v1.7.12
+
+# Build tools. The Dockerfile declares the same versions as ARG defaults;
+# check-pins fails if the two drift apart.
+SWAG_VERSION ?= v1.16.6
+TAILWIND_VERSION ?= v4.1.18
+
+actionlint:
+	go run github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
+
+check-pins:
+	@for v in SWAG_VERSION TAILWIND_VERSION; do \
+		want=$$($(MAKE) -s print-$$v); \
+		got=$$(sed -n "s/^ARG $$v=//p" Dockerfile); \
+		if [ "$$want" != "$$got" ]; then echo "$$v: Makefile $$want, Dockerfile $$got"; exit 1; fi; \
+	done; echo "tool pins match"
+
+print-%:
+	@echo $($*)
 
 staticcheck:
 	go run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION) ./...
@@ -43,7 +62,7 @@ gosec:
 # Bootstrap development environment
 bootstrap: tailwind-install
 	go install github.com/air-verse/air@latest
-	go install github.com/swaggo/swag/cmd/swag@latest
+	go install github.com/swaggo/swag/cmd/swag@$(SWAG_VERSION)
 	go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
 	go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
 	go install golang.org/x/vuln/cmd/govulncheck@latest
@@ -72,7 +91,7 @@ security:
 
 # Download Tailwind CLI (Darwin ARM64 for local dev)
 tailwind-install:
-	curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-macos-arm64
+	curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/download/$(TAILWIND_VERSION)/tailwindcss-macos-arm64
 	mv tailwindcss-macos-arm64 tailwindcss
 	chmod +x tailwindcss
 
@@ -145,4 +164,4 @@ release:
 		*) echo "Invalid choice" ;; \
 	esac
 
-.PHONY: build run dev migrate test swagger bootstrap update security staticcheck gosec docker-build docker-push nomad-vars tailwind-install css-build css-watch deploy release release-patch release-minor release-major release-cli
+.PHONY: build run dev migrate test swagger bootstrap update security staticcheck gosec actionlint check-pins docker-build docker-push nomad-vars tailwind-install css-build css-watch deploy release release-patch release-minor release-major release-cli

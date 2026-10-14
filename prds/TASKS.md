@@ -16,3 +16,22 @@ verification in [verification.md](verification.md). PRD: [done/prd-security-bugf
 ## Phase 8: Logging test hardening — 11 tasks completed 2026-10-11 (see [TASKS-archive.md](TASKS-archive.md))
 
 ## Phase 9: Webhook CSRF bug and code debt — 13 tasks completed 2026-10-11 (see [TASKS-archive.md](TASKS-archive.md))
+
+## Phase 10: CI and runtime maintenance — 3 tasks completed 2026-10-14 (see [TASKS-archive.md](TASKS-archive.md))
+
+## Phase 11: zerolog to log/slog
+
+Source: user request (2026-10-14), to match nectvia and havencast. Output contract unchanged:
+one JSON object per line, `time`, upper-case `level`, `msg`, ramble's event keys (`http.request`,
+`db.slow_query`, `db.query_error`, ...), `request_id` on every line of a request including SQL.
+Decisions (user): keep ramble's event keys (nectvia's GORM logger uses `gorm.*` keys and drops
+request_id - ramble keeps its stronger behaviour); JSON in every environment (development
+included) for one consistent format - no console/text handler.
+
+| # | Task | PRD | Status | Notes |
+|---|------|-----|--------|-------|
+| 11.1 | Logger package on slog: JSON handler in every environment (drop the dev console writer), request-scoped logger via context (FromContext/WithContext), stdlib log bridged, RequestLogger middleware and panic recovery ported | user request | TODO | Foundation. |
+| 11.2 | GORM adapter on slog: db.slow_query / db.query_error with request_id, `$n` placeholders, safeArg rendering | user request | TODO | (needs: 11.1) |
+| 11.3 | Convert server call sites (~90 in 12 files); goroutines take `*slog.Logger` | user request | TODO | (needs: 11.1) |
+| 11.4 | Port guards (event keys, no direct stdout, no stdlib log, no fatal/panic) and the ~15 log-capturing test files | user request | TODO | (needs: 11.2, 11.3) |
+| 11.5 | Remove zerolog from go.mod; e2e production test unchanged and green; release; verify in Loki; update CLAUDE.md, infra doc, prod-logs skill | user request | TODO | (needs: 11.4) |

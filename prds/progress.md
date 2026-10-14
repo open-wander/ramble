@@ -624,3 +624,46 @@ x/crypto 0.58. Dockerfile runtime alpine:latest -> alpine:3.24 (3.24.2 today; pa
 rebuild, no surprise minor bumps). Checks: mod verify, vet (both tags), gofmt, go fix, make
 staticcheck, make gosec (0 issues), govulncheck (exit 0; GO-2026-5932 in x/crypto has no fix and
 is not called), full suite incl. e2e, docker build + binary runs on alpine 3.24.2.
+
+## 2026-10-14 — Phase 10 planned; 10.3 non-root container
+
+Phase 10 (CI/runtime maintenance) and 11 (slog) planned with the user: ubuntu-26.04 for hosted
+jobs; slog keeps ramble's event keys and request_id on SQL lines; JSON in every environment.
+10.3: Dockerfile runtime stage creates ramble (uid/gid 10001, nologin, no home), WORKDIR /app,
+copies root-owned read-only assets, USER 10001:10001 (numeric). Server writes nothing to disk
+(internal/pack and internal/nomad are CLI-only). Nomad job unchanged (port 3000, no volumes).
+Worker verified the server in the container against postgres:17 (server.started, / /login /docs
+200, no permission errors). TestDockerfileRuntimeRunsNonRoot (internal/security) guards USER,
+WORKDIR, uid and no --chown. Orchestrator: build, id, touch denied; mutation USER root -> red.
+
+## 2026-10-14 — 10.1 GitHub Actions current
+
+Majors: checkout v5->v7, setup-go v6->v7, docker setup-qemu/setup-buildx/login v3->v4,
+build-push v6->v7, attest-build-provenance v2->v4, goreleaser-action v6->v7 (codeql v4 current).
+Release notes read per major; no input/permission changes required. Notes: checkout v6 keeps
+persisted credentials under $RUNNER_TEMP (bump-version git push still works); attest v4 on an
+org repo with push-to-registry tries to create a storage record needing `artifact-metadata:
+write` - it only warns, permissions left unchanged pending a decision. Hosted jobs ubuntu-latest
+-> ubuntu-26.04 (user decision; GA per actions/runner-images). Self-hosted runner already runs
+node24 actions (checkout@v5), so it meets v2.327.1. actionlint v1.7.12 does not know
+ubuntu-26.04: .github/actionlint.yaml declares it (remove when actionlint ships the label);
+quoted $GITHUB_OUTPUT (SC2086) so actionlint exits 0.
+Orchestrator dropped the worker's internal/workflows/workflows_test.go: it hard-coded action
+majors in the Go suite, so every bump would break go test. actionlint in CI (10.2) is the guard.
+
+## 2026-10-14 — 10.2 build tool pins; Phase 10 collapsed
+
+Makefile: SWAG_VERSION v1.16.6 (latest; what @latest resolved to), TAILWIND_VERSION v4.1.18
+(Docker already pinned it; `make tailwind-install` fetched latest = v4.3.3, so local CSS could
+differ from prod - now both 4.1.18; moving to 4.3 is a separate, visual change), ACTIONLINT_VERSION
+v1.7.12. Targets: actionlint, check-pins (Dockerfile ARG defaults must equal the Makefile pins),
+print-%. Dockerfile ARG SWAG_VERSION / TAILWIND_VERSION. CI test job: make actionlint, make
+check-pins, make swagger (no separate swag@latest install).
+Checks: check-pins drift mutation (Dockerfile tailwind v4.3.3) -> exit 2; make swagger -> no
+api-docs diff; docker build ok; suite ok (handlers/database hit testcontainers startup timeouts
+while ~34 containers from other sessions shared Docker; re-run green).
+Release workflow changes (10.1) are only proven by the next release.
+PR #61 CI: the go fix gate caught strings.Split -> SplitSeq in the new dockerfile_test.go (the
+orchestrator ran the fix/gofmt checks before 10.3 landed, not after). The gate also failed
+silently: go fix -diff exits non-zero on changes and bash -e aborted before printing; the step
+now uses `|| true` inside the substitution so the diff is shown. Verified both ways locally.

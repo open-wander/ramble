@@ -8,12 +8,12 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
 
     - name: Set up Go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@v7
       with:
         go-version: '1.27.x'
         check-latest: true
@@ -29,13 +29,20 @@ jobs:
     - name: staticcheck
       run: make staticcheck
 
+    - name: Lint workflows
+      run: make actionlint
+
+    - name: Tool pins match between Makefile and Dockerfile
+      run: make check-pins
+
     - name: Check formatting and go fix modernizers
       run: |
         unformatted=$(gofmt -l .)
         if [ -n "$unformatted" ]; then
           echo "gofmt needed on:"; echo "$unformatted"; exit 1
         fi
-        fixes=$(go fix -diff ./...; go fix -tags=security -diff ./...)
+        # go fix -diff exits non-zero when it has changes; keep going so the diff is printed.
+        fixes=$(go fix -diff ./... || true; go fix -tags=security -diff ./... || true)
         if [ -n "$fixes" ]; then
           echo "$fixes"; echo "Run 'go fix ./...' and 'go fix -tags=security ./...' and commit the changes."; exit 1
         fi
@@ -45,7 +52,6 @@ jobs:
 
     - name: Check Swagger docs are up to date
       run: |
-        go install github.com/swaggo/swag/cmd/swag@latest
         make swagger
         if ! git diff --quiet api-docs/; then
           echo "Swagger docs are out of date. Run 'make swagger' and commit the changes."
@@ -54,12 +60,12 @@ jobs:
         fi
 
   security-scan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v7
 
     - name: Set up Go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@v7
       with:
         go-version: '1.27.x'
         check-latest: true
