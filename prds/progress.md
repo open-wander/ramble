@@ -667,3 +667,8 @@ PR #61 CI: the go fix gate caught strings.Split -> SplitSeq in the new dockerfil
 orchestrator ran the fix/gofmt checks before 10.3 landed, not after). The gate also failed
 silently: go fix -diff exits non-zero on changes and bash -e aborted before printing; the step
 now uses `|| true` inside the substitution so the diff is shown. Verified both ways locally.
+
+## 2026-10-14 — release workflow: artifact-metadata permission
+
+User approved adding `artifact-metadata: write` to release.yml so attest-build-provenance v4 can
+create the artifact storage record instead of warning on every release. actionlint clean.
