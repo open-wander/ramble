@@ -25,15 +25,7 @@ verification in [verification.md](verification.md). PRD: [done/prd-security-bugf
 
 ## Phase 13: API contract — 3 tasks completed 2026-11-26 (see [TASKS-archive.md](TASKS-archive.md))
 
-## Phase 14: Resource write API
-
-| # | Task | PRD | Status | Notes |
-|---|------|-----|--------|-------|
-| 14.1 | Move resource-create business logic (license detection, org membership check) from `PostNewResource` into `internal/services/resource`; web tests unchanged (US-005, FR-5) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | |
-| 14.2 | `POST /v1/resources` (US-005, FR-8) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | needs: 12.2, 13.2, 14.1 |
-| 14.3 | `GET /v1/resources/{id}` and `GET /v1/namespaces/{ns}/resources/{name}` (US-006) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | needs: 14.2 |
-| 14.4 | `PATCH` and `DELETE /v1/resources/{id}`; immutable fields; 404/403 as web UI (US-007, US-008) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | needs: 14.3 |
-| 14.5 | Versions list/create, retry failed version, rotate webhook secret (US-009) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | needs: 14.3 |
+## Phase 14: Resource write API — 6 tasks completed 2026-11-26 (see [TASKS-archive.md](TASKS-archive.md))
 
 ## Phase 15: Organisation API
 

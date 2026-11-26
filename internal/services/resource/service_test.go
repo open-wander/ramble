@@ -5,10 +5,12 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
 )
@@ -82,9 +84,10 @@ func TestCreateResource_DuplicateName(t *testing.T) {
 
 	// Create first resource
 	input := CreateInput{
-		Name:    "duplicate",
-		Type:    "pack",
-		Version: "v1.0.0",
+		Name:          "duplicate",
+		Type:          "pack",
+		Version:       "v1.0.0",
+		RepositoryURL: "https://github.com/test/repo",
 	}
 	res1, err := service.CreateResource(input, user.ID, nil)
 	require.NoError(t, err)
@@ -94,7 +97,7 @@ func TestCreateResource_DuplicateName(t *testing.T) {
 	res2, err := service.CreateResource(input, user.ID, nil)
 
 	// Verify error
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrDuplicateName)
 	assert.Nil(t, res2)
 	assert.Contains(t, err.Error(), "already exists")
 }
@@ -107,17 +110,17 @@ func TestCreateResource_EmptyName(t *testing.T) {
 
 	// Empty name input
 	input := CreateInput{
-		Name:    "",
-		Type:    "pack",
-		Version: "v1.0.0",
+		Name:          "",
+		Type:          "pack",
+		Version:       "v1.0.0",
+		RepositoryURL: "https://github.com/test/repo",
 	}
 
 	res, err := service.CreateResource(input, user.ID, nil)
 
 	// Verify validation error
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidName)
 	assert.Nil(t, res)
-	assert.Contains(t, err.Error(), "required")
 }
 
 func TestDeleteResource_AsOwner(t *testing.T) {
@@ -128,9 +131,10 @@ func TestDeleteResource_AsOwner(t *testing.T) {
 
 	// Create resource
 	input := CreateInput{
-		Name:    "delete-test",
-		Type:    "pack",
-		Version: "v1.0.0",
+		Name:          "delete-test",
+		Type:          "pack",
+		Version:       "v1.0.0",
+		RepositoryURL: "https://github.com/test/repo",
 	}
 	resource, err := service.CreateResource(input, user.ID, nil)
 	require.NoError(t, err)
@@ -158,9 +162,10 @@ func TestDeleteResource_NotOwner(t *testing.T) {
 
 	// Create resource as owner
 	input := CreateInput{
-		Name:    "protected-resource",
-		Type:    "pack",
-		Version: "v1.0.0",
+		Name:          "protected-resource",
+		Type:          "pack",
+		Version:       "v1.0.0",
+		RepositoryURL: "https://github.com/test/repo",
 	}
 	resource, err := service.CreateResource(input, owner.ID, nil)
 	require.NoError(t, err)
@@ -182,9 +187,10 @@ func TestToggleStar_StarAndUnstar(t *testing.T) {
 
 	// Create resource
 	input := CreateInput{
-		Name:    "star-test",
-		Type:    "pack",
-		Version: "v1.0.0",
+		Name:          "star-test",
+		Type:          "pack",
+		Version:       "v1.0.0",
+		RepositoryURL: "https://github.com/test/repo",
 	}
 	resource, err := service.CreateResource(input, user.ID, nil)
 	require.NoError(t, err)
@@ -221,9 +227,10 @@ func TestProcessTagEvent_NewVersion(t *testing.T) {
 
 	// Create resource
 	input := CreateInput{
-		Name:    "tag-test",
-		Type:    "pack",
-		Version: "v1.0.0",
+		Name:          "tag-test",
+		Type:          "pack",
+		Version:       "v1.0.0",
+		RepositoryURL: "https://github.com/test/repo",
 	}
 	resource, err := service.CreateResource(input, user.ID, nil)
 	require.NoError(t, err)
@@ -250,9 +257,10 @@ func TestProcessTagEvent_ExistingVersion(t *testing.T) {
 
 	// Create resource with initial version
 	input := CreateInput{
-		Name:    "exist-test",
-		Type:    "pack",
-		Version: "v1.0.0",
+		Name:          "exist-test",
+		Type:          "pack",
+		Version:       "v1.0.0",
+		RepositoryURL: "https://github.com/test/repo",
 	}
 	resource, err := service.CreateResource(input, user.ID, nil)
 	require.NoError(t, err)
@@ -267,8 +275,8 @@ func TestProcessTagEvent_ExistingVersion(t *testing.T) {
 
 // TestRecordFetchFailed_SizeLimit verifies that when a required remote file
 // exceeds the size limit the fetch status is recorded as FAILED and no success
-// content is stored.  This satisfies FR-4 (US-002): oversized downloads must
-// not produce a completed fetch record.
+// content is stored: an oversized download must not produce a completed fetch
+// record.
 func TestRecordFetchFailed_SizeLimit(t *testing.T) {
 	service := NewResourceService(database.DB)
 
@@ -277,9 +285,10 @@ func TestRecordFetchFailed_SizeLimit(t *testing.T) {
 
 	// Create resource and a version that will simulate a failed oversized fetch.
 	input := CreateInput{
-		Name:    "size-limit-test",
-		Type:    "pack",
-		Version: "v1.0.0",
+		Name:          "size-limit-test",
+		Type:          "pack",
+		Version:       "v1.0.0",
+		RepositoryURL: "https://github.com/test/repo",
 	}
 	res, err := service.CreateResource(input, user.ID, nil)
 	require.NoError(t, err)
@@ -301,7 +310,7 @@ func TestRecordFetchFailed_SizeLimit(t *testing.T) {
 		First(&version).Error
 	require.NoError(t, err)
 
-	// FR-4: fetch status must be FAILED.
+	// The fetch status must be FAILED.
 	assert.Equal(t, models.FetchStatusFailed, version.FetchStatus,
 		"oversized fetch must be recorded as FAILED")
 
@@ -344,13 +353,18 @@ func TestAuthorizeResourceAction(t *testing.T) {
 	database.DB.Create(&models.Membership{UserID: member.ID, OrganizationID: org.ID, Role: RoleMember})
 
 	// org resource: created by creator (non-member) but owned by the org
-	orgInput := CreateInput{Name: "authzsvc-org-res", Type: "pack", Version: "v1.0.0"}
-	orgRes, err := svc.CreateResource(orgInput, creator.ID, &org.ID)
-	require.NoError(t, err)
+	orgRes := &models.NomadResource{
+		Name:           "authzsvc-org-res",
+		Type:           models.ResourceTypePack,
+		UserID:         creator.ID,
+		OrganizationID: &org.ID,
+		Versions:       []models.ResourceVersion{{Version: "v1.0.0"}},
+	}
+	require.NoError(t, database.DB.Create(orgRes).Error)
 	defer database.DB.Delete(orgRes)
 
 	// personal resource: owned by owner user, no org
-	personalInput := CreateInput{Name: "authzsvc-personal-res", Type: "pack", Version: "v1.0.0"}
+	personalInput := CreateInput{Name: "authzsvc-personal-res", Type: "pack", Version: "v1.0.0", RepositoryURL: "https://github.com/test/repo"}
 	personalRes, err := svc.CreateResource(personalInput, owner.ID, nil)
 	require.NoError(t, err)
 	defer database.DB.Delete(personalRes)
@@ -499,9 +513,10 @@ func TestRecordFetchFailed_ErrorTruncation(t *testing.T) {
 			defer database.DB.Delete(&user)
 
 			input := CreateInput{
-				Name:    fmt.Sprintf("trunc-test-%d", i),
-				Type:    "pack",
-				Version: "v1.0.0",
+				Name:          fmt.Sprintf("trunc-test-%d", i),
+				Type:          "pack",
+				Version:       "v1.0.0",
+				RepositoryURL: "https://github.com/test/repo",
 			}
 			res, err := service.CreateResource(input, user.ID, nil)
 			require.NoError(t, err)
@@ -546,9 +561,10 @@ func TestRecordFetchFailed_DoesNotOverwriteContent(t *testing.T) {
 	defer database.DB.Delete(&user)
 
 	input := CreateInput{
-		Name:    "no-overwrite-test",
-		Type:    "job",
-		Version: "v1.0.0",
+		Name:          "no-overwrite-test",
+		Type:          "job",
+		Version:       "v1.0.0",
+		RepositoryURL: "https://github.com/test/repo",
 	}
 	res, err := service.CreateResource(input, user.ID, nil)
 	require.NoError(t, err)
@@ -577,4 +593,144 @@ func TestRecordFetchFailed_DoesNotOverwriteContent(t *testing.T) {
 	// from an oversized body. The DB field reflects what was stored before.
 	assert.Equal(t, "pre-existing content", version.Content,
 		"RecordFetchFailed must not clear pre-existing content columns")
+}
+
+func TestGetResource(t *testing.T) {
+	svc := NewResourceService(database.DB)
+	u := createTestUser(t, "getres-user")
+	tags := []models.Tag{{Name: "zeta-tag"}, {Name: "alpha-tag"}}
+	for i := range tags {
+		require.NoError(t, database.DB.Where(models.Tag{Name: tags[i].Name}).FirstOrCreate(&tags[i]).Error)
+	}
+	r := models.NomadResource{Name: "getres-a", Type: models.ResourceType("pack"), UserID: u.ID, Tags: tags}
+	require.NoError(t, database.DB.Create(&r).Error)
+	gone := models.NomadResource{Name: "getres-gone", Type: models.ResourceType("pack"), UserID: u.ID}
+	require.NoError(t, database.DB.Create(&gone).Error)
+	require.NoError(t, database.DB.Delete(&gone).Error)
+
+	// The newer version row is inserted first; the order must come from created_at.
+	now := time.Now()
+	for _, v := range []models.ResourceVersion{
+		{ResourceID: r.ID, Version: "v2.0.0", CreatedAt: now},
+		{ResourceID: r.ID, Version: "v1.0.0", CreatedAt: now.Add(-time.Hour)},
+	} {
+		require.NoError(t, database.DB.Create(&v).Error)
+	}
+
+	t.Run("loaded with preloads", func(t *testing.T) {
+		got, err := svc.GetResource(r.ID)
+		require.NoError(t, err)
+		assert.Equal(t, u.Username, got.User.Username)
+		require.Len(t, got.Versions, 2)
+		assert.Equal(t, "v2.0.0", got.Versions[0].Version)
+		assert.Equal(t, "v1.0.0", got.Versions[1].Version)
+		require.Len(t, got.Tags, 2)
+		assert.Equal(t, "alpha-tag", got.Tags[0].Name)
+		assert.Equal(t, "zeta-tag", got.Tags[1].Name)
+	})
+	t.Run("same created_at: higher id first", func(t *testing.T) {
+		tie := models.NomadResource{Name: "getres-tie", Type: models.ResourceType("pack"), UserID: u.ID}
+		require.NoError(t, database.DB.Create(&tie).Error)
+		at := time.Now().Truncate(time.Microsecond)
+		first := models.ResourceVersion{ResourceID: tie.ID, Version: "v1.0.0", CreatedAt: at}
+		second := models.ResourceVersion{ResourceID: tie.ID, Version: "v1.0.1", CreatedAt: at}
+		require.NoError(t, database.DB.Create(&first).Error)
+		require.NoError(t, database.DB.Create(&second).Error)
+		require.Greater(t, second.ID, first.ID)
+		got, err := svc.GetResource(tie.ID)
+		require.NoError(t, err)
+		require.Len(t, got.Versions, 2)
+		assert.Equal(t, "v1.0.1", got.Versions[0].Version)
+	})
+	for name, id := range map[string]uint{"unknown id": 999999999, "soft-deleted": gone.ID} {
+		t.Run(name, func(t *testing.T) {
+			got, err := svc.GetResource(id)
+			assert.ErrorIs(t, err, ErrResourceNotFound)
+			assert.Nil(t, got)
+		})
+	}
+	t.Run("database failure is not a not-found", func(t *testing.T) {
+		broken := NewResourceService(database.DB.Session(&gorm.Session{}).Table("no_such_table"))
+		_, err := broken.GetResource(r.ID)
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrResourceNotFound)
+	})
+}
+
+func TestGetResourceByNamespace(t *testing.T) {
+	svc := NewResourceService(database.DB)
+	owner := createTestUser(t, "ByNsUser")
+	createTestUser(t, "bynsother")
+	org := models.Organization{Name: "ByNsOrg"}
+	require.NoError(t, database.DB.Create(&org).Error)
+	// An organisation named like a user must not make that user's resource
+	// reachable, nor be reachable itself (users win the namespace).
+	orgNamedLikeUser := models.Organization{Name: "BYNSOTHER"}
+	require.NoError(t, database.DB.Create(&orgNamedLikeUser).Error)
+
+	mk := func(name string, userID uint, orgID *uint) models.NomadResource {
+		r := models.NomadResource{Name: name, Type: models.ResourceType("pack"), UserID: userID, OrganizationID: orgID}
+		require.NoError(t, database.DB.Create(&r).Error)
+		return r
+	}
+	personal := mk("MySQL-ns", owner.ID, nil)
+	inOrg := mk("Redis-ns", owner.ID, &org.ID)
+	mk("Hidden-ns", owner.ID, &orgNamedLikeUser.ID)
+	deleted := mk("Deleted-ns", owner.ID, nil)
+	require.NoError(t, database.DB.Delete(&deleted).Error)
+	deletedOrg := mk("DeletedOrg-ns", owner.ID, &org.ID)
+	require.NoError(t, database.DB.Delete(&deletedOrg).Error)
+
+	now := time.Now()
+	for _, v := range []models.ResourceVersion{
+		{ResourceID: personal.ID, Version: "v2.0.0", CreatedAt: now},
+		{ResourceID: personal.ID, Version: "v1.0.0", CreatedAt: now.Add(-time.Hour)},
+	} {
+		require.NoError(t, database.DB.Create(&v).Error)
+	}
+
+	tests := []struct {
+		name      string
+		namespace string
+		resName   string
+		wantID    uint
+	}{
+		{"personal exact", "ByNsUser", "MySQL-ns", personal.ID},
+		{"personal mixed case", "bynsUSER", "mysql-NS", personal.ID},
+		{"org exact", "ByNsOrg", "Redis-ns", inOrg.ID},
+		{"org mixed case", "BYNSORG", "REDIS-ns", inOrg.ID},
+		{"org resource not under owner's name", "ByNsUser", "Redis-ns", 0},
+		{"personal resource not under org", "ByNsOrg", "MySQL-ns", 0},
+		{"unknown namespace", "nobody-ns", "MySQL-ns", 0},
+		{"unknown name", "ByNsUser", "nope", 0},
+		{"soft-deleted personal", "ByNsUser", "Deleted-ns", 0},
+		{"soft-deleted in org", "ByNsOrg", "DeletedOrg-ns", 0},
+		{"org shadowed by same-named user", "bynsother", "Hidden-ns", 0},
+		{"other user has no such resource", "bynsother", "MySQL-ns", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := svc.GetResourceByNamespace(tt.namespace, tt.resName)
+			if tt.wantID == 0 {
+				assert.ErrorIs(t, err, ErrResourceNotFound)
+				assert.Nil(t, got)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantID, got.ID)
+			assert.NotEmpty(t, got.User.Username)
+		})
+	}
+
+	t.Run("versions newest first", func(t *testing.T) {
+		got, err := svc.GetResourceByNamespace("ByNsUser", "MySQL-ns")
+		require.NoError(t, err)
+		require.Len(t, got.Versions, 2)
+		assert.Equal(t, "v2.0.0", got.Versions[0].Version)
+	})
+	t.Run("organization preloaded", func(t *testing.T) {
+		got, err := svc.GetResourceByNamespace("ByNsOrg", "Redis-ns")
+		require.NoError(t, err)
+		assert.Equal(t, org.Name, got.Organization.Name)
+	})
 }

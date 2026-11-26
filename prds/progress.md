@@ -935,3 +935,136 @@ GetCurrentUserAPI: org token without membership -> 500 (never token_org null), e
 "unexpected status code"). All six re-run: killed.
 Comments: no task ids; long blocks are swag annotations (codegen directives) - untouched.
 Verified: build, vet -tags=security, go test -tags=security ./... (20 ok), make gosec exit 0.
+
+## 2026-11-26 — CI fix on #67 / #68
+
+#67 CI failed on staticcheck (unused test helper uptr) and would have failed CI's `go fix -diff` check
+(range-over-int in tokens_test.go; errors.AsType in api_errors.go on the Phase 13 branch). My per-task
+verification had not run staticcheck or go fix. Fixed on feat/programmatic-management (ac558d3), merged into
+feat/api-contract (signed-off merge), go fix applied there. Local CI mirror script (scratchpad ci-local.sh):
+go mod verify, vet (both tags), make staticcheck, actionlint, check-pins, gofmt, go fix -diff (both tags),
+go test -tags=security, openapi-check/swagger drift, gosec. All green on both branches.
+
+PATTERN: verification - per-task checks must mirror the whole CI job (staticcheck and `go fix -diff` too),
+not just build/vet/test/gosec; workers' DONE reports do not cover them either.
+
+## 2026-11-26 — 14.1 Resource create logic in the service (branch feat/resource-api, stacked on #68)
+
+New internal/services/resource/create.go: CreateResource validates first (name ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$
+per user decision, type pack|job, security.ValidateRepositoryURL, version trimmed, required, <= 64), then org
+exists (ErrOrgNotFound) and membership role member|owner (ErrNotOrgMember) BEFORE the duplicate check (no name
+probing), duplicate check case-insensitive (LOWER(name) = LOWER(?), because URLs resolve case-insensitively;
+orchestrator fix), license via injected FileFetcher (WithFileFetcher; WithContext copies it; nil -> Unknown),
+resolveTags shared with UpdateResource, 23505 -> ErrDuplicateName. Returns the resource with User/Organization.
+Sentinels: ErrInvalidName/Type/RepositoryURL/Version, ErrDuplicateName, ErrOrgNotFound, ErrNotOrgMember;
+IsInputError(err) for validation + duplicate (orchestrator addition).
+security.ValidateRepositoryURL: https, no userinfo, port empty or 443, no IP literal, isHostAllowed
+(DefaultAllowedHosts, ALLOWED_GIT_HOSTS still honoured).
+handlers: resourceService(c) = Service.WithContext(ctx).WithFileFetcher(downloadFile). PostNewResource: 403 for
+org sentinels, 400 + message for IsInputError, otherwise 500 "Internal Server Error" + log (orchestrator fix:
+DB error text leaked as 400 before).
+Tests updated (inputs only, none deleted): repository_url + license added to web create tests;
+fetch_log_test uses t.Setenv ALLOWED_GIT_HOSTS. Orchestrator added: reverse-order namespace duplicate,
+case-insensitive duplicate, version trim, IsInputError table, TestPostNewResource_DBFailureIs500 (mutations red).
+Advisor review: MINOR. Follow-ups logged: idx_user_res_name (name, organization_id, user_id) does not enforce
+personal-namespace uniqueness (NULLs distinct) nor org uniqueness across users - schema follow-up; UpdateResource
+lacks create validation -> carried into 14.4 notes.
+Verified: local CI mirror all green (modverify, vet x2, staticcheck, actionlint, check-pins, gofmt, go fix x2,
+tests, openapi-check, gosec).
+
+## 2026-11-26 — 14.2 POST /v1/resources
+
+internal/handlers/api_resources.go: CreateResourceAPI (strict JSON: DisallowUnknownFields, trailing data -> 400),
+namespace resolver (own username -> personal, org name case-insensitive -> org; anything else 404 not_found,
+undistinguished), TokenAllowsOrg before the service, sentinel -> status/code map (422 invalid_*, 409 conflict,
+403 forbidden, else 500 logged), background fetch with the service-trimmed version, AuditLog resource.create.
+Types: CreateResourceRequest, ResourceResponse (tags always [], UTC times, webhook_url from GetBaseURL),
+CreateResourceResponse embeds ResourceResponse + webhook_secret (swag flattens; secret only on create).
+newResourceResponse(c, r) reused by later endpoints (callers preload Versions newest first). Codes added:
+bad_request, conflict, invalid_name/type/repository_url/version. server.go: apiWriteLimiter created ONCE in
+registerRoutes; POST /v1/resources = RequireAPIToken(write), apiWriteLimiter, CreateResourceAPI.
+USER DECISION: CSRF exemption widened from "cookie-less /v1 + Bearer" to "cookie-less /v1" (isCookielessAPIRequest)
+so a request with no credentials gets RequireAPIToken's 401 instead of a CSRF 403. Cookie-carrying /v1 requests
+keep CSRF (tested with and without Bearer; mutations of the cookie and prefix checks red). HasBearerAuth removed
+(unused).
+Advisor review: MINOR. Orchestrator fixed: CSRF/401 (above); dead CreateInput.Owner assignment removed; docs
+error table in status order. Logged, not fixed: no test pins that fetchVersionContent receives the trimmed
+version (async goroutine; mutation to req.Version survives).
+Verified: local CI mirror all green.
+
+## 2026-11-26 — 14.3 GET /v1/resources/{id} and /v1/namespaces/{ns}/resources/{name}
+
+Service read.go: withAPIPreloads (User, Organization, Tags by name, Versions created_at DESC, id DESC; content
+and readme omitted), GetResource(id), GetResourceByNamespace(ns, name) (username first, then org; both
+case-insensitive; unknown namespace and unknown name both ErrResourceNotFound; DB errors wrapped -> 500).
+GetResourceWithVersions removed (no callers; turned DB errors into 404). Handlers GetResourceAPI (paramID,
+:id<int>) and GetResourceByNameAPI: 404 before the token org check (403); RequireAPIToken(read), no limiter.
+POST /v1/resources now renders from GetResource so POST and GET bodies are equal (DB timestamp precision,
+tag order). Orchestrator fix: a failed reload after the commit logs resource.reload_failed and returns the
+in-memory copy with 201 (was 500 - client would lose the only copy of webhook_secret and get 409 on retry).
+Orchestrator added: same-created_at tie-break test (id DESC; mutation -> red). Logged: no test for the reload
+fallback (needs a DB failure after a successful create).
+Advisor review: MINOR. Verified: local CI mirror all green.
+
+## 2026-11-26 — 14.4 PATCH/DELETE /v1/resources/{id}
+
+Service patch.go: PatchInput (pointer fields, nil = unchanged), PatchResource: AuthorizeResourceAction(member),
+ValidateRepositoryURL, then one transaction (tags via resolveTags + Association Replace, column map incl.
+updated_at). Web UpdateResource now validates repository_url on every submit (behaviour change: a legacy row with
+a non-allowlisted or empty URL cannot be edited on the web until the URL is fixed - mention in the PR).
+Handlers UpdateResourceAPI (UpdateResourceRequest; name/type/namespace declared as swaggerignore RawMessage so
+they give 422 immutable_field, not 400; null = omitted) and DeleteResourceAPI (reuses DeleteResource: owner only,
+soft delete, 204, second call 404). Routes behind RequireAPIToken(write) + shared apiWriteLimiter.
+Advisor review: MINOR. Carried into new task 14.6 (user decisions):
+- soft-deleted rows keep idx_user_res_name occupied -> re-create of a deleted name hits 23505 -> 409; breaks
+  Terraform replace. DECISION: purge the dead soft-deleted row on re-create (no schema migration).
+- tags: API normalises/drops silently -> Terraform drift. DECISION: API rejects non-canonical tags (422
+  invalid_tags); tags remain case-insensitive with lowercase as the stored form; web form stays lenient.
+- limiter test only alternates PATCH/DELETE; add POST.
+Nit (not fixed): UpdateResourceAPI parses :id twice.
+Verified: local CI mirror all green.
+
+## 2026-11-26 — 14.6 Resource API follow-ups (purge on re-create, strict API tags)
+
+First run BLOCKED on part 2 (the user asked "should tags not be case sensitive?"); parts 1 and 3 done. User then
+confirmed: tags case-insensitive, lowercase stored form, API strict (422), web lenient. Second run (14.6b) did part 2.
+Part 1: CreateResource runs live duplicate check, purge and insert in ONE transaction after validation and org
+authorisation. namespaceNameScope helper shared by the duplicate check and the purge (same namespace rule).
+Purge hard-deletes soft-deleted rows holding the name in the target namespace + resource_versions, resource_tags,
+user_stars rows. resolveTags runs on tx. purge_test.go: personal, org, case variant, other namespace untouched,
+live duplicate purges nothing, rejected create purges nothing, rollback on failing insert.
+Part 2: resource.ValidateCanonicalTags(tags) / ErrInvalidTags (min/max consts shared with resolveTags, quoted tag
+truncated to 32 runes, lowercase hint only when the lowercase form is valid; orchestrator: message now names the
+offending tag too). Called in CreateResourceAPI and UpdateResourceAPI (non-nil only) before any lookup -> 422
+invalid_tags. Not in IsInputError (web unchanged). Two older API tests updated to canonical input.
+Part 3: shared-limiter test cycles POST, PATCH, DELETE; 121st -> 429.
+Advisor review: MINOR (cosmetic message - fixed). Verified: local CI mirror all green.
+NOTE for 17.2: provider tags attribute = list/set of canonical lowercase strings; the API never normalises.
+
+## 2026-11-26 — 14.5 Versions, retry, webhook secret; Phase 14 collapsed
+
+Service fetch.go: AddVersion (trim + shared validateVersion, AuthorizeResourceAction member, tx with FOR UPDATE on
+the resource row before the duplicate check - resource_versions has NO unique index on (resource_id, version)),
+RetryVersion (one conditional UPDATE WHERE fetch_status = failed; RowsAffected 0 -> ErrVersionNotFound or
+ErrVersionNotFailed), ListVersions (no content columns). CreateVersion removed. ResetWebhookSecret returns the
+secret and updates only webhook_secret. Sentinels ErrDuplicateVersion, ErrVersionNotFound, ErrVersionNotFailed.
+Handlers api_resource_versions.go: list (read), add 202, retry 202/409/404 (url.PathUnescape on the segment),
+rotate 200 {webhook_secret}. Web PostNewVersion uses AddVersion (duplicate -> 400, audit resource.version_create).
+Advisor review: MINOR. Orchestrator: loadResourceForWrite renamed loadResourceForToken (also used by reads).
+Logged for the sweep: TestResetWebhookSecret_ChangesOnlySecret cannot tell a single-column update from First+Save
+(needs a concurrent write between read and write); RetryVersion reload picks the newest duplicate row if
+duplicates pre-exist. Schema follow-up candidates: unique index on resource_versions (resource_id, version);
+idx_user_res_name personal-namespace NULL gap.
+Verified: local CI mirror all green. Phase 14 collapsed.
+
+## 2026-11-26 — Phase 14 sweep (invariants + comments)
+
+31 line-targeted breaks via the overlay driver (scratchpad sweep14; 2 first hit a testcontainers start failure
+and were re-run). 29 killed, including every SSRF URL rule, namespace scoping (personal vs org) for duplicate,
+purge and by-name read, org restriction on create/read/write, owner-only delete, membership on patch/versions/
+retry/webhook rotation, duplicate version, retry-only-failed, immutable namespace, canonical tags on POST/PATCH.
+Equivalent (not gaps): member-role (no roles beyond owner/member exist); purge-deleted-only (the live duplicate
+check in the same transaction returns 409 before the purge, so it only ever sees deleted rows).
+Comments: stripped stale FR-4 (US-002) citations in services/resource/service_test.go (old security-bugfix PRD);
+AuthorizeResourceAction doc block is the authorisation contract - kept; swag blocks untouched.
+Verified: local CI mirror all green.

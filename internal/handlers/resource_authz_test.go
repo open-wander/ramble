@@ -219,7 +219,8 @@ func TestPostEditResource_OrgMember_Allowed(t *testing.T) {
 		a.Post("/resource/:id/edit", PostEditResource)
 	})
 
-	body := strings.NewReader("name=orgres-per1&type=pack&description=updated+by+member&license=MIT")
+	// The edit form must carry an allowed repository URL; the service rejects any other.
+	body := strings.NewReader("name=orgres-per1&type=pack&description=updated+by+member&license=MIT&repository_url=https://github.com/test/x")
 	req := httptest.NewRequest("POST", fmt.Sprintf("/resource/%d/edit", orgRes.ID), body)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := app.Test(req, -1)
@@ -236,7 +237,8 @@ func TestPostEditResource_OrgOwner_Allowed(t *testing.T) {
 		a.Post("/resource/:id/edit", PostEditResource)
 	})
 
-	body := strings.NewReader("name=orgres-per2&type=pack&description=updated+by+owner&license=MIT")
+	// The edit form must carry an allowed repository URL; the service rejects any other.
+	body := strings.NewReader("name=orgres-per2&type=pack&description=updated+by+owner&license=MIT&repository_url=https://github.com/test/x")
 	req := httptest.NewRequest("POST", fmt.Sprintf("/resource/%d/edit", orgRes.ID), body)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := app.Test(req, -1)

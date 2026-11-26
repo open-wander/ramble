@@ -14,6 +14,123 @@ definitions:
       error:
         $ref: '#/definitions/handlers.APIErrorBody'
     type: object
+  handlers.CreateResourceRequest:
+    properties:
+      description:
+        example: MySQL on Nomad
+        type: string
+      file_path:
+        example: packs/mysql
+        type: string
+      license:
+        example: MIT
+        type: string
+      name:
+        example: mysql
+        type: string
+      namespace:
+        example: alice
+        type: string
+      repository_url:
+        example: https://github.com/alice/packs
+        type: string
+      tags:
+        example:
+        - database
+        - sql
+        items:
+          type: string
+        type: array
+      type:
+        enum:
+        - pack
+        - job
+        example: pack
+        type: string
+      version:
+        example: v1.0.0
+        type: string
+    required:
+    - name
+    - namespace
+    - repository_url
+    - type
+    - version
+    type: object
+  handlers.CreateResourceResponse:
+    properties:
+      created_at:
+        format: date-time
+        type: string
+      description:
+        example: MySQL on Nomad
+        type: string
+      file_path:
+        example: packs/mysql
+        type: string
+      id:
+        example: 42
+        type: integer
+      latest_version:
+        example: v1.0.0
+        type: string
+      license:
+        example: MIT
+        type: string
+      name:
+        example: mysql
+        type: string
+      namespace:
+        example: alice
+        type: string
+      repository_url:
+        example: https://github.com/alice/packs
+        type: string
+      tags:
+        example:
+        - database
+        - sql
+        items:
+          type: string
+        type: array
+      type:
+        enum:
+        - pack
+        - job
+        example: pack
+        type: string
+      updated_at:
+        format: date-time
+        type: string
+      webhook_secret:
+        type: string
+      webhook_url:
+        example: https://ramble.openwander.org/resource/42/webhook
+        type: string
+    required:
+    - created_at
+    - description
+    - file_path
+    - id
+    - latest_version
+    - license
+    - name
+    - namespace
+    - repository_url
+    - tags
+    - type
+    - updated_at
+    - webhook_secret
+    - webhook_url
+    type: object
+  handlers.CreateVersionRequest:
+    properties:
+      version:
+        example: v1.1.0
+        type: string
+    required:
+    - version
+    type: object
   handlers.CurrentUserResponse:
     properties:
       token_expires_at:
@@ -107,6 +224,121 @@ definitions:
         type: string
       url:
         type: string
+    type: object
+  handlers.ResourceResponse:
+    properties:
+      created_at:
+        format: date-time
+        type: string
+      description:
+        example: MySQL on Nomad
+        type: string
+      file_path:
+        example: packs/mysql
+        type: string
+      id:
+        example: 42
+        type: integer
+      latest_version:
+        example: v1.0.0
+        type: string
+      license:
+        example: MIT
+        type: string
+      name:
+        example: mysql
+        type: string
+      namespace:
+        example: alice
+        type: string
+      repository_url:
+        example: https://github.com/alice/packs
+        type: string
+      tags:
+        example:
+        - database
+        - sql
+        items:
+          type: string
+        type: array
+      type:
+        enum:
+        - pack
+        - job
+        example: pack
+        type: string
+      updated_at:
+        format: date-time
+        type: string
+      webhook_url:
+        example: https://ramble.openwander.org/resource/42/webhook
+        type: string
+    required:
+    - created_at
+    - description
+    - file_path
+    - id
+    - latest_version
+    - license
+    - name
+    - namespace
+    - repository_url
+    - tags
+    - type
+    - updated_at
+    - webhook_url
+    type: object
+  handlers.ResourceVersionResponse:
+    properties:
+      created_at:
+        format: date-time
+        type: string
+      fetch_error:
+        type: string
+      fetch_status:
+        enum:
+        - pending
+        - fetching
+        - completed
+        - failed
+        type: string
+      version:
+        example: v1.1.0
+        type: string
+    required:
+    - created_at
+    - fetch_error
+    - fetch_status
+    - version
+    type: object
+  handlers.UpdateResourceRequest:
+    properties:
+      description:
+        example: MySQL on Nomad
+        type: string
+      file_path:
+        example: packs/mysql
+        type: string
+      license:
+        example: MIT
+        type: string
+      repository_url:
+        example: https://github.com/alice/packs
+        type: string
+      tags:
+        example:
+        - database
+        - sql
+        items:
+          type: string
+        type: array
+    type: object
+  handlers.WebhookSecretResponse:
+    properties:
+      webhook_secret:
+        type: string
+    required:
+    - webhook_secret
     type: object
 host: ramble.openwander.org
 info:
@@ -734,6 +966,51 @@ paths:
       summary: Search jobs
       tags:
       - nomad-job
+  /v1/namespaces/{namespace}/resources/{name}:
+    get:
+      description: Fetch a pack or job by its namespace (a username or an organization
+        name) and name, both case-insensitive. Needs a read token. The namespace/name
+        pair is the import ID of the Terraform provider.
+      operationId: getResourceByName
+      parameters:
+      - description: Username or organization name
+        in: path
+        name: namespace
+        required: true
+        type: string
+      - description: Resource name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.ResourceResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Get a resource by namespace and name
+      tags:
+      - resources
   /v1/packs:
     get:
       description: Fetch a list of all Nomad Packs available in the registry across
@@ -876,6 +1153,409 @@ paths:
       summary: Search registry namespaces
       tags:
       - nomad-pack
+  /v1/resources:
+    post:
+      consumes:
+      - application/json
+      description: Create a pack or job in the caller's personal namespace or in an
+        organization the caller belongs to. Needs a write token. The response is the
+        only one that includes webhook_secret.
+      operationId: createResource
+      parameters:
+      - description: Resource
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateResourceRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/handlers.CreateResourceResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "422":
+          description: invalid_name, invalid_type, invalid_repository_url, invalid_version
+            or invalid_tags
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Create a resource
+      tags:
+      - resources
+  /v1/resources/{id}:
+    delete:
+      description: 'Delete a pack or job. Only the owner may delete: the owning user
+        of a personal resource or an owner of the organization. The resource is gone
+        afterwards: reads answer 404. Needs a write token.'
+      operationId: deleteResource
+      parameters:
+      - description: Resource ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Delete a resource
+      tags:
+      - resources
+    get:
+      description: Fetch a pack or job by its numeric ID. Needs a read token. The
+        response never includes webhook_secret.
+      operationId: getResource
+      parameters:
+      - description: Resource ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.ResourceResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Get a resource by ID
+      tags:
+      - resources
+    patch:
+      consumes:
+      - application/json
+      description: Change description, repository_url, file_path, license or tags
+        of a pack or job. Omitted and null fields stay unchanged; an empty string
+        clears description and file_path, an empty license becomes "Unknown" and an
+        empty tags list removes all tags. Tags must be lowercase, 2-20 characters
+        of a-z, 0-9 and dash, without duplicates; anything else is answered with 422
+        invalid_tags. name, type and namespace cannot be changed and are answered
+        with 422 immutable_field. Organization members may edit. Needs a write token.
+      operationId: updateResource
+      parameters:
+      - description: Resource ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Fields to change
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateResourceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.ResourceResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "422":
+          description: immutable_field, invalid_repository_url or invalid_tags
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Update a resource
+      tags:
+      - resources
+  /v1/resources/{id}/versions:
+    get:
+      description: List the versions of a pack or job, newest first, with the state
+        of each background content fetch. Needs a read token.
+      operationId: listResourceVersions
+      parameters:
+      - description: Resource ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.ResourceVersionResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: List the versions of a resource
+      tags:
+      - resources
+    post:
+      consumes:
+      - application/json
+      description: Add a version to a pack or job. The version is created with fetch_status
+        pending and its content is fetched from the repository in the background.
+        Version must be 1-64 characters. Organization members may add versions. Needs
+        a write token.
+      operationId: createResourceVersion
+      parameters:
+      - description: Resource ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Version
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateVersionRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/handlers.ResourceVersionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "422":
+          description: invalid_version
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Add a version to a resource
+      tags:
+      - resources
+  /v1/resources/{id}/versions/{version}/retry:
+    post:
+      description: Fetch the content of a failed version again. The version is reset
+        to pending and fetched in the background. A version that is not failed answers
+        409. Organization members may retry. Needs a write token.
+      operationId: retryResourceVersion
+      parameters:
+      - description: Resource ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Version, URL-encoded
+        in: path
+        name: version
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/handlers.ResourceVersionResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Retry the fetch of a version
+      tags:
+      - resources
+  /v1/resources/{id}/webhook-secret:
+    post:
+      description: Replace the webhook secret of a pack or job. The new secret is
+        returned in this response only; the old one stops working at once. Organization
+        members may rotate. Needs a write token.
+      operationId: rotateWebhookSecret
+      parameters:
+      - description: Resource ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.WebhookSecretResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Rotate the webhook secret
+      tags:
+      - resources
   /v1/user:
     get:
       description: Identify the user a Bearer token belongs to and describe the token.

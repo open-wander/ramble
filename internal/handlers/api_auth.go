@@ -40,13 +40,6 @@ func bearerToken(c *fiber.Ctx) (string, bool) {
 	return tok, true
 }
 
-// HasBearerAuth reports whether the request carries a well-formed Bearer
-// Authorization header. The CSRF exemption uses it so both agree on parsing.
-func HasBearerAuth(c *fiber.Ctx) bool {
-	_, ok := bearerToken(c)
-	return ok
-}
-
 // APITokenFromCtx returns the API token that authenticated the request, if any.
 func APITokenFromCtx(c *fiber.Ctx) (*models.APIToken, bool) {
 	tok, ok := c.Locals(LocalAPIToken).(*models.APIToken)

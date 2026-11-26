@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"fmt"
+	"io"
 	"net/http/httptest"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
+	"rmbl/internal/services/resource"
 	"strings"
 	"testing"
 
@@ -59,9 +61,11 @@ func authzApp(user models.User) *fiber.App {
 }
 
 // postNewResource sends a POST /new form request and returns the response.
+// postNewResource sends a valid create form. repository_url is required by
+// create validation; an explicit license avoids a network LICENSE download.
 func postNewResource(t *testing.T, app *fiber.App, owner, name string) *httptest.ResponseRecorder {
 	t.Helper()
-	body := fmt.Sprintf("name=%s&type=pack&version=v1.0.0&description=test&owner=%s", name, owner)
+	body := fmt.Sprintf("name=%s&type=pack&version=v1.0.0&description=test&license=MIT&repository_url=https://github.com/test/x&owner=%s", name, owner)
 	req := httptest.NewRequest("POST", "/new", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := app.Test(req, -1)
@@ -176,4 +180,25 @@ func TestPostNewResource_NonexistentOrg_Rejected(t *testing.T) {
 	var count int64
 	database.DB.Model(&models.NomadResource{}).Where("name = ?", "noorg-pack").Count(&count)
 	assert.Equal(t, int64(0), count, "resource must not be persisted for non-existent org (any namespace)")
+}
+
+// A server fault during create is a 500 with a generic body: internal error
+// text never reaches the client and is not reported as a client error.
+func TestPostNewResource_DBFailureIs500(t *testing.T) {
+	defer cleanupAuthzTestData(t)
+	user := createTestUser(t, "authzdbfail")
+	failingDB(t, "nomad_resources", "create")
+	origSvc := resource.Service
+	resource.Service = resource.NewResourceService(database.DB)
+	t.Cleanup(func() { resource.Service = origSvc })
+
+	body := "name=dbfail-pack&type=pack&version=v1.0.0&license=MIT&repository_url=https://github.com/test/x"
+	req := httptest.NewRequest("POST", "/new", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := authzApp(user).Test(req, -1)
+	require.NoError(t, err)
+	b, _ := io.ReadAll(resp.Body)
+	assert.Equal(t, 500, resp.StatusCode)
+	assert.Equal(t, "Internal Server Error", string(b))
+	assert.False(t, resourceExists(t, "dbfail-pack", nil))
 }

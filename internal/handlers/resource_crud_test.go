@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"io"
 	"net/http/httptest"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
@@ -292,7 +293,7 @@ func TestPostNewResource_DuplicateName(t *testing.T) {
 	app.Post("/new", PostNewResource)
 
 	// Try to create resource with same name
-	payload := strings.NewReader("name=existing-pack&type=pack&version=v1.0.0")
+	payload := strings.NewReader("name=existing-pack&type=pack&version=v1.0.0&repository_url=https://github.com/test/x&license=MIT")
 	req := httptest.NewRequest("POST", "/new", payload)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -320,7 +321,7 @@ func TestPostNewResource_JobType(t *testing.T) {
 
 	app.Post("/new", PostNewResource)
 
-	payload := strings.NewReader("name=my-new-job&type=job&version=v1.0.0&description=A+test+job")
+	payload := strings.NewReader("name=my-new-job&type=job&version=v1.0.0&description=A+test+job&repository_url=https://github.com/test/x&license=MIT")
 	req := httptest.NewRequest("POST", "/new", payload)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -354,7 +355,7 @@ func TestPostNewResource_WithTags(t *testing.T) {
 
 	app.Post("/new", PostNewResource)
 
-	payload := strings.NewReader("name=tagged-pack&type=pack&version=v1.0.0&tags=database,redis,cache")
+	payload := strings.NewReader("name=tagged-pack&type=pack&version=v1.0.0&tags=database,redis,cache&repository_url=https://github.com/test/x&license=MIT")
 	req := httptest.NewRequest("POST", "/new", payload)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -576,7 +577,8 @@ func TestPostEditResource_Success(t *testing.T) {
 
 	app.Post("/resource/:id/edit", PostEditResource)
 
-	payload := strings.NewReader("name=editable-pack&type=pack&description=Updated+description&license=MIT")
+	// The edit form must carry an allowed repository URL; the service rejects any other.
+	payload := strings.NewReader("name=editable-pack&type=pack&description=Updated+description&license=MIT&repository_url=https://github.com/test/x")
 	req := httptest.NewRequest("POST", "/resource/"+toString(resource.ID)+"/edit", payload)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -590,6 +592,41 @@ func TestPostEditResource_Success(t *testing.T) {
 	database.DB.First(&updated, resource.ID)
 	assert.Equal(t, "Updated description", updated.Description)
 	assert.Equal(t, "MIT", updated.License)
+}
+
+func TestPostEditResource_InvalidRepositoryURL(t *testing.T) {
+	defer cleanupTestData(t)
+
+	user := createTestUser(t, "editbadurl")
+	resource := createTestPack(t, user.ID, "badurl-pack")
+	before := resource.RepositoryURL
+
+	app := setupTestApp()
+	app.Use(func(c *fiber.Ctx) error {
+		sess, _ := Store.Get(c)
+		sess.Set("user_id", user.ID)
+		sess.Save()
+		c.Locals("UserID", user.ID)
+		c.Locals("User", user)
+		return c.Next()
+	})
+	app.Post("/resource/:id/edit", PostEditResource)
+
+	for _, u := range []string{"http://github.com/x/y", "https://evil.example/x"} {
+		payload := strings.NewReader("name=badurl-pack&type=pack&description=changed&license=MIT&repository_url=" + u)
+		req := httptest.NewRequest("POST", "/resource/"+toString(resource.ID)+"/edit", payload)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		body, _ := io.ReadAll(resp.Body)
+		assert.Equal(t, 400, resp.StatusCode, u)
+		assert.Contains(t, string(body), "repository URL must be an https URL")
+
+		var got models.NomadResource
+		database.DB.First(&got, resource.ID)
+		assert.Equal(t, before, got.RepositoryURL)
+		assert.NotEqual(t, "changed", got.Description)
+	}
 }
 
 // PostResetWebhookSecret Tests
@@ -746,7 +783,7 @@ func TestPostNewResource_EmptyVersion(t *testing.T) {
 	app.Post("/new", PostNewResource)
 
 	// Empty version
-	payload := strings.NewReader("name=testres&type=pack&version=")
+	payload := strings.NewReader("name=testres&type=pack&version=&repository_url=https://github.com/test/x&license=MIT")
 	req := httptest.NewRequest("POST", "/new", payload)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -776,7 +813,7 @@ func TestPostNewResource_EmptyName(t *testing.T) {
 	app.Post("/new", PostNewResource)
 
 	// Empty name
-	payload := strings.NewReader("name=&type=pack&version=v1.0.0")
+	payload := strings.NewReader("name=&type=pack&version=v1.0.0&repository_url=https://github.com/test/x&license=MIT")
 	req := httptest.NewRequest("POST", "/new", payload)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -806,7 +843,7 @@ func TestPostNewResource_InvalidTags(t *testing.T) {
 	app.Post("/new", PostNewResource)
 
 	// Tags with invalid characters are silently ignored
-	payload := strings.NewReader("name=invalidtagsres&type=pack&version=v1.0.0&tags=x,valid-tag,ab@cd")
+	payload := strings.NewReader("name=invalidtagsres&type=pack&version=v1.0.0&tags=x,valid-tag,ab@cd&repository_url=https://github.com/test/x&license=MIT")
 	req := httptest.NewRequest("POST", "/new", payload)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -1022,4 +1059,37 @@ func TestDeleteResource_ResourceNotFound(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, 404, resp.StatusCode)
+}
+
+func TestPostNewVersion_DuplicateIsRejected(t *testing.T) {
+	defer cleanupTestData(t)
+
+	user := createTestUser(t, "versiondup")
+	res := models.NomadResource{Name: "version-dup-pack", Type: models.ResourceTypePack, UserID: user.ID, RepositoryURL: failFastRepoURL}
+	require.NoError(t, database.DB.Create(&res).Error)
+	require.NoError(t, database.DB.Create(&models.ResourceVersion{ResourceID: res.ID, Version: "v1.0.0", FetchStatus: models.FetchStatusCompleted}).Error)
+
+	app := setupTestApp()
+	app.Use(func(c *fiber.Ctx) error {
+		sess, _ := Store.Get(c)
+		sess.Set("user_id", user.ID)
+		sess.Save()
+		c.Locals("UserID", user.ID)
+		c.Locals("User", user)
+		return c.Next()
+	})
+	app.Post("/resource/:id/version", PostNewVersion)
+
+	req := httptest.NewRequest("POST", "/resource/"+toString(res.ID)+"/version", strings.NewReader("version=v1.0.0"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	body, _ := io.ReadAll(resp.Body)
+	assert.Equal(t, 400, resp.StatusCode)
+	assert.Contains(t, string(body), "already exists")
+	assert.Len(t, versionRowsOf(t, res.ID, "v1.0.0"), 1)
+
+	var audits int64
+	require.NoError(t, database.DB.Model(&models.AuditLog{}).Where("action = ? AND target_id = ?", "resource.version_create", res.ID).Count(&audits).Error)
+	assert.Zero(t, audits)
 }

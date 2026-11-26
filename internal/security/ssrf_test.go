@@ -347,3 +347,44 @@ func TestDefaultAllowedHosts(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateRepositoryURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		url     string
+		env     string
+		wantErr bool
+	}{
+		{"github https", "https://github.com/x/y", "", false},
+		{"gitlab https", "https://gitlab.com/x/y", "", false},
+		{"explicit 443", "https://github.com:443/x/y", "", false},
+		{"raw host documented as allowed", "https://raw.githubusercontent.com/x/y", "", false},
+		{"env host", "https://git.example.org/x/y", "git.example.org", false},
+		{"http", "http://github.com/x/y", "", true},
+		{"foreign host", "https://evil.example/x", "", true},
+		{"file scheme", "file:///etc/passwd", "", true},
+		{"suffix trick", "https://github.com.evil.example/x", "", true},
+		{"userinfo host trick", "https://github.com@evil.example/x", "", true},
+		{"userinfo credentials", "https://user:pw@github.com/x", "", true},
+		{"custom port", "https://github.com:8443/x", "", true},
+		{"ip literal", "https://127.0.0.1/x", "127.0.0.1", true},
+		{"empty", "", "", true},
+		{"no host", "https:///x", "", true},
+		{"garbage", "ht!tp://%zz", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("ALLOWED_GIT_HOSTS", tt.env)
+			err := ValidateRepositoryURL(tt.url)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for %q", tt.url)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error for %q: %v", tt.url, err)
+			}
+		})
+	}
+}

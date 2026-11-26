@@ -19,6 +19,7 @@ import (
 	"rmbl/internal/models"
 	"rmbl/internal/services/apitoken"
 	"rmbl/internal/services/logger"
+	"rmbl/internal/services/resource"
 )
 
 func TestMain(m *testing.M) {
@@ -88,8 +89,15 @@ func TestCSRF_BearerExemptionThroughStack(t *testing.T) {
 	status, _ = send(t, app, "POST", "/other", map[string]string{"Authorization": bearer})
 	assert.Equal(t, 403, status)
 
-	// No bearer header on /v1: CSRF applies.
-	status, _ = send(t, app, "POST", "/v1/_test", nil)
+	// No credentials at all on /v1: CSRF is skipped (no cookie to protect) and
+	// the token middleware answers with its 401.
+	status, body := send(t, app, "POST", "/v1/_test", nil)
+	assert.Equal(t, 401, status)
+	assert.Contains(t, body, `"code":"unauthorized"`)
+
+	// A session cookie without a Bearer header on /v1 keeps CSRF.
+	status, _ = send(t, app, "POST", "/v1/_test", map[string]string{
+		"Cookie": handlers.SessionCookieName + "=anything"})
 	assert.Equal(t, 403, status)
 }
 
@@ -138,4 +146,32 @@ func TestAPIWriteLimiterThroughStack(t *testing.T) {
 
 	status, _ = send(t, app, "POST", "/v1/_x", b)
 	assert.Equal(t, 200, status, "second token is unaffected")
+}
+
+func TestResourceReadRoutesThroughStack(t *testing.T) {
+	u, plain, _ := mkUserTok(t, "alice", models.ScopeRead, false)
+	resource.Init(database.DB)
+	app := stackApp(t, true)
+	r := models.NomadResource{Name: "stack-read", Type: models.ResourceType("pack"), UserID: u.ID}
+	require.NoError(t, database.DB.Create(&r).Error)
+	idPath := "/v1/resources/" + strconv.FormatUint(uint64(r.ID), 10)
+	namePath := "/v1/namespaces/" + u.Username + "/resources/" + r.Name
+	auth := map[string]string{"Authorization": "Bearer " + plain}
+
+	for _, path := range []string{idPath, namePath} {
+		status, body := send(t, app, "GET", path, nil)
+		assert.Equal(t, 401, status, path)
+		assert.Contains(t, body, `"code":"unauthorized"`)
+
+		status, body = send(t, app, "GET", path, auth)
+		assert.Equal(t, 200, status, body)
+		assert.NotContains(t, body, "webhook_secret")
+	}
+
+	// Non-numeric and overflowing ids never reach the handler; the /v1 guard answers.
+	for _, bad := range []string{"abc", "99999999999999999999999"} {
+		status, body := send(t, app, "GET", "/v1/resources/"+bad, auth)
+		assert.Equal(t, 404, status, bad)
+		assert.Contains(t, body, `"code":"not_found"`)
+	}
 }

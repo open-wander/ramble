@@ -13,14 +13,53 @@ import (
 
 	"gorm.io/gorm"
 	"rmbl/internal/models"
+	"rmbl/internal/security"
 )
 
 var tagRegex = regexp.MustCompile(`^[a-z0-9-]+$`)
+
+// Tag length bounds, in bytes (tags are ASCII once valid).
+const (
+	minTagLen = 2
+	maxTagLen = 20
+)
+
+// maxQuotedTagRunes caps how much of a rejected tag an error message echoes.
+const maxQuotedTagRunes = 32
+
+// ValidateCanonicalTags reports whether every tag is already in its stored
+// form: lowercase, 2-20 characters of a-z, 0-9 and dash, each tag once. It
+// never normalises; the web form does that through resolveTags. The returned
+// error wraps ErrInvalidTags and names the first offending tag.
+func ValidateCanonicalTags(tags []string) error {
+	seen := make(map[string]struct{}, len(tags))
+	for _, t := range tags {
+		shown := t
+		if r := []rune(t); len(r) > maxQuotedTagRunes {
+			shown = string(r[:maxQuotedTagRunes]) + "..."
+		}
+		if len(t) < minTagLen || len(t) > maxTagLen {
+			return fmt.Errorf("%w: tag %q must be %d-%d characters", ErrInvalidTags, shown, minTagLen, maxTagLen)
+		}
+		if !tagRegex.MatchString(t) {
+			if l := strings.ToLower(t); l != t && tagRegex.MatchString(l) {
+				return fmt.Errorf("%w: tag %q must be lowercase: use %q", ErrInvalidTags, shown, l)
+			}
+			return fmt.Errorf("%w: tag %q may contain only a-z, 0-9 and -", ErrInvalidTags, shown)
+		}
+		if _, dup := seen[t]; dup {
+			return fmt.Errorf("%w: tag %q is duplicated", ErrInvalidTags, shown)
+		}
+		seen[t] = struct{}{}
+	}
+	return nil
+}
 
 // Sentinel errors for authorization checks.
 var (
 	ErrUnauthorized     = errors.New("unauthorized")
 	ErrResourceNotFound = errors.New("resource not found")
+	ErrInvalidTags      = errors.New("invalid tags")
 )
 
 // Role constants matching models.Membership.Role values.
@@ -52,12 +91,16 @@ func truncateFetchError(msg string) string {
 type ResourceServicer interface {
 	CreateResource(input CreateInput, userID uint, orgID *uint) (*models.NomadResource, error)
 	UpdateResource(id uint, input UpdateInput, userID uint) error
+	PatchResource(id, userID uint, in PatchInput) error
 	DeleteResource(id uint, userID uint) error
 	ToggleStar(resourceID, userID uint) (isStarred bool, starCount int64, err error)
 	ValidateOwnership(resourceID, userID uint) (bool, error)
 	ValidateOrgMembership(userID, orgID uint) (bool, error)
 	GenerateWebhookSecret() (string, error)
-	ResetWebhookSecret(resourceID, userID uint) error
+	ResetWebhookSecret(resourceID, userID uint) (string, error)
+	ListVersions(resourceID uint) ([]models.ResourceVersion, error)
+	AddVersion(resourceID, userID uint, version string) (*models.ResourceVersion, error)
+	RetryVersion(resourceID, userID uint, version string) (*models.ResourceVersion, error)
 	// AuthorizeResourceAction checks whether userID may perform an action on the
 	// given resource. Pass requireOwner=true for destructive actions (delete).
 	// Returns ErrResourceNotFound or ErrUnauthorized as appropriate.
@@ -70,7 +113,8 @@ type ResourceServicer interface {
 
 // ResourceService implements ResourceServicer
 type ResourceService struct {
-	db *gorm.DB
+	db        *gorm.DB
+	fetchFile FileFetcher
 }
 
 // NewResourceService creates a new resource service
@@ -81,7 +125,7 @@ func NewResourceService(db *gorm.DB) *ResourceService {
 // WithContext returns a service whose queries and transactions run on ctx, so
 // SQL log lines carry the request logger (and request_id) stored in it.
 func (s *ResourceService) WithContext(ctx context.Context) *ResourceService {
-	return &ResourceService{db: s.db.WithContext(ctx)}
+	return &ResourceService{db: s.db.WithContext(ctx), fetchFile: s.fetchFile}
 }
 
 // Package-level service variable for global access
@@ -117,78 +161,16 @@ type UpdateInput struct {
 	Tags          string
 }
 
-// CreateResource creates a new resource with business validation
-func (s *ResourceService) CreateResource(input CreateInput, userID uint, orgID *uint) (*models.NomadResource, error) {
-	// Business validation
-	if input.Name == "" || input.Version == "" {
-		return nil, fmt.Errorf("name and version are required")
-	}
-
-	// Check for duplicate resource name in namespace
-	var existing models.NomadResource
-	dbQuery := s.db.Where("name = ?", input.Name)
-	if orgID != nil {
-		dbQuery = dbQuery.Where("organization_id = ?", *orgID)
-	} else {
-		dbQuery = dbQuery.Where("user_id = ? AND organization_id IS NULL", userID)
-	}
-	if err := dbQuery.First(&existing).Error; err == nil {
-		return nil, fmt.Errorf("a resource with this name already exists in this namespace")
-	}
-
-	// License is accepted as-is (handler's responsibility to set default "Unknown")
-	license := input.License
-	if license == "" {
-		license = "Unknown"
-	}
-
-	// Process and validate tags
-	var tags []models.Tag
-	if input.Tags != "" {
-		for tn := range strings.SplitSeq(input.Tags, ",") {
-			tn = strings.ToLower(strings.TrimSpace(tn))
-			if len(tn) < 2 || len(tn) > 20 || !tagRegex.MatchString(tn) {
-				continue
-			}
-			var tag models.Tag
-			s.db.Where(models.Tag{Name: tn}).FirstOrCreate(&tag)
-			tags = append(tags, tag)
-		}
-	}
-
-	// Generate webhook secret
-	secret, err := s.GenerateWebhookSecret()
-	if err != nil {
-		return nil, fmt.Errorf("could not generate webhook secret: %w", err)
-	}
-
-	// Create resource
-	resource := models.NomadResource{
-		Name:           input.Name,
-		Type:           models.ResourceType(input.Type),
-		Description:    input.Description,
-		License:        license,
-		RepositoryURL:  input.RepositoryURL,
-		FilePath:       input.FilePath,
-		WebhookSecret:  secret,
-		UserID:         userID,
-		OrganizationID: orgID,
-		Tags:           tags,
-		Versions:       []models.ResourceVersion{{Version: input.Version}},
-	}
-
-	if err := s.db.Create(&resource).Error; err != nil {
-		return nil, fmt.Errorf("could not create resource: %w", err)
-	}
-
-	return &resource, nil
-}
-
 // UpdateResource updates an existing resource with authorization checks
 func (s *ResourceService) UpdateResource(id uint, input UpdateInput, userID uint) error {
 	// Authorize first (returns ErrResourceNotFound or ErrUnauthorized as appropriate)
 	if err := s.AuthorizeResourceAction(id, userID, false); err != nil {
 		return err
+	}
+
+	// Same rule as the API: a stored URL must be an allowed https git host.
+	if err := security.ValidateRepositoryURL(input.RepositoryURL); err != nil {
+		return ErrInvalidRepositoryURL
 	}
 
 	var resource models.NomadResource
@@ -249,18 +231,7 @@ func (s *ResourceService) UpdateResource(id uint, input UpdateInput, userID uint
 	resource.License = input.License
 
 	// Update tags
-	var tags []models.Tag
-	if input.Tags != "" {
-		for tn := range strings.SplitSeq(input.Tags, ",") {
-			tn = strings.ToLower(strings.TrimSpace(tn))
-			if len(tn) < 2 || len(tn) > 20 || !tagRegex.MatchString(tn) {
-				continue
-			}
-			var tag models.Tag
-			s.db.Where(models.Tag{Name: tn}).FirstOrCreate(&tag)
-			tags = append(tags, tag)
-		}
-	}
+	tags := s.resolveTags(input.Tags)
 
 	if err := s.db.Model(&resource).Association("Tags").Replace(tags); err != nil {
 		return fmt.Errorf("failed to update tags: %w", err)
@@ -436,29 +407,26 @@ func (s *ResourceService) RecordFetchFailed(resourceID uint, version, errMsg str
 	return nil
 }
 
-// ResetWebhookSecret resets the webhook secret for a resource.
-// Org members (not just owners) may reset the secret; personal resources
-// require the owning user.
-func (s *ResourceService) ResetWebhookSecret(resourceID, userID uint) error {
+// ResetWebhookSecret replaces the webhook secret of a resource and returns the
+// new value, which is shown to the caller once. Org members (not just owners)
+// may reset the secret; personal resources require the owning user. Only the
+// webhook_secret column (and updated_at) is written.
+func (s *ResourceService) ResetWebhookSecret(resourceID, userID uint) (string, error) {
 	if err := s.AuthorizeResourceAction(resourceID, userID, false); err != nil {
-		return err
+		return "", err
 	}
 
-	var resource models.NomadResource
-	if err := s.db.First(&resource, resourceID).Error; err != nil {
-		return ErrResourceNotFound
-	}
-
-	// Generate new secret
 	secret, err := s.GenerateWebhookSecret()
 	if err != nil {
-		return fmt.Errorf("could not generate webhook secret: %w", err)
+		return "", fmt.Errorf("could not generate webhook secret: %w", err)
 	}
 
-	resource.WebhookSecret = secret
-	if err := s.db.Save(&resource).Error; err != nil {
-		return fmt.Errorf("failed to save resource: %w", err)
+	res := s.db.Model(&models.NomadResource{}).Where("id = ?", resourceID).Update("webhook_secret", secret)
+	if res.Error != nil {
+		return "", fmt.Errorf("failed to save webhook secret: %w", res.Error)
 	}
-
-	return nil
+	if res.RowsAffected == 0 {
+		return "", ErrResourceNotFound
+	}
+	return secret, nil
 }
