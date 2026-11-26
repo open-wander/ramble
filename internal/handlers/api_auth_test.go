@@ -21,8 +21,6 @@ import (
 	"rmbl/internal/testutil/logtest"
 )
 
-func uptr(v uint) *uint { return &v }
-
 func TestTokenAllowsOrg(t *testing.T) {
 	orgA, orgB := uint(1), uint(2)
 	restricted := &models.APIToken{OrganizationID: &orgA}

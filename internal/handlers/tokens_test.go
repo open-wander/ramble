@@ -181,7 +181,7 @@ func TestTokens_LimitReached(t *testing.T) {
 	defer cleanupTokenTestData(t)
 	alice := createTestUser(t, "alice")
 	app := tokenApp(t, alice)
-	for i := 0; i < apitoken.MaxActiveTokens; i++ {
+	for i := range apitoken.MaxActiveTokens {
 		_, _, err := apitoken.Svc.Create(alice.ID, fmt.Sprintf("t%d", i), "read", nil, 30)
 		require.NoError(t, err)
 	}
