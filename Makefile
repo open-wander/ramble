@@ -31,14 +31,21 @@ swagger:
 openapi: swagger
 	go run ./cmd/openapi-convert -in api-docs/swagger.json -out api-docs/openapi.yaml
 
-# Regenerates the spec, fails if it differs from the committed one (so it fails
-# on a tree with uncommitted api-docs changes), then proves oapi-codegen can
-# generate a client from it and that the result compiles.
-openapi-check: openapi
-	git diff --exit-code api-docs/
-	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && \
-	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) -generate types,client -package rambleclient -o "$$tmp/client.go" api-docs/openapi.yaml && \
-	(cd "$$tmp" && go mod init rambleclientcheck && go get github.com/oapi-codegen/runtime@$(OAPI_RUNTIME_VERSION) && go build ./...) && echo "openapi client generates and compiles"
+# Go client for the /v1 API, used by the CLI. Generated from the OpenAPI spec;
+# the same command is the go:generate line in internal/cli/apiclient/doc.go.
+apiclient:
+	cd internal/cli/apiclient && go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) -generate types,client -package apiclient -o client.gen.go ../../../api-docs/openapi.yaml
+
+# Regenerates the spec and the CLI client, then fails if either differs from
+# what is committed (so it fails on a tree with uncommitted changes there).
+# The client compiles as part of go build ./... . Also checks that the pinned
+# generator and runtime versions agree with doc.go and go.mod.
+openapi-check: openapi apiclient
+	git diff --exit-code api-docs/ internal/cli/apiclient/
+	@grep -q "oapi-codegen@$(OAPI_CODEGEN_VERSION) " internal/cli/apiclient/doc.go || { echo "doc.go go:generate line does not use oapi-codegen $(OAPI_CODEGEN_VERSION)"; exit 1; }
+	@got=$$(go list -m -f '{{.Version}}' github.com/oapi-codegen/runtime); \
+	if [ "$$got" != "$(OAPI_RUNTIME_VERSION)" ]; then echo "oapi-codegen runtime: go.mod $$got, Makefile $(OAPI_RUNTIME_VERSION)"; exit 1; fi
+	@echo "openapi spec and CLI client are up to date"
 
 # Static analysis tools. Pinned so a PR never fails because a tool changed
 # overnight; the weekly security workflow runs both at master so new checks and
@@ -52,7 +59,7 @@ ACTIONLINT_VERSION ?= v1.7.12
 # check-pins fails if the two drift apart.
 SWAG_VERSION ?= v1.16.6
 TAILWIND_VERSION ?= v4.1.18
-# Only used by openapi-check; not in the Dockerfile, so not in check-pins.
+# Used by openapi and apiclient; not in the Dockerfile, so not in check-pins.
 OAPI_CODEGEN_VERSION ?= v2.9.0
 OAPI_RUNTIME_VERSION ?= v1.9.1
 
@@ -181,4 +188,4 @@ release:
 		*) echo "Invalid choice" ;; \
 	esac
 
-.PHONY: build run dev migrate test swagger openapi openapi-check bootstrap update security staticcheck gosec actionlint check-pins docker-build docker-push nomad-vars tailwind-install css-build css-watch deploy release release-patch release-minor release-major release-cli
+.PHONY: build run dev migrate test swagger openapi apiclient openapi-check bootstrap update security staticcheck gosec actionlint check-pins docker-build docker-push nomad-vars tailwind-install css-build css-watch deploy release release-patch release-minor release-major release-cli

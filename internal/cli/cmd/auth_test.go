@@ -13,6 +13,8 @@ import (
 
 	"rmbl/internal/cli/config"
 
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,9 +36,22 @@ func runCLI(t *testing.T, stdin string, args ...string) (string, string, error) 
 		rootCmd.SetArgs(nil)
 		authRegistry = ""
 		updateCheck = nil
+		resetFlags(rootCmd)
 	})
 	err := rootCmd.Execute()
 	return out.String(), errb.String(), err
+}
+
+// resetFlags returns every flag of cmd and its subcommands to its default, as
+// cobra keeps flag values between Execute calls on the shared command tree.
+func resetFlags(cmd *cobra.Command) {
+	cmd.Flags().VisitAll(func(f *pflag.Flag) {
+		_ = f.Value.Set(f.DefValue)
+		f.Changed = false
+	})
+	for _, c := range cmd.Commands() {
+		resetFlags(c)
+	}
 }
 
 func setupRegistry(t *testing.T, url string) {

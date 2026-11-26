@@ -59,6 +59,19 @@ func TokenURLAllowed(rawURL string) error {
 	return fmt.Errorf("refusing to send a token to %s: use https (plain http is allowed only for localhost)", u.Scheme+"://"+u.Host)
 }
 
+// TokenHTTPClient returns the only HTTP client that may carry a bearer token:
+// TLS 1.2+, a 30 second timeout and no redirect following, so the token cannot
+// leave the host it was sent to. Callers must still check TokenURLAllowed.
+func TokenHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+		},
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+}
+
 // CurrentUser calls GET /v1/user with token as the Bearer credential. It
 // refuses plain-http non-loopback registries and never follows redirects, so
 // the token cannot leave the configured host.
@@ -73,13 +86,7 @@ func (c *Client) CurrentUser(ctx context.Context, token string) (*CurrentUser, e
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	hc := &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
-		},
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
+	hc := TokenHTTPClient()
 	resp, err := hc.Do(req) // #nosec G704 -- BaseURL is the user's configured registry, checked by TokenURLAllowed
 	if err != nil {
 		// Do's error embeds the URL, which never contains the token.

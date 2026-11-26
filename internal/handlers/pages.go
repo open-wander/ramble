@@ -72,6 +72,8 @@ func getDocSections() []DocSection {
 				{Path: "cli/pack", Title: "Pack Commands"},
 				{Path: "cli/job", Title: "Job Commands"},
 				{Path: "cli/registry", Title: "Registry Commands"},
+				{Path: "cli/auth", Title: "Authentication Commands"},
+				{Path: "cli/publish", Title: "Publish and Delete"},
 				{Path: "cli/cache", Title: "Cache Commands"},
 			},
 		},
@@ -170,6 +172,8 @@ func getPageTitle(page string) string {
 		"cli/pack":        "Pack Commands",
 		"cli/job":         "Job Commands",
 		"cli/registry":    "Registry Commands",
+		"cli/auth":        "Authentication Commands",
+		"cli/publish":     "Publish and Delete",
 		"cli/cache":       "Cache Commands",
 		"api":             "API Reference",
 	}

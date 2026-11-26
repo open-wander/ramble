@@ -347,28 +347,38 @@ func statusError(resp *http.Response) error {
 // current shape {"error":{"code":"...","message":"..."}} and the older
 // {"error":"..."}. Any other body yields "".
 func errorMessage(resp *http.Response) string {
+	b, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
+	if err != nil && len(b) == 0 {
+		return ""
+	}
+	return ErrorMessageFromBody(b)
+}
+
+// ErrorMessageFromBody extracts the sanitised message from a /v1 JSON error
+// body, or returns "" when the body has no recognisable message.
+func ErrorMessageFromBody(b []byte) string {
 	var body struct {
 		Error json.RawMessage `json:"error"`
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxErrorBody)).Decode(&body); err != nil {
+	if err := json.Unmarshal(b, &body); err != nil {
 		return ""
 	}
 	var legacy string
 	if json.Unmarshal(body.Error, &legacy) == nil {
-		return printable(legacy)
+		return Printable(legacy)
 	}
 	var obj struct {
 		Message string `json:"message"`
 	}
 	if json.Unmarshal(body.Error, &obj) == nil {
-		return printable(obj.Message)
+		return Printable(obj.Message)
 	}
 	return ""
 }
 
-// printable drops control characters from a server-supplied message, so a
+// Printable drops control characters from a server-supplied message, so a
 // registry cannot send terminal escape sequences to the user's terminal.
-func printable(s string) string {
+func Printable(s string) string {
 	return strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) {
 			return -1

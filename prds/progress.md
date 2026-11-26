@@ -1174,3 +1174,20 @@ used by errorMessage) + test row; login test proves the URL is refused before an
 Carry to 16.2: RAMBLE_TOKEN applies to every registry, so every token-bearing call must go through the
 TokenURLAllowed + no-redirect client, never a plain http.Client.
 Verified: local CI mirror green (database/handlers/apitoken re-run after testcontainers timeouts).
+
+## 2026-11-26 — 16.2 Generated client, publish and delete; Phase 16 collapsed
+
+internal/cli/apiclient: client.gen.go (oapi-codegen v2.9.0, types+client), doc.go (go:generate), new.go (New is
+the only constructor: empty token refused, pack.TokenURLAllowed, pack.TokenHTTPClient with no redirects, Bearer
+via request editor, response bodies capped at 1 MiB). github.com/oapi-codegen/runtime v1.9.1 direct dependency.
+Makefile: `apiclient` target; openapi-check regenerates spec + client and git-diffs both, and checks the doc.go
+generator version and go.mod runtime version against the pins (the temp-module build is gone).
+internal/pack exports TokenHTTPClient, Printable, ErrorMessageFromBody (one copy each).
+internal/cli/cmd/publish.go: pack|job publish (create on 404 and print webhook secret once; else add version;
+type mismatch error; namespace defaults to token org, else username, via GET /v1/user) and pack|job delete
+(NS/N validated, type checked, confirm on a terminal unless --yes, refuse on non-terminal stdin).
+runCLI resets cobra flags between runs (shared command tree keeps flag values). docs/cli/publish.md + pages.
+Advisor review: MINOR. Orchestrator: plain-http test used an unused counting server (vacuous) -> registry host
+.invalid, refusal asserted; job/pack name default drops .nomad.hcl/.nomad/.hcl (web.nomad.hcl -> web) +
+TestDefaultName + docs; delete of a missing resource says "<kind> NS/N not found".
+Verified: local CI mirror green (testcontainers timeouts re-run). Phase 16 collapsed.

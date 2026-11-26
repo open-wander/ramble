@@ -39,6 +39,8 @@ func GenerateSitemap(c *fiber.Ctx) error {
 	xml.WriteString(sitemapURL(baseURL+"/docs/cli/pack", "", "monthly", "0.6"))
 	xml.WriteString(sitemapURL(baseURL+"/docs/cli/job", "", "monthly", "0.6"))
 	xml.WriteString(sitemapURL(baseURL+"/docs/cli/registry", "", "monthly", "0.6"))
+	xml.WriteString(sitemapURL(baseURL+"/docs/cli/auth", "", "monthly", "0.6"))
+	xml.WriteString(sitemapURL(baseURL+"/docs/cli/publish", "", "monthly", "0.6"))
 	xml.WriteString(sitemapURL(baseURL+"/docs/cli/cache", "", "monthly", "0.6"))
 
 	// All resources

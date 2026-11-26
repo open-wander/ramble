@@ -64,4 +64,5 @@ The CLI respects standard Nomad environment variables:
 - [Job Commands](/docs/cli/job) - Run and validate job files
 - [Registry Commands](/docs/cli/registry) - Manage registries
 - [Authentication Commands](/docs/cli/auth) - Log in and out of a registry
+- [Publish and Delete](/docs/cli/publish) - Publish packs and jobs, delete them
 - [Cache Commands](/docs/cli/cache) - Manage local cache
