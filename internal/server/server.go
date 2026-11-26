@@ -259,7 +259,7 @@ func useSessionMiddleware(app *fiber.App, version string) {
 // registerRoutes registers every route. It touches no DB, session or template
 // state, so a test can call it on a bare app and inspect the route table.
 func registerRoutes(app *fiber.App) {
-	// /v1 API (added by later tasks). Per route, never app.Use or a group that
+	// /v1 API. Per route, never app.Use or a group that
 	// includes /admin:
 	//   apiWriteLimiter := handlers.NewAPIWriteLimiter() // ONE per registerRoutes
 	//   app.Post("/v1/...", handlers.RequireAPIToken("write"), apiWriteLimiter, h)

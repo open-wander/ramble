@@ -846,3 +846,22 @@ PATTERN: htmx - main.html swaps 4xx/5xx globally; a row-targeted hx-delete must 
 PATTERN: tooling - the Tailwind v4 standalone binary is SIGKILLed (exit 137) on this macOS until ad-hoc re-signed:
 `codesign --force --sign - tailwindcss` (gitignored local binary). New Tailwind classes need `make css-build` and
 the rebuilt public/css/style.css committed.
+
+## 2026-11-26 — Phase 12 sweep (invariants + comments)
+
+Driver: scratchpad overlay script, 41 exact-match breaks, each in the insecure direction, compile-safe;
+working tree checked unchanged after every run. Result: 36 killed directly; touch-interval re-run after a
+NOMATCH (search string missed `)`) -> killed.
+Survivors and verdicts:
+- svc-cap-lock (FOR UPDATE -> FOR SHARE): refuted; TestCreate_CapConcurrent fails 14/15 runs (probabilistic).
+- tok-org-zero (org id 0 accepted by the form parser): equivalent; the service rejects org 0 with the same 403.
+- auth-userid-overwrite / auth-user-overwrite: GAP -> TestRequireAPIToken_TokenUserOverridesSessionUser
+  (cookie-user locals set before RequireAPIToken; handler must see the token user). Both mutants now red.
+- route-verified (RequireVerifiedEmail dropped from POST /settings/tokens): GAP ->
+  TestRegisterRoutes_TokenWritesRequireVerifiedEmail (route table, reflect pointer match, POST and DELETE). Red.
+- svc-generate-bias (b >= 248 -> b >= 255): GAP (user asked for it) -> TestGenerate_Uniform, chi-square over
+  800k chars, threshold 140 (61 df); passes 3/3, mutant scores 4774.
+Comments: Phase 12 code carried no task/requirement ids; removed "(added by later tasks)" in server.go.
+The 9-line RequireAPIToken doc comment is all security contract: kept.
+Verified: build, vet -tags=security, go test -tags=security ./... (apitoken failed once with a testcontainers
+reaper start error - infrastructure, passed on re-run), make gosec exit 0, Nosec 37.

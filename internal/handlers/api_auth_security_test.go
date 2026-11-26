@@ -191,3 +191,31 @@ func TestRequireAPIToken_OrgRestrictedTokenNarrowsMemberships(t *testing.T) {
 	assert.Equal(t, 200, status)
 	assert.Equal(t, strings.Join(both, ","), body)
 }
+
+// A request that carries both a session cookie and a Bearer token must act as
+// the token's user. The pre-middleware stands in for the session middleware,
+// which sets the same locals for the cookie's user.
+func TestRequireAPIToken_TokenUserOverridesSessionUser(t *testing.T) {
+	f := newAPIFixture(t)
+	cookieUser := mkAPIUser(t, "alice", true, "")
+	tokenUser := mkAPIUser(t, "bob", true, "")
+	plain, _ := mkAPIToken(t, tokenUser, models.ScopeRead)
+
+	f.app.Get("/v1/_who",
+		func(c *fiber.Ctx) error {
+			c.Locals("UserID", cookieUser.ID)
+			c.Locals("User", cookieUser)
+			return c.Next()
+		},
+		RequireAPIToken(models.ScopeRead),
+		func(c *fiber.Ctx) error {
+			id := c.Locals("UserID").(uint)
+			u := c.Locals("User").(models.User)
+			return c.SendString(strconv.FormatUint(uint64(id), 10) + "/" + strconv.FormatUint(uint64(u.ID), 10))
+		})
+
+	status, body := doReq(t, f.app, "GET", "/v1/_who", "Bearer "+plain)
+	require.Equal(t, 200, status)
+	want := strconv.FormatUint(uint64(tokenUser.ID), 10)
+	assert.Equal(t, want+"/"+want, body)
+}

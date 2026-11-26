@@ -438,3 +438,30 @@ func TestTouchLastUsed(t *testing.T) {
 	require.NoError(t, svc.TouchLastUsed(tok.ID))
 	assert.True(t, last().Equal(clock))
 }
+
+// TestGenerate_Uniform fails if the base62 mapping becomes biased, for
+// example by narrowing the rejection of bytes >= 248 (62*4). Pearson's
+// chi-square over 800,000 characters, 61 degrees of freedom: a uniform
+// source stays far below 140 (p < 1e-7); the modulo-bias mutation scores
+// in the thousands.
+func TestGenerate_Uniform(t *testing.T) {
+	counts := make([]int, len(base62))
+	total := 0
+	for range 20000 {
+		tok, err := Generate()
+		require.NoError(t, err)
+		for i := len(TokenPrefix); i < len(tok); i++ {
+			idx := strings.IndexByte(base62, tok[i])
+			require.GreaterOrEqual(t, idx, 0)
+			counts[idx]++
+			total++
+		}
+	}
+	expected := float64(total) / float64(len(base62))
+	chi := 0.0
+	for _, c := range counts {
+		d := float64(c) - expected
+		chi += d * d / expected
+	}
+	assert.Less(t, chi, 140.0, "chi-square %.1f over %d chars", chi, total)
+}
