@@ -1202,3 +1202,29 @@ Killed: https-only, no-host, no redirects, empty-token refusal, client URL refus
 only for the same URL, RAMBLE_TOKEN precedence, delete needs a terminal or --yes, y/yes only, pack/job kind check,
 control characters stripped, registry list never prints the token.
 Comments: no stale references; nothing over 10 lines outside swag/generated code.
+
+## 2026-11-27 — 17.1-17.3 Terraform provider (open-wander/terraform-provider-ramble)
+
+17.1 (operator): repo from hashicorp/terraform-provider-scaffolding-framework, DCO app, ruleset kept as
+.github/rulesets/main.json in both repos (ramble#72 too). Required checks pinned by integration_id (DCO 1861,
+GitHub Actions 15368): ramble DCO/test/security-scan; provider DCO/build/generate/unit/acceptance. A ruleset file
+is applied only by re-importing it (delete the old ruleset first or a second one is added).
+17.2a (provider#4): template cleanup (HashiCorp/IBM headers, copywrite, META.d, CODEOWNERS, triage/lock workflows;
+LICENSE = Ramble's MPL-2.0), provider config address/token (RAMBLE_ADDR/RAMBLE_TOKEN), client generated from a
+copy of api-docs/openapi.yaml (oapi-codegen v2.9.0) with the CLI's token rules, acceptance env: Postgres in Docker
++ Ramble built from ../ramble (CI: checkout at ramble_ref, default main), seeder writes user tfacc + write token
+(and tfacc-member) to .testacc.env. CI: build, generate, unit, acceptance matrix (Terraform 1.16, 1.17,
+OpenTofu) + aggregate `acceptance`. golangci-lint pinned (v2.15.0).
+17.2b (provider#5): ramble_resource + data source; version change adds a version; webhook_secret from create only;
+case-only name/namespace change is in place (requiresReplaceUnlessCaseOnly); version length in bytes like Ramble.
+17.3 (provider#6): ramble_organization, ramble_organization_member, ramble_organization data source (members null
+when the token owner is not a member; member_count on the data source only); examples/complete.
+CI caught: org created_at differed after import on Linux (create response in-memory nanoseconds vs stored
+microseconds; macOS clocks have microsecond resolution, so local runs pass). Provider re-reads after create;
+Ramble's CreateOrgAPI now renders from the stored row like CreateResourceAPI
+(TestCreateOrgAPI_CreatedAtMatchesGet - can only fail on Linux).
+Known gaps: 403 paths (token owner not a member) untested in the provider (needs a second token); Update with
+PATCH ok + version POST failing untested.
+PATTERN: time - a create response built from the in-memory row has nanosecond timestamps on Linux; render from
+the stored row. macOS hides it (microsecond clock), so a local test cannot catch it.
+PATTERN: provider - tfplugindocs needs a real terraform binary (an OpenTofu shim fails on registry.opentofu.org).

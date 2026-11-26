@@ -129,6 +129,15 @@ func CreateOrgAPI(c *fiber.Ctx) error {
 
 	AuditLog(c, "org.create", "organization", org.ID, org.Name, nil)
 
+	// Render from the stored row, as GET does, so both agree on timestamp
+	// precision: the in-memory copy has nanoseconds, the database keeps
+	// microseconds. The row is committed, so a failed reload is logged and
+	// the in-memory copy returned.
+	if stored, err := orgsvc.GetByID(reqDB(c), org.ID); err == nil {
+		org = stored
+	} else {
+		logger.FromContext(c.UserContext()).Error("org.reload_failed", logger.Err(err))
+	}
 	return respondOrg(c, fiber.StatusCreated, org)
 }
 
