@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -453,4 +454,175 @@ func TestDeleteOrg_FailureRollsBack(t *testing.T) {
 	_, err = GetByID(database.DB, o.ID)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, liveMembers(t, o.ID))
+}
+
+func membershipRows(t *testing.T, orgID, userID uint) []models.Membership {
+	t.Helper()
+	var rows []models.Membership
+	require.NoError(t, database.DB.Unscoped().Where("user_id = ? AND organization_id = ?", userID, orgID).Find(&rows).Error)
+	return rows
+}
+
+func TestFindUser(t *testing.T) {
+	u := mkUser(t, "Fu-Mixed")
+	got, err := FindUser(database.DB, "fu-mixed")
+	require.NoError(t, err)
+	assert.Equal(t, u.ID, got.ID)
+	_, err = FindUser(database.DB, "fu-nobody")
+	require.ErrorIs(t, err, ErrUserNotFound)
+}
+
+func TestSetMemberRole(t *testing.T) {
+	owner := mkUser(t, "sr-owner")
+	other := mkUser(t, "sr-other")
+	target := mkUser(t, "Sr-Target")
+	plain := mkUser(t, "sr-plain")
+	o := mkOrg(t, "sr-org", owner)
+	_, err := AddMember(database.DB, o.ID, plain.Username, RoleMember)
+	require.NoError(t, err)
+
+	t.Run("rejections write nothing", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			actor    uint
+			username string
+			role     string
+			want     error
+		}{
+			{"role admin", owner.ID, target.Username, "admin", ErrInvalidRole},
+			{"role empty", owner.ID, target.Username, "", ErrInvalidRole},
+			{"role wrong case", owner.ID, target.Username, "Owner", ErrInvalidRole},
+			{"unknown user", owner.ID, "sr-nobody", RoleMember, ErrUserNotFound},
+			{"actor is member", plain.ID, target.Username, RoleMember, ErrNotOwner},
+			{"actor outsider", other.ID, target.Username, RoleMember, ErrNotOwner},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				_, err := SetMemberRole(database.DB, o.ID, tt.actor, tt.username, tt.role)
+				require.ErrorIs(t, err, tt.want)
+				assert.Empty(t, membershipRows(t, o.ID, target.ID))
+			})
+		}
+	})
+
+	t.Run("unknown org", func(t *testing.T) {
+		_, err := SetMemberRole(database.DB, 0, owner.ID, target.Username, RoleMember)
+		require.ErrorIs(t, err, ErrNotFound)
+	})
+
+	t.Run("add returns stored username", func(t *testing.T) {
+		res, err := SetMemberRole(database.DB, o.ID, owner.ID, "sr-target", RoleMember)
+		require.NoError(t, err)
+		assert.Equal(t, SetRoleResult{Username: "Sr-Target", Role: RoleMember, Created: true}, res)
+	})
+	t.Run("same role is a no-op", func(t *testing.T) {
+		res, err := SetMemberRole(database.DB, o.ID, owner.ID, target.Username, RoleMember)
+		require.NoError(t, err)
+		assert.False(t, res.Created)
+		assert.Equal(t, RoleMember, res.OldRole)
+	})
+	t.Run("promote", func(t *testing.T) {
+		res, err := SetMemberRole(database.DB, o.ID, owner.ID, target.Username, RoleOwner)
+		require.NoError(t, err)
+		assert.Equal(t, RoleMember, res.OldRole)
+		assert.Equal(t, RoleOwner, membershipRows(t, o.ID, target.ID)[0].Role)
+	})
+	t.Run("demote with two owners", func(t *testing.T) {
+		res, err := SetMemberRole(database.DB, o.ID, owner.ID, target.Username, RoleMember)
+		require.NoError(t, err)
+		assert.Equal(t, RoleOwner, res.OldRole)
+		assert.Equal(t, RoleMember, membershipRows(t, o.ID, target.ID)[0].Role)
+	})
+	t.Run("demote last owner refused", func(t *testing.T) {
+		_, err := SetMemberRole(database.DB, o.ID, owner.ID, owner.Username, RoleMember)
+		require.ErrorIs(t, err, ErrLastOwner)
+		role, err := MemberRole(database.DB, o.ID, owner.ID)
+		require.NoError(t, err)
+		assert.Equal(t, RoleOwner, role)
+	})
+	t.Run("restore soft-deleted keeps one row", func(t *testing.T) {
+		require.NoError(t, RemoveMember(database.DB, o.ID, target.ID))
+		res, err := SetMemberRole(database.DB, o.ID, owner.ID, target.Username, RoleOwner)
+		require.NoError(t, err)
+		assert.True(t, res.Created)
+		rows := membershipRows(t, o.ID, target.ID)
+		require.Len(t, rows, 1)
+		assert.False(t, rows[0].DeletedAt.Valid)
+		assert.Equal(t, RoleOwner, rows[0].Role)
+	})
+}
+
+func TestSetMemberRole_ConcurrentDemotionKeepsAnOwner(t *testing.T) {
+	a := mkUser(t, "cd-a")
+	b := mkUser(t, "cd-b")
+	o := mkOrg(t, "cd-org", a)
+	_, err := AddMember(database.DB, o.ID, b.Username, RoleOwner)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	for i, p := range []struct {
+		actor  uint
+		target string
+	}{{a.ID, b.Username}, {b.ID, a.Username}} {
+		wg.Go(func() {
+			_, errs[i] = SetMemberRole(database.DB, o.ID, p.actor, p.target, RoleMember)
+		})
+	}
+	wg.Wait()
+
+	var owners int64
+	require.NoError(t, database.DB.Model(&models.Membership{}).Where("organization_id = ? AND role = ?", o.ID, RoleOwner).Count(&owners).Error)
+	assert.EqualValues(t, 1, owners)
+	// The loser is refused either as a demoted actor or as the last owner.
+	var refused int
+	for _, e := range errs {
+		if errors.Is(e, ErrNotOwner) || errors.Is(e, ErrLastOwner) {
+			refused++
+		}
+	}
+	assert.Equal(t, 1, refused, "%v", errs)
+}
+
+func TestListMembers(t *testing.T) {
+	owner := mkUser(t, "lm-owner")
+	bravo := mkUser(t, "lm-Bravo")
+	alpha := mkUser(t, "lm-alpha")
+	gone := mkUser(t, "lm-gone")
+	deleted := mkUser(t, "lm-deleted")
+	o := mkOrg(t, "lm-org", owner)
+	for _, u := range []models.User{bravo, alpha, gone, deleted} {
+		_, err := AddMember(database.DB, o.ID, u.Username, RoleMember)
+		require.NoError(t, err)
+	}
+	require.NoError(t, RemoveMember(database.DB, o.ID, gone.ID))
+	require.NoError(t, database.DB.Delete(&deleted).Error)
+
+	got, err := ListMembers(database.DB, o.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []Member{
+		{"lm-alpha", RoleMember}, {"lm-Bravo", RoleMember}, {"lm-owner", RoleOwner},
+	}, got)
+
+	empty, err := ListMembers(database.DB, 0)
+	require.NoError(t, err)
+	assert.NotNil(t, empty)
+	assert.Empty(t, empty)
+}
+
+// An owner whose user account is soft-deleted does not keep the organisation
+// owned: the last live owner can neither leave nor be demoted, while removing
+// the deleted user's membership is still allowed.
+func TestLastOwner_IgnoresDeletedUsers(t *testing.T) {
+	owner := mkUser(t, "lo-owner")
+	ghost := mkUser(t, "lo-ghost")
+	o := mkOrg(t, "lo-org", owner)
+	_, err := AddMember(database.DB, o.ID, "lo-ghost", RoleOwner)
+	require.NoError(t, err)
+	require.NoError(t, database.DB.Delete(&ghost).Error)
+
+	require.ErrorIs(t, RemoveMember(database.DB, o.ID, owner.ID), ErrLastOwner)
+	_, err = SetMemberRole(database.DB, o.ID, owner.ID, "lo-owner", RoleMember)
+	require.ErrorIs(t, err, ErrLastOwner)
+	require.NoError(t, RemoveMember(database.DB, o.ID, ghost.ID))
 }

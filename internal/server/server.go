@@ -435,6 +435,9 @@ func registerRoutes(app *fiber.App) {
 	app.Get("/v1/orgs/:name", handlers.RequireAPIToken(models.ScopeRead), handlers.GetOrgAPI)
 	app.Patch("/v1/orgs/:name", handlers.RequireAPIToken(models.ScopeWrite), apiWriteLimiter, handlers.UpdateOrgAPI)
 	app.Delete("/v1/orgs/:name", handlers.RequireAPIToken(models.ScopeWrite), apiWriteLimiter, handlers.DeleteOrgAPI)
+	app.Get("/v1/orgs/:name/members", handlers.RequireAPIToken(models.ScopeRead), handlers.ListOrgMembersAPI)
+	app.Put("/v1/orgs/:name/members/:username", handlers.RequireAPIToken(models.ScopeWrite), apiWriteLimiter, handlers.PutOrgMemberAPI)
+	app.Delete("/v1/orgs/:name/members/:username", handlers.RequireAPIToken(models.ScopeWrite), apiWriteLimiter, handlers.RemoveOrgMemberAPI)
 	app.Get("/v1/namespaces/:namespace/resources/:name", handlers.RequireAPIToken(models.ScopeRead), handlers.GetResourceByNameAPI)
 	// Unmatched /v1 paths answer with the JSON 404 instead of falling into the
 	// /:username catch-alls below. Register every future /v1 route above this.

@@ -30,6 +30,9 @@ func newOrgAPIApp(t *testing.T, writeLimiter fiber.Handler) *fiber.App {
 	app.Get("/v1/orgs/:name", RequireAPIToken(models.ScopeRead), GetOrgAPI)
 	app.Patch("/v1/orgs/:name", RequireAPIToken(models.ScopeWrite), writeLimiter, UpdateOrgAPI)
 	app.Delete("/v1/orgs/:name", RequireAPIToken(models.ScopeWrite), writeLimiter, DeleteOrgAPI)
+	app.Get("/v1/orgs/:name/members", RequireAPIToken(models.ScopeRead), ListOrgMembersAPI)
+	app.Put("/v1/orgs/:name/members/:username", RequireAPIToken(models.ScopeWrite), writeLimiter, PutOrgMemberAPI)
+	app.Delete("/v1/orgs/:name/members/:username", RequireAPIToken(models.ScopeWrite), writeLimiter, RemoveOrgMemberAPI)
 	return app
 }
 
@@ -369,4 +372,246 @@ func TestDeleteOrgAPI(t *testing.T) {
 		assert.Equal(t, 404, status, body)
 		assert.Len(t, auditRows(t, "org.delete", org.ID), 1)
 	})
+}
+
+type memberFixture struct {
+	app                                    *fiber.App
+	org                                    models.Organization
+	owner, member, outsider, unverified    models.User
+	ownerW, ownerR, memberW, memberR, outW string
+	unvW                                   string
+}
+
+func newMemberFixture(t *testing.T) memberFixture {
+	t.Helper()
+	f := memberFixture{app: orgAPIApp(t)}
+	f.owner = mkAPIUser(t, "alice", true, "")
+	f.member = mkAPIUser(t, "bob", true, "")
+	f.outsider = mkAPIUser(t, "carol", true, "")
+	f.unverified = mkAPIUser(t, "dave", false, "")
+	f.org = orgsvcCreate(t, f.owner, uniqueName(t, "mem"))
+	_, err := orgsvc.AddMember(database.DB, f.org.ID, f.member.Username, orgsvc.RoleMember)
+	require.NoError(t, err)
+	_, err = orgsvc.AddMember(database.DB, f.org.ID, f.unverified.Username, orgsvc.RoleOwner)
+	require.NoError(t, err)
+	f.ownerW, _ = mkAPIToken(t, f.owner, models.ScopeWrite)
+	f.ownerR, _ = mkAPIToken(t, f.owner, models.ScopeRead)
+	f.memberW, _ = mkAPIToken(t, f.member, models.ScopeWrite)
+	f.memberR, _ = mkAPIToken(t, f.member, models.ScopeRead)
+	f.outW, _ = mkAPIToken(t, f.outsider, models.ScopeWrite)
+	f.unvW, _ = mkAPIToken(t, f.unverified, models.ScopeWrite)
+	return f
+}
+
+func (f memberFixture) path(username string) string {
+	return "/v1/orgs/" + f.org.Name + "/members/" + username
+}
+
+func roleOf(t *testing.T, orgID uint, u models.User) string {
+	t.Helper()
+	role, err := orgsvc.MemberRole(database.DB, orgID, u.ID)
+	if err != nil {
+		return ""
+	}
+	return role
+}
+
+func TestListOrgMembersAPI(t *testing.T) {
+	f := newMemberFixture(t)
+	path := "/v1/orgs/" + f.org.Name + "/members"
+	otherOrg := orgsvcCreate(t, f.owner, uniqueName(t, "oth"))
+	restricted, _, err := apitoken.Svc.Create(f.owner.ID, "r", models.ScopeRead, &otherOrg.ID, 30)
+	require.NoError(t, err)
+	outR, _ := mkAPIToken(t, f.outsider, models.ScopeRead)
+
+	rejections := []struct {
+		name   string
+		token  string
+		path   string
+		status int
+		code   string
+	}{
+		{"no token", "", path, 401, "unauthorized"},
+		{"non-member", outR, path, 403, "forbidden"},
+		{"restricted token", restricted, path, 403, "forbidden"},
+		{"unknown org", f.ownerR, "/v1/orgs/" + uniqueName(t, "nope") + "/members", 404, "not_found"},
+	}
+	for _, tt := range rejections {
+		t.Run(tt.name, func(t *testing.T) {
+			status, body := getJSON(t, f.app, tt.token, tt.path)
+			require.Equal(t, tt.status, status, body)
+			assert.Equal(t, tt.code, apiErrCode(t, body))
+		})
+	}
+
+	for name, tok := range map[string]string{"owner": f.ownerR, "member": f.memberR} {
+		t.Run(name+" lists", func(t *testing.T) {
+			status, body := getJSON(t, f.app, tok, path)
+			require.Equal(t, 200, status, body)
+			var got []OrgMemberResponse
+			require.NoError(t, json.Unmarshal([]byte(body), &got))
+			assert.Equal(t, []OrgMemberResponse{
+				{f.owner.Username, "owner"}, {f.member.Username, "member"}, {f.unverified.Username, "owner"},
+			}, got)
+			assert.NotContains(t, body, "email")
+		})
+	}
+}
+
+func TestPutOrgMemberAPI(t *testing.T) {
+	f := newMemberFixture(t)
+
+	rejections := []struct {
+		name   string
+		token  string
+		path   string
+		body   string
+		status int
+		code   string
+	}{
+		{"no token", "", f.path(f.outsider.Username), `{"role":"member"}`, 401, "unauthorized"},
+		{"read scope", f.ownerR, f.path(f.outsider.Username), `{"role":"member"}`, 403, "insufficient_scope"},
+		{"unverified email", f.unvW, f.path(f.outsider.Username), `{"role":"member"}`, 403, "email_unverified"},
+		{"member", f.memberW, f.path(f.outsider.Username), `{"role":"member"}`, 403, "forbidden"},
+		{"non-member", f.outW, f.path(f.outsider.Username), `{"role":"owner"}`, 403, "forbidden"},
+		{"unknown org", f.ownerW, "/v1/orgs/" + uniqueName(t, "nope") + "/members/x", `{"role":"member"}`, 404, "not_found"},
+		{"unknown user", f.ownerW, f.path("nobody-" + uniqueName(t, "u")), `{"role":"member"}`, 404, "not_found"},
+		{"role admin", f.ownerW, f.path(f.outsider.Username), `{"role":"admin"}`, 422, "invalid_role"},
+		{"role empty", f.ownerW, f.path(f.outsider.Username), `{"role":""}`, 422, "invalid_role"},
+		{"role missing", f.ownerW, f.path(f.outsider.Username), `{}`, 422, "invalid_role"},
+		{"role wrong case", f.ownerW, f.path(f.outsider.Username), `{"role":"Owner"}`, 422, "invalid_role"},
+		{"unknown field", f.ownerW, f.path(f.outsider.Username), `{"role":"member","x":1}`, 400, "bad_request"},
+		{"malformed", f.ownerW, f.path(f.outsider.Username), `{"role":`, 400, "bad_request"},
+		{"empty body", f.ownerW, f.path(f.outsider.Username), ``, 400, "bad_request"},
+	}
+	for _, tt := range rejections {
+		t.Run(tt.name, func(t *testing.T) {
+			status, body := sendJSON(t, f.app, "PUT", tt.token, tt.path, tt.body)
+			require.Equal(t, tt.status, status, body)
+			assert.Equal(t, tt.code, apiErrCode(t, body))
+		})
+	}
+	assert.Empty(t, roleOf(t, f.org.ID, f.outsider))
+	assert.Equal(t, "member", roleOf(t, f.org.ID, f.member))
+	assert.Empty(t, auditRows(t, "org.add_member", f.org.ID))
+
+	t.Run("unknown user message names the user", func(t *testing.T) {
+		_, body := sendJSON(t, f.app, "PUT", f.ownerW, f.path("nobody-x"), `{"role":"member"}`)
+		assert.Contains(t, body, "user not found")
+	})
+
+	t.Run("add by mixed-case name", func(t *testing.T) {
+		status, body := sendJSON(t, f.app, "PUT", f.ownerW, f.path(strings.ToUpper(f.outsider.Username)), `{"role":"member"}`)
+		require.Equal(t, 200, status, body)
+		var got OrgMemberResponse
+		require.NoError(t, json.Unmarshal([]byte(body), &got))
+		assert.Equal(t, OrgMemberResponse{f.outsider.Username, "member"}, got)
+		rows := auditRows(t, "org.add_member", f.org.ID)
+		require.Len(t, rows, 1)
+		assert.Contains(t, rows[0].Details, `"member":"`+f.outsider.Username+`"`)
+		assert.Contains(t, rows[0].Details, `"role":"member"`)
+	})
+
+	t.Run("same role again is 200 without audit", func(t *testing.T) {
+		status, body := sendJSON(t, f.app, "PUT", f.ownerW, f.path(f.outsider.Username), `{"role":"member"}`)
+		require.Equal(t, 200, status, body)
+		assert.Len(t, auditRows(t, "org.add_member", f.org.ID), 1)
+		assert.Empty(t, auditRows(t, "org.change_member_role", f.org.ID))
+	})
+
+	t.Run("promote audits the change", func(t *testing.T) {
+		status, body := sendJSON(t, f.app, "PUT", f.ownerW, f.path(f.outsider.Username), `{"role":"owner"}`)
+		require.Equal(t, 200, status, body)
+		assert.Equal(t, "owner", roleOf(t, f.org.ID, f.outsider))
+		rows := auditRows(t, "org.change_member_role", f.org.ID)
+		require.Len(t, rows, 1)
+		assert.Contains(t, rows[0].Details, `"old_role":"member"`)
+		assert.Contains(t, rows[0].Details, `"new_role":"owner"`)
+		assert.Contains(t, rows[0].Details, `"member":"`+f.outsider.Username+`"`)
+	})
+
+	t.Run("restores a removed member", func(t *testing.T) {
+		require.NoError(t, orgsvc.RemoveMember(database.DB, f.org.ID, f.member.ID))
+		status, body := sendJSON(t, f.app, "PUT", f.ownerW, f.path(f.member.Username), `{"role":"member"}`)
+		require.Equal(t, 200, status, body)
+		assert.Equal(t, "member", roleOf(t, f.org.ID, f.member))
+		assert.Len(t, auditRows(t, "org.add_member", f.org.ID), 2)
+	})
+
+	t.Run("last owner demotion is 409", func(t *testing.T) {
+		// Leave a single owner.
+		for _, u := range []models.User{f.outsider, f.unverified} {
+			require.NoError(t, orgsvc.RemoveMember(database.DB, f.org.ID, u.ID))
+		}
+		status, body := sendJSON(t, f.app, "PUT", f.ownerW, f.path(f.owner.Username), `{"role":"member"}`)
+		require.Equal(t, 409, status, body)
+		assert.Equal(t, "last_owner", apiErrCode(t, body))
+		assert.Equal(t, "owner", roleOf(t, f.org.ID, f.owner))
+		// Re-asserting the owner role is still fine.
+		status, body = sendJSON(t, f.app, "PUT", f.ownerW, f.path(f.owner.Username), `{"role":"owner"}`)
+		assert.Equal(t, 200, status, body)
+	})
+}
+
+func TestRemoveOrgMemberAPI(t *testing.T) {
+	f := newMemberFixture(t)
+
+	rejections := []struct {
+		name   string
+		token  string
+		path   string
+		status int
+		code   string
+	}{
+		{"no token", "", f.path(f.member.Username), 401, "unauthorized"},
+		{"read scope", f.ownerR, f.path(f.member.Username), 403, "insufficient_scope"},
+		{"unverified email", f.unvW, f.path(f.member.Username), 403, "email_unverified"},
+		{"member", f.memberW, f.path(f.member.Username), 403, "forbidden"},
+		{"non-member", f.outW, f.path(f.member.Username), 403, "forbidden"},
+		{"unknown org", f.ownerW, "/v1/orgs/" + uniqueName(t, "nope") + "/members/x", 404, "not_found"},
+		{"unknown user", f.ownerW, f.path("nobody-x"), 404, "not_found"},
+		{"user not a member", f.ownerW, f.path(f.outsider.Username), 404, "not_found"},
+	}
+	for _, tt := range rejections {
+		t.Run(tt.name, func(t *testing.T) {
+			status, body := sendJSON(t, f.app, "DELETE", tt.token, tt.path, "")
+			require.Equal(t, tt.status, status, body)
+			assert.Equal(t, tt.code, apiErrCode(t, body))
+		})
+	}
+	assert.Equal(t, "member", roleOf(t, f.org.ID, f.member))
+	assert.Empty(t, auditRows(t, "org.remove_member", f.org.ID))
+
+	t.Run("owner removes", func(t *testing.T) {
+		status, body := sendJSON(t, f.app, "DELETE", f.ownerW, f.path(strings.ToUpper(f.member.Username)), "")
+		require.Equal(t, 204, status, body)
+		assert.Empty(t, body)
+		assert.Empty(t, roleOf(t, f.org.ID, f.member))
+		rows := auditRows(t, "org.remove_member", f.org.ID)
+		require.Len(t, rows, 1)
+		assert.Contains(t, rows[0].Details, `"member":"`+f.member.Username+`"`)
+		assert.Contains(t, rows[0].Details, `"member_id"`)
+
+		status, _ = sendJSON(t, f.app, "DELETE", f.ownerW, f.path(f.member.Username), "")
+		assert.Equal(t, 404, status)
+	})
+
+	t.Run("last owner is 409", func(t *testing.T) {
+		require.NoError(t, orgsvc.RemoveMember(database.DB, f.org.ID, f.unverified.ID))
+		status, body := sendJSON(t, f.app, "DELETE", f.ownerW, f.path(f.owner.Username), "")
+		require.Equal(t, 409, status, body)
+		assert.Equal(t, "last_owner", apiErrCode(t, body))
+		assert.Equal(t, "owner", roleOf(t, f.org.ID, f.owner))
+	})
+}
+
+func TestOrgMembersAPI_WriteLimiter(t *testing.T) {
+	app := newOrgAPIApp(t, NewAPIWriteLimiter())
+	u := mkAPIUser(t, "alice", true, "")
+	plain, _ := mkAPIToken(t, u, models.ScopeWrite)
+	var last int
+	for range 121 {
+		last, _ = sendJSON(t, app, "PUT", plain, "/v1/orgs/x/members/y", `{`)
+	}
+	assert.Equal(t, 429, last)
 }

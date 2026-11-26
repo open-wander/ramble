@@ -149,6 +149,114 @@ func ParseRole(s string) (string, error) {
 	return "", ErrInvalidRole
 }
 
+// FindUser looks a user up by username, ignoring case. A missing user returns
+// ErrUserNotFound.
+func FindUser(db *gorm.DB, username string) (models.User, error) {
+	var user models.User
+	if err := db.Where("LOWER(username) = LOWER(?)", username).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return models.User{}, ErrUserNotFound
+		}
+		return models.User{}, fmt.Errorf("org: load user: %w", err)
+	}
+	return user, nil
+}
+
+// Member is one live member of an organisation.
+type Member struct {
+	Username string
+	Role     string
+}
+
+// ListMembers returns the live members of the organisation ordered by
+// username, ignoring case. Deleted users are left out. The result is never nil.
+func ListMembers(db *gorm.DB, orgID uint) ([]Member, error) {
+	members := make([]Member, 0)
+	err := db.Model(&models.Membership{}).
+		Select("users.username AS username, memberships.role AS role").
+		Joins("JOIN users ON users.id = memberships.user_id AND users.deleted_at IS NULL").
+		Where("memberships.organization_id = ?", orgID).
+		Order("LOWER(users.username), users.id").
+		Scan(&members).Error
+	if err != nil {
+		return nil, fmt.Errorf("org: list members: %w", err)
+	}
+	return members, nil
+}
+
+// SetRoleResult describes what SetMemberRole did. OldRole is empty when the
+// membership was created or restored.
+type SetRoleResult struct {
+	Username string
+	Role     string
+	OldRole  string
+	Created  bool
+}
+
+// SetMemberRole adds the user to the organisation with the role, restoring a
+// soft-deleted membership, or changes the role of a live member. The actor
+// must be an owner, checked under the organisation row lock so a concurrently
+// demoted owner cannot still change members. Demoting the only owner returns
+// ErrLastOwner. The role is checked strictly with ParseRole.
+func SetMemberRole(db *gorm.DB, orgID, actorID uint, username, role string) (SetRoleResult, error) {
+	var res SetRoleResult
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&models.Organization{}, orgID).Error; err != nil {
+			return mapNotFound(err)
+		}
+		if err := RequireOwner(tx, orgID, actorID); err != nil {
+			return err
+		}
+		parsed, err := ParseRole(role)
+		if err != nil {
+			return err
+		}
+		role := parsed
+		user, err := FindUser(tx, username)
+		if err != nil {
+			return err
+		}
+		res = SetRoleResult{Username: user.Username, Role: role}
+
+		var m models.Membership
+		err = tx.Unscoped().Where("user_id = ? AND organization_id = ?", user.ID, orgID).First(&m).Error
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			res.Created = true
+			if err := tx.Create(&models.Membership{UserID: user.ID, OrganizationID: orgID, Role: role}).Error; err != nil {
+				return fmt.Errorf("org: create membership: %w", err)
+			}
+			return nil
+		case err != nil:
+			return fmt.Errorf("org: load membership: %w", err)
+		case m.DeletedAt.Valid:
+			res.Created = true
+			if err := tx.Unscoped().Model(&m).Updates(map[string]any{"deleted_at": nil, "role": role}).Error; err != nil {
+				return fmt.Errorf("org: restore membership: %w", err)
+			}
+			return nil
+		}
+
+		res.OldRole = m.Role
+		if m.Role == role {
+			return nil
+		}
+		if m.Role == RoleOwner {
+			if err := keepsAnOwner(tx, orgID, m.UserID); err != nil {
+				return err
+			}
+		}
+		if err := tx.Model(&m).Update("role", role).Error; err != nil {
+			return fmt.Errorf("org: update role: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return SetRoleResult{}, err
+	}
+	return res, nil
+}
+
 // AddMember adds a user by username, restoring a soft-deleted membership.
 // The role is checked strictly with ParseRole; callers that want the web
 // form's lenient mapping normalise it first.
@@ -158,12 +266,9 @@ func AddMember(db *gorm.DB, orgID uint, username, role string) (models.Membershi
 		return models.Membership{}, err
 	}
 
-	var user models.User
-	if err := db.Where("LOWER(username) = LOWER(?)", username).First(&user).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return models.Membership{}, ErrUserNotFound
-		}
-		return models.Membership{}, fmt.Errorf("org: load user: %w", err)
+	user, err := FindUser(db, username)
+	if err != nil {
+		return models.Membership{}, err
 	}
 
 	// Unscoped: idx_user_org covers soft-deleted rows, so a removed member
@@ -207,12 +312,8 @@ func RemoveMember(db *gorm.DB, orgID, userID uint) error {
 			return fmt.Errorf("org: load membership: %w", err)
 		}
 		if m.Role == RoleOwner {
-			var owners int64
-			if err := tx.Model(&models.Membership{}).Where("organization_id = ? AND role = ?", orgID, RoleOwner).Count(&owners).Error; err != nil {
-				return fmt.Errorf("org: count owners: %w", err)
-			}
-			if owners <= 1 {
-				return ErrLastOwner
+			if err := keepsAnOwner(tx, orgID, m.UserID); err != nil {
+				return err
 			}
 		}
 		if err := tx.Delete(&m).Error; err != nil {
@@ -285,6 +386,24 @@ func purgeDeletedOrgs(tx *gorm.DB, name string) error {
 	}
 	if err := tx.Unscoped().Where("id IN ?", ids).Delete(&models.Organization{}).Error; err != nil {
 		return fmt.Errorf("org: purge: %w", err)
+	}
+	return nil
+}
+
+// keepsAnOwner returns ErrLastOwner unless the organisation has another
+// owner, besides userID, whose user account is live. A soft-deleted user's
+// owner membership does not count: such a user cannot act for the org.
+func keepsAnOwner(tx *gorm.DB, orgID, userID uint) error {
+	var others int64
+	err := tx.Model(&models.Membership{}).
+		Joins("JOIN users ON users.id = memberships.user_id AND users.deleted_at IS NULL").
+		Where("memberships.organization_id = ? AND memberships.role = ? AND memberships.user_id <> ?", orgID, RoleOwner, userID).
+		Count(&others).Error
+	if err != nil {
+		return fmt.Errorf("org: count owners: %w", err)
+	}
+	if others == 0 {
+		return ErrLastOwner
 	}
 	return nil
 }

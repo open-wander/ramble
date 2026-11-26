@@ -101,3 +101,44 @@ func TestDeleteOrgAPI_AdminFlagDoesNotBypassOwnership(t *testing.T) {
 	assert.Equal(t, 403, status, body)
 	assert.Equal(t, int64(1), countOrgsNamed(t, org.Name))
 }
+
+func TestOrgMembersAPI_AdminFlagDoesNotBypassOwnership(t *testing.T) {
+	app := orgAPIApp(t)
+	owner := mkAPIUser(t, "alice", true, "")
+	target := mkAPIUser(t, "bob", true, "")
+	admin := mkAPIUser(t, "root", true, "")
+	require.NoError(t, database.DB.Model(&admin).Update("is_admin", true).Error)
+	org := orgsvcCreate(t, owner, uniqueName(t, "adm"))
+	_, err := orgsvc.AddMember(database.DB, org.ID, target.Username, orgsvc.RoleMember)
+	require.NoError(t, err)
+	w, _ := mkAPIToken(t, admin, models.ScopeWrite)
+	r, _ := mkAPIToken(t, admin, models.ScopeRead)
+	base := "/v1/orgs/" + org.Name + "/members"
+
+	status, body := sendJSON(t, app, "PUT", w, base+"/"+admin.Username, `{"role":"owner"}`)
+	assert.Equal(t, 403, status, body)
+	status, body = sendJSON(t, app, "DELETE", w, base+"/"+target.Username, "")
+	assert.Equal(t, 403, status, body)
+	status, body = getJSON(t, app, r, base)
+	assert.Equal(t, 403, status, body)
+	assert.Equal(t, "member", roleOf(t, org.ID, target))
+	assert.Empty(t, roleOf(t, org.ID, admin))
+}
+
+func TestOrgMembersAPI_OrgRestrictedTokenOnlyOwnOrg(t *testing.T) {
+	app := orgAPIApp(t)
+	u := mkAPIUser(t, "alice", true, "")
+	target := mkAPIUser(t, "bob", true, "")
+	orgA := mkOrgWithMember(t, u, "owner")
+	orgB := mkOrgWithMember(t, u, "owner")
+	w, _, err := apitoken.Svc.Create(u.ID, "w", models.ScopeWrite, &orgA.ID, 30)
+	require.NoError(t, err)
+
+	status, body := sendJSON(t, app, "PUT", w, "/v1/orgs/"+orgB.Name+"/members/"+target.Username, `{"role":"member"}`)
+	assert.Equal(t, 403, status, body)
+	assert.Empty(t, roleOf(t, orgB.ID, target))
+	status, body = sendJSON(t, app, "DELETE", w, "/v1/orgs/"+orgB.Name+"/members/"+u.Username, "")
+	assert.Equal(t, 403, status, body)
+	status, body = sendJSON(t, app, "PUT", w, "/v1/orgs/"+orgA.Name+"/members/"+target.Username, `{"role":"member"}`)
+	assert.Equal(t, 200, status, body)
+}

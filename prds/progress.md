@@ -1125,3 +1125,24 @@ cover the in-transaction owner re-check). Residual races: UpdateResource transfe
 outside a transaction against a concurrent DeleteOrg; a transfer after the count leaves a live resource in a
 deleted org (name then stays taken).
 Verified: local CI mirror green.
+
+## 2026-11-26 — 15.4 Organisation members API
+
+Service: FindUser (case-insensitive, AddMember uses it), ListMembers (live memberships of live users, explicit
+join with users.deleted_at IS NULL, ordered LOWER(username), id), SetMemberRole (one transaction: org FOR UPDATE,
+actor owner check inside the lock, strict ParseRole, FindUser, create / restore / no-op / role update; demoting the
+last owner -> ErrLastOwner; returns the stored username and old role).
+Handlers api_org_members.go: listOrgMembers (read; members only, 403 otherwise; bare JSON array of
+{username, role}), putOrgMember (200; 422 invalid_role; 404 user; 409 last_owner; audit org.add_member on
+create/restore, org.change_member_role {member, old_role, new_role} on change, nothing on no-op), removeOrgMember
+(204; 409 last_owner; 404 user/not member; audit org.remove_member {member_id, member}). New codes invalid_role,
+last_owner.
+Advisor review: REJECT (docs rows added to unrelated tables, unused fixture, ListMembers test could not see the
+users join) -> fixed -> MINOR.
+Orchestrator: owner count now ignores owners whose user account is soft-deleted (keepsAnOwner helper used by
+RemoveMember and SetMemberRole: another live-user owner must remain); TestLastOwner_IgnoresDeletedUsers (overlay
+mutation dropping the users filter -> red). Renamed the shadowed role variable.
+Logged: no test sends an org-restricted token to an unknown org on the member routes (404 before 403; shared
+loadOrgForToken is covered by the org route tests). Concurrent-demotion test proves zero owners is impossible, not
+that the actor check sits inside the lock.
+Verified: local CI mirror green. Phase 15 collapsed.

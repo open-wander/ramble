@@ -20,6 +20,7 @@ const (
 	codeBadRequest        = "bad_request"
 	codeConflict          = "conflict"
 	codeOrgNotEmpty       = "org_not_empty"
+	codeLastOwner         = "last_owner"
 
 	codeInvalidName          = "invalid_name"
 	codeInvalidType          = "invalid_type"
@@ -27,6 +28,7 @@ const (
 	codeInvalidVersion       = "invalid_version"
 	codeInvalidTags          = "invalid_tags"
 	codeImmutableField       = "immutable_field"
+	codeInvalidRole          = "invalid_role"
 
 	codeInternal = "internal_error"
 
