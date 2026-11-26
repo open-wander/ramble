@@ -923,3 +923,15 @@ docs/api.md: Authentication section + Current User. Tests: api_user_security_tes
 email in body, read/write/org cases, 401 cases with wantUnauthorizedBody - security build tag), server route test.
 Advisor review: PASS. Verified: build, vet -tags=security, go test -tags=security ./... (20 ok), make gosec exit 0
 (Nosec 39: +2 justified G304/G306 in the dev-only cmd/openapi-convert), make openapi-check exit 0.
+
+## 2026-11-26 — Phase 13 sweep (invariants + comments)
+
+19 breaks via the overlay driver (scratchpad sweep13). 13 killed directly.
+Not gaps: cv-version (openapi2conv.ToV3 already emits 3.0.3 - equivalent); cv-validate (converter's Validate
+skipped -> api-docs/openapi_test.go validates the committed spec and CI openapi-check catches drift).
+Gaps closed (user chose all): APIErrorHandler rows for 400/404/405/429 (only 403/500 were pinned);
+GetCurrentUserAPI: org token without membership -> 500 (never token_org null), expiry serialised in UTC,
+500 JSON without token locals (no panic); CLI oversized error body (64 KiB message beyond maxErrorBody ->
+"unexpected status code"). All six re-run: killed.
+Comments: no task ids; long blocks are swag annotations (codegen directives) - untouched.
+Verified: build, vet -tags=security, go test -tags=security ./... (20 ok), make gosec exit 0.

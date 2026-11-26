@@ -4,10 +4,13 @@ package handlers
 
 import (
 	"encoding/json"
+	"io"
+	"net/http/httptest"
 	"sort"
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -101,4 +104,55 @@ func TestGetCurrentUserAPI_Unauthorized(t *testing.T) {
 			assert.Equal(t, wantUnauthorizedBody, body)
 		})
 	}
+}
+
+// userApp mounts GetCurrentUserAPI behind a stand-in for RequireAPIToken that
+// sets the given locals, so edge cases need no database.
+func userApp(tok *models.APIToken, u *models.User) *fiber.App {
+	app := fiber.New()
+	app.Get("/v1/user", func(c *fiber.Ctx) error {
+		if tok != nil {
+			c.Locals(LocalAPIToken, tok)
+		}
+		if u != nil {
+			c.Locals("User", *u)
+		}
+		return c.Next()
+	}, GetCurrentUserAPI)
+	return app
+}
+
+func getUser(t *testing.T, app *fiber.App) (int, string) {
+	t.Helper()
+	resp, err := app.Test(httptest.NewRequest("GET", "/v1/user", nil))
+	require.NoError(t, err)
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(b)
+}
+
+const internalErrorBody = `{"error":{"code":"internal_error","message":"internal error"}}`
+
+// An org-restricted token must never be reported as unrestricted
+// (token_org null) when its membership cannot be found.
+func TestGetCurrentUserAPI_OrgTokenWithoutMembershipIs500(t *testing.T) {
+	org := uint(42)
+	tok := &models.APIToken{Scope: models.ScopeRead, OrganizationID: &org, ExpiresAt: time.Now().Add(time.Hour)}
+	status, body := getUser(t, userApp(tok, &models.User{Username: "alice"}))
+	assert.Equal(t, 500, status)
+	assert.JSONEq(t, internalErrorBody, body)
+}
+
+func TestGetCurrentUserAPI_ExpiryIsUTC(t *testing.T) {
+	exp := time.Date(2027, 3, 1, 12, 0, 0, 0, time.FixedZone("plus-two", 2*3600))
+	tok := &models.APIToken{Scope: models.ScopeRead, ExpiresAt: exp}
+	status, body := getUser(t, userApp(tok, &models.User{Username: "alice"}))
+	require.Equal(t, 200, status)
+	m := decodeUserBody(t, body)
+	assert.Equal(t, "2027-03-01T10:00:00Z", m["token_expires_at"])
+}
+
+func TestGetCurrentUserAPI_WithoutTokenLocalsIs500(t *testing.T) {
+	status, body := getUser(t, userApp(nil, nil))
+	assert.Equal(t, 500, status)
+	assert.JSONEq(t, internalErrorBody, body)
 }

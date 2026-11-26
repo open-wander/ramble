@@ -33,6 +33,10 @@ func TestAPIErrorHandler(t *testing.T) {
 	app.Get("/v1/_boom", func(c *fiber.Ctx) error { return errors.New("secret detail") })
 	app.Get("/v1/_forbidden", func(c *fiber.Ctx) error { return fiber.ErrForbidden })
 	app.Get("/v1/_teapot", func(c *fiber.Ctx) error { return fiber.NewError(418, "secret teapot") })
+	app.Get("/v1/_bad", func(c *fiber.Ctx) error { return fiber.NewError(400, "secret bad") })
+	app.Get("/v1/_missing", func(c *fiber.Ctx) error { return fiber.NewError(404, "secret missing") })
+	app.Get("/v1/_method", func(c *fiber.Ctx) error { return fiber.NewError(405, "secret method") })
+	app.Get("/v1/_slow", func(c *fiber.Ctx) error { return fiber.NewError(429, "secret slow") })
 	app.Get("/other/_boom", func(c *fiber.Ctx) error { return errors.New("secret detail") })
 
 	tests := []struct {
@@ -44,6 +48,10 @@ func TestAPIErrorHandler(t *testing.T) {
 		{"/v1/_boom", 500, "internal_error", "internal error"},
 		{"/v1/_forbidden", 403, "forbidden", "forbidden"},
 		{"/v1/_teapot", 500, "internal_error", "internal error"},
+		{"/v1/_bad", 400, "bad_request", "bad request"},
+		{"/v1/_missing", 404, "not_found", "not found"},
+		{"/v1/_method", 405, "method_not_allowed", "method not allowed"},
+		{"/v1/_slow", 429, "rate_limited", "too many requests"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {

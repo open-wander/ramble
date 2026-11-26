@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -448,6 +449,9 @@ func TestV1ErrorMessages(t *testing.T) {
 		{"text body", 502, "Bad Gateway", "unexpected status code: 502"},
 		{"empty body", 503, "", "unexpected status code: 503"},
 		{"object without message", 429, `{"error":{"code":"rate_limited"}}`, "unexpected status code: 429"},
+		// The CLI reads at most maxErrorBody bytes of an error body: a message
+		// that does not fit is dropped rather than read without bound.
+		{"oversized body", 500, `{"error":"` + strings.Repeat("a", 64<<10) + `"}`, "unexpected status code: 500"},
 	}
 	calls := map[string]func(*Client) error{
 		"ListRegistries":   func(c *Client) error { _, err := c.ListRegistries(); return err },
