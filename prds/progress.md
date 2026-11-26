@@ -1005,3 +1005,21 @@ in-memory copy with 201 (was 500 - client would lose the only copy of webhook_se
 Orchestrator added: same-created_at tie-break test (id DESC; mutation -> red). Logged: no test for the reload
 fallback (needs a DB failure after a successful create).
 Advisor review: MINOR. Verified: local CI mirror all green.
+
+## 2026-11-26 — 14.4 PATCH/DELETE /v1/resources/{id}
+
+Service patch.go: PatchInput (pointer fields, nil = unchanged), PatchResource: AuthorizeResourceAction(member),
+ValidateRepositoryURL, then one transaction (tags via resolveTags + Association Replace, column map incl.
+updated_at). Web UpdateResource now validates repository_url on every submit (behaviour change: a legacy row with
+a non-allowlisted or empty URL cannot be edited on the web until the URL is fixed - mention in the PR).
+Handlers UpdateResourceAPI (UpdateResourceRequest; name/type/namespace declared as swaggerignore RawMessage so
+they give 422 immutable_field, not 400; null = omitted) and DeleteResourceAPI (reuses DeleteResource: owner only,
+soft delete, 204, second call 404). Routes behind RequireAPIToken(write) + shared apiWriteLimiter.
+Advisor review: MINOR. Carried into new task 14.6 (user decisions):
+- soft-deleted rows keep idx_user_res_name occupied -> re-create of a deleted name hits 23505 -> 409; breaks
+  Terraform replace. DECISION: purge the dead soft-deleted row on re-create (no schema migration).
+- tags: API normalises/drops silently -> Terraform drift. DECISION: API rejects non-canonical tags (422
+  invalid_tags); tags remain case-insensitive with lowercase as the stored form; web form stays lenient.
+- limiter test only alternates PATCH/DELETE; add POST.
+Nit (not fixed): UpdateResourceAPI parses :id twice.
+Verified: local CI mirror all green.

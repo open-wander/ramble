@@ -187,3 +187,79 @@ func TestOpenAPIGetResource(t *testing.T) {
 	assert.NotContains(t, resp.Value.Properties, "webhook_secret")
 	assert.Contains(t, resp.Value.Properties, "latest_version")
 }
+
+func hasBearer(op *openapi3.Operation) bool {
+	if op.Security == nil {
+		return false
+	}
+	for _, req := range *op.Security {
+		if _, ok := req["bearerAuth"]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func TestOpenAPIUpdateResource(t *testing.T) {
+	doc := loadSpec(t)
+	item := doc.Paths.Find("/v1/resources/{id}")
+	require.NotNil(t, item)
+	op := item.Patch
+	require.NotNil(t, op)
+	assert.Equal(t, "updateResource", op.OperationID)
+	assert.True(t, hasBearer(op), "bearerAuth security")
+
+	require.Len(t, op.Parameters, 1)
+	assert.Equal(t, "id", op.Parameters[0].Value.Name)
+	assert.Equal(t, "path", op.Parameters[0].Value.In)
+
+	require.NotNil(t, op.RequestBody)
+	body := op.RequestBody.Value.Content.Get("application/json")
+	require.NotNil(t, body)
+	assert.Equal(t, "#/components/schemas/handlers.UpdateResourceRequest", body.Schema.Ref)
+
+	ok := op.Responses.Value("200")
+	require.NotNil(t, ok)
+	assert.Equal(t, "#/components/schemas/handlers.ResourceResponse", ok.Value.Content.Get("application/json").Schema.Ref)
+	for _, code := range []string{"400", "401", "403", "404", "422", "429", "500"} {
+		r := op.Responses.Value(code)
+		if assert.NotNil(t, r, code) {
+			assert.Equal(t, errorSchemaRef, r.Value.Content.Get("application/json").Schema.Ref, code)
+		}
+	}
+
+	req := doc.Components.Schemas["handlers.UpdateResourceRequest"]
+	require.NotNil(t, req)
+	assert.Empty(t, req.Value.Required, "every field is optional")
+	assert.ElementsMatch(t, []string{"description", "repository_url", "file_path", "license", "tags"}, propNames(req.Value))
+}
+
+func propNames(s *openapi3.Schema) []string {
+	var out []string
+	for k := range s.Properties {
+		out = append(out, k)
+	}
+	return out
+}
+
+func TestOpenAPIDeleteResource(t *testing.T) {
+	doc := loadSpec(t)
+	item := doc.Paths.Find("/v1/resources/{id}")
+	require.NotNil(t, item)
+	op := item.Delete
+	require.NotNil(t, op)
+	assert.Equal(t, "deleteResource", op.OperationID)
+	assert.True(t, hasBearer(op), "bearerAuth security")
+	assert.Nil(t, op.RequestBody)
+
+	done := op.Responses.Value("204")
+	require.NotNil(t, done)
+	assert.Empty(t, done.Value.Content, "204 has no body")
+	assert.Nil(t, op.Responses.Value("200"))
+	for _, code := range []string{"401", "403", "404", "429", "500"} {
+		r := op.Responses.Value(code)
+		if assert.NotNil(t, r, code) {
+			assert.Equal(t, errorSchemaRef, r.Value.Content.Get("application/json").Schema.Ref, code)
+		}
+	}
+}

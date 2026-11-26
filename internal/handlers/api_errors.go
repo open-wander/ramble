@@ -24,6 +24,7 @@ const (
 	codeInvalidType          = "invalid_type"
 	codeInvalidRepositoryURL = "invalid_repository_url"
 	codeInvalidVersion       = "invalid_version"
+	codeImmutableField       = "immutable_field"
 
 	codeInternal = "internal_error"
 

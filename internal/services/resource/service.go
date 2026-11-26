@@ -13,6 +13,7 @@ import (
 
 	"gorm.io/gorm"
 	"rmbl/internal/models"
+	"rmbl/internal/security"
 )
 
 var tagRegex = regexp.MustCompile(`^[a-z0-9-]+$`)
@@ -52,6 +53,7 @@ func truncateFetchError(msg string) string {
 type ResourceServicer interface {
 	CreateResource(input CreateInput, userID uint, orgID *uint) (*models.NomadResource, error)
 	UpdateResource(id uint, input UpdateInput, userID uint) error
+	PatchResource(id, userID uint, in PatchInput) error
 	DeleteResource(id uint, userID uint) error
 	ToggleStar(resourceID, userID uint) (isStarred bool, starCount int64, err error)
 	ValidateOwnership(resourceID, userID uint) (bool, error)
@@ -123,6 +125,11 @@ func (s *ResourceService) UpdateResource(id uint, input UpdateInput, userID uint
 	// Authorize first (returns ErrResourceNotFound or ErrUnauthorized as appropriate)
 	if err := s.AuthorizeResourceAction(id, userID, false); err != nil {
 		return err
+	}
+
+	// Same rule as the API: a stored URL must be an allowed https git host.
+	if err := security.ValidateRepositoryURL(input.RepositoryURL); err != nil {
+		return ErrInvalidRepositoryURL
 	}
 
 	var resource models.NomadResource

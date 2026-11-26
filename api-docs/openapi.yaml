@@ -280,6 +280,28 @@ components:
                 - updated_at
                 - webhook_url
             type: object
+        handlers.UpdateResourceRequest:
+            properties:
+                description:
+                    example: MySQL on Nomad
+                    type: string
+                file_path:
+                    example: packs/mysql
+                    type: string
+                license:
+                    example: MIT
+                    type: string
+                repository_url:
+                    example: https://github.com/alice/packs
+                    type: string
+                tags:
+                    example:
+                        - database
+                        - sql
+                    items:
+                        type: string
+                    type: array
+            type: object
     securitySchemes:
         bearerAuth:
             bearerFormat: token
@@ -755,6 +777,54 @@ paths:
             tags:
                 - resources
     /v1/resources/{id}:
+        delete:
+            description: 'Delete a pack or job. Only the owner may delete: the owning user of a personal resource or an owner of the organization. The resource is gone afterwards: reads answer 404. Needs a write token.'
+            operationId: deleteResource
+            parameters:
+                - description: Resource ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Forbidden
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Not Found
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Too Many Requests
+                "500":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Internal Server Error
+            security:
+                - bearerAuth: []
+            summary: Delete a resource
+            tags:
+                - resources
         get:
             description: Fetch a pack or job by its numeric ID. Needs a read token. The response never includes webhook_secret.
             operationId: getResource
@@ -799,6 +869,78 @@ paths:
             security:
                 - bearerAuth: []
             summary: Get a resource by ID
+            tags:
+                - resources
+        patch:
+            description: Change description, repository_url, file_path, license or tags of a pack or job. Omitted and null fields stay unchanged; an empty string clears description and file_path, an empty license becomes "Unknown" and an empty tags list removes all tags. name, type and namespace cannot be changed and are answered with 422 immutable_field. Organization members may edit. Needs a write token.
+            operationId: updateResource
+            parameters:
+                - description: Resource ID
+                  in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/handlers.UpdateResourceRequest'
+                description: Fields to change
+                required: true
+                x-originalParamName: body
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.ResourceResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Forbidden
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Not Found
+                "422":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Unprocessable Entity
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Too Many Requests
+                "500":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Internal Server Error
+            security:
+                - bearerAuth: []
+            summary: Update a resource
             tags:
                 - resources
     /v1/user:

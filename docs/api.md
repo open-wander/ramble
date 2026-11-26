@@ -127,6 +127,53 @@ curl https://ramble.openwander.org/v1/namespaces/alice/resources/mysql \
 | 403 | `forbidden` | The token is restricted to an organisation and the resource belongs to another organisation or to a personal namespace |
 | 404 | `not_found` | The ID, namespace or name does not exist, or the resource was deleted |
 
+### Update a Resource
+
+`PATCH /v1/resources/{id}` changes a resource. It needs a `write` token and counts against the write rate limit. Any member of the owning organisation may edit; a personal resource can only be edited by its owner.
+
+```bash
+curl -X PATCH https://ramble.openwander.org/v1/resources/42 \
+  -H "Authorization: Bearer <your-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"description": "MySQL 8 on Nomad", "tags": ["database", "sql"]}'
+```
+
+All fields are optional: `description`, `repository_url`, `file_path`, `license` and `tags`. An omitted field, or one set to `null`, is left unchanged. An empty string clears `description` and `file_path`, an empty `license` becomes `Unknown`, and an empty `tags` list (`[]`) removes all tags. `{}` is accepted and changes nothing.
+
+`name`, `type` and `namespace` cannot be changed; sending any of them is rejected with `422 immutable_field` and nothing is written. Unknown fields and malformed JSON are `400 bad_request`. `repository_url` must be an https URL on an allowed git host, otherwise `422 invalid_repository_url`.
+
+The response is `200` with the updated resource, in the same shape as `GET /v1/resources/{id}` (no `webhook_secret`).
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 400 | `bad_request` | Malformed JSON, unknown field or wrong field type |
+| 401 | `unauthorized` | Missing, invalid or expired token |
+| 403 | `insufficient_scope` | The token is a read token |
+| 403 | `forbidden` | You are not a member of the owning organisation, do not own the personal resource, or the token is restricted to another organisation |
+| 404 | `not_found` | The ID does not exist, or the resource was deleted |
+| 422 | `immutable_field` | The body contains `name`, `type` or `namespace` |
+| 422 | `invalid_repository_url` | The URL is not an https URL on an allowed git host |
+| 429 | `rate_limited` | Write rate limit exceeded |
+
+### Delete a Resource
+
+`DELETE /v1/resources/{id}` deletes a resource. It needs a `write` token and counts against the write rate limit.
+
+```bash
+curl -X DELETE https://ramble.openwander.org/v1/resources/42 \
+  -H "Authorization: Bearer <your-token>"
+```
+
+Only an owner may delete: the owning user of a personal resource, or an owner of the organisation (a plain member gets `403 forbidden`). The response is `204` with no body. Afterwards the resource is `404` on every endpoint, including a second `DELETE`.
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 401 | `unauthorized` | Missing, invalid or expired token |
+| 403 | `insufficient_scope` | The token is a read token |
+| 403 | `forbidden` | You are not an owner, or the token is restricted to another organisation |
+| 404 | `not_found` | The ID does not exist, or the resource was already deleted |
+| 429 | `rate_limited` | Write rate limit exceeded |
+
 ## Global Endpoints
 
 ### List All Packs

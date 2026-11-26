@@ -29,6 +29,36 @@ type CreateResourceRequest struct {
 	Tags          []string `json:"tags" example:"database,sql"`
 }
 
+// UpdateResourceRequest is the body of PATCH /v1/resources/{id}. Every field
+// is optional: an omitted or null field is left unchanged, an empty string
+// clears description and file_path, an empty license becomes "Unknown" and an
+// empty tags list removes all tags. name, type and namespace cannot change;
+// they are declared only to answer 422 instead of 400 when a client sends them.
+type UpdateResourceRequest struct {
+	Description   *string   `json:"description" example:"MySQL on Nomad"`
+	RepositoryURL *string   `json:"repository_url" example:"https://github.com/alice/packs"`
+	FilePath      *string   `json:"file_path" example:"packs/mysql"`
+	License       *string   `json:"license" example:"MIT"`
+	Tags          *[]string `json:"tags" example:"database,sql"`
+
+	Name      json.RawMessage `json:"name" swaggerignore:"true"`
+	Type      json.RawMessage `json:"type" swaggerignore:"true"`
+	Namespace json.RawMessage `json:"namespace" swaggerignore:"true"`
+}
+
+// immutableField names the first of name, type and namespace present in the body.
+func (r UpdateResourceRequest) immutableField() string {
+	switch {
+	case len(r.Name) > 0:
+		return "name"
+	case len(r.Type) > 0:
+		return "type"
+	case len(r.Namespace) > 0:
+		return "namespace"
+	}
+	return ""
+}
+
 // ResourceResponse describes a pack or job. The webhook secret is not part of
 // it; only the create response carries the secret.
 type ResourceResponse struct {
@@ -266,4 +296,136 @@ func renderResourceAPI(c *fiber.Ctx, load func(*resource.ResourceService) (*mode
 		return APIOrgForbidden(c)
 	}
 	return c.JSON(newResourceResponse(c, *r))
+}
+
+// loadResourceForWrite loads the target of a write by the :id parameter and
+// applies the token's organisation restriction, answering 404 before 403 as
+// the read endpoints do. ok=false means the response has been written.
+func loadResourceForWrite(c *fiber.Ctx) (r *models.NomadResource, ok bool, err error) {
+	id, perr := paramID(c, "id")
+	if perr != nil {
+		return nil, false, APIError(c, fiber.StatusNotFound, codeNotFound, "resource not found")
+	}
+	r, gerr := resourceService(c).GetResource(id)
+	if gerr != nil {
+		if errors.Is(gerr, resource.ErrResourceNotFound) {
+			return nil, false, APIError(c, fiber.StatusNotFound, codeNotFound, "resource not found")
+		}
+		logger.FromContext(c.UserContext()).Error("resource.get_failed", logger.Err(gerr))
+		return nil, false, APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
+	}
+	if !TokenAllowsOrg(c, r.OrganizationID) {
+		return nil, false, APIOrgForbidden(c)
+	}
+	return r, true, nil
+}
+
+// UpdateResourceAPI godoc
+// @Summary Update a resource
+// @Description Change description, repository_url, file_path, license or tags of a pack or job. Omitted and null fields stay unchanged; an empty string clears description and file_path, an empty license becomes "Unknown" and an empty tags list removes all tags. name, type and namespace cannot be changed and are answered with 422 immutable_field. Organization members may edit. Needs a write token.
+// @Tags resources
+// @Accept json
+// @Produce json
+// @Security bearerAuth
+// @Param id path int true "Resource ID"
+// @Param body body UpdateResourceRequest true "Fields to change"
+// @Success 200 {object} ResourceResponse
+// @Failure 400 {object} APIErrorResponse
+// @Failure 401 {object} APIErrorResponse
+// @Failure 403 {object} APIErrorResponse
+// @Failure 404 {object} APIErrorResponse
+// @Failure 422 {object} APIErrorResponse
+// @Failure 429 {object} APIErrorResponse
+// @Failure 500 {object} APIErrorResponse
+// @ID updateResource
+// @Router /v1/resources/{id} [patch]
+func UpdateResourceAPI(c *fiber.Ctx) error {
+	u, uok := c.Locals("User").(models.User)
+	_, tokOK := APITokenFromCtx(c)
+	if !uok || !tokOK {
+		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
+	}
+	if _, err := paramID(c, "id"); err != nil {
+		return APIError(c, fiber.StatusNotFound, codeNotFound, "resource not found")
+	}
+
+	var req UpdateResourceRequest
+	if err := decodeStrictJSON(c.Body(), &req); err != nil {
+		return APIError(c, fiber.StatusBadRequest, codeBadRequest, "invalid JSON body")
+	}
+	if f := req.immutableField(); f != "" {
+		return APIError(c, fiber.StatusUnprocessableEntity, codeImmutableField, f+" cannot be changed")
+	}
+
+	r, ok, err := loadResourceForWrite(c)
+	if !ok {
+		return err
+	}
+
+	svc := resourceService(c)
+	if err := svc.PatchResource(r.ID, u.ID, resource.PatchInput{
+		Description:   req.Description,
+		RepositoryURL: req.RepositoryURL,
+		FilePath:      req.FilePath,
+		License:       req.License,
+		Tags:          req.Tags,
+	}); err != nil {
+		switch {
+		case errors.Is(err, resource.ErrResourceNotFound):
+			return APIError(c, fiber.StatusNotFound, codeNotFound, "resource not found")
+		case errors.Is(err, resource.ErrUnauthorized):
+			return APIError(c, fiber.StatusForbidden, codeForbidden, "you may not edit this resource")
+		case errors.Is(err, resource.ErrInvalidRepositoryURL):
+			return APIError(c, fiber.StatusUnprocessableEntity, codeInvalidRepositoryURL, err.Error())
+		}
+		logger.FromContext(c.UserContext()).Error("resource.update_failed", logger.Err(err))
+		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
+	}
+
+	AuditLog(c, "resource.edit", "resource", r.ID, r.Name, nil)
+
+	stored, err := svc.GetResource(r.ID)
+	if err != nil {
+		logger.FromContext(c.UserContext()).Error("resource.reload_failed", logger.Err(err))
+		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
+	}
+	return c.JSON(newResourceResponse(c, *stored))
+}
+
+// DeleteResourceAPI godoc
+// @Summary Delete a resource
+// @Description Delete a pack or job. Only the owner may delete: the owning user of a personal resource or an owner of the organization. The resource is gone afterwards: reads answer 404. Needs a write token.
+// @Tags resources
+// @Security bearerAuth
+// @Param id path int true "Resource ID"
+// @Success 204 "No Content"
+// @Failure 401 {object} APIErrorResponse
+// @Failure 403 {object} APIErrorResponse
+// @Failure 404 {object} APIErrorResponse
+// @Failure 429 {object} APIErrorResponse
+// @Failure 500 {object} APIErrorResponse
+// @ID deleteResource
+// @Router /v1/resources/{id} [delete]
+func DeleteResourceAPI(c *fiber.Ctx) error {
+	u, uok := c.Locals("User").(models.User)
+	_, tokOK := APITokenFromCtx(c)
+	if !uok || !tokOK {
+		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
+	}
+	r, ok, err := loadResourceForWrite(c)
+	if !ok {
+		return err
+	}
+	if err := resourceService(c).DeleteResource(r.ID, u.ID); err != nil {
+		switch {
+		case errors.Is(err, resource.ErrResourceNotFound):
+			return APIError(c, fiber.StatusNotFound, codeNotFound, "resource not found")
+		case errors.Is(err, resource.ErrUnauthorized):
+			return APIError(c, fiber.StatusForbidden, codeForbidden, "only the owner can delete this resource")
+		}
+		logger.FromContext(c.UserContext()).Error("resource.delete_failed", logger.Err(err))
+		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
+	}
+	AuditLog(c, "resource.delete", "resource", r.ID, r.Name, nil)
+	return c.SendStatus(fiber.StatusNoContent)
 }

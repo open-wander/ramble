@@ -157,3 +157,42 @@ func TestGetResourceAPI_OrgRestrictedToken(t *testing.T) {
 		}
 	}
 }
+
+func TestWriteResourceAPI_OrgRestrictedToken(t *testing.T) {
+	app, _ := resourceAPIApp(t)
+	u := mkAPIUser(t, "alice", true, "")
+	orgA := mkOrgWithMember(t, u, "owner")
+	orgB := mkOrgWithMember(t, u, "owner")
+	wr, _ := mkAPIToken(t, u, models.ScopeWrite)
+	restricted, _, err := apitoken.Svc.Create(u.ID, "t", models.ScopeWrite, &orgA.ID, 30)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name   string
+		ns     string
+		status int
+	}{
+		{"other org", orgB.Name, 403},
+		{"personal", u.Username, 403},
+		{"own org", orgA.Name, 200},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := createViaAPI(t, app, wr, tt.ns, nil)
+			status, body := sendJSON(t, app, "PATCH", restricted, resPath(r.ID), `{"description":"changed"}`)
+			require.Equal(t, tt.status, status, body)
+			if tt.status == 403 {
+				assert.Equal(t, "forbidden", apiErrCode(t, body))
+				assert.NotContains(t, body, r.Name)
+				assert.Equal(t, "d", loadRow(t, r.ID).Description)
+			}
+			status, body = sendJSON(t, app, "DELETE", restricted, resPath(r.ID), "")
+			if tt.status == 403 {
+				require.Equal(t, 403, status, body)
+				assert.False(t, loadRow(t, r.ID).DeletedAt.Valid)
+			} else {
+				require.Equal(t, 204, status, body)
+			}
+		})
+	}
+}

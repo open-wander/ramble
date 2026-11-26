@@ -5,6 +5,7 @@ package server
 import (
 	"io"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -15,6 +16,7 @@ import (
 	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"rmbl/internal/services/apitoken"
+	"rmbl/internal/services/resource"
 )
 
 func postCreate(t *testing.T, app *fiber.App, token, body string) (int, string) {
@@ -89,4 +91,72 @@ func TestCreateResourceRoute_SharedWriteLimiter(t *testing.T) {
 	_, other, _ := mkUserTok(t, "bob", models.ScopeWrite, false)
 	status, _ = postCreate(t, app, other, `{`)
 	assert.Equal(t, 400, status)
+}
+
+func sendBody(t *testing.T, app *fiber.App, method, path, token, body string) (int, string) {
+	t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := app.Test(req, -1)
+	require.NoError(t, err)
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(b)
+}
+
+func TestWriteResourceRoutes_Middleware(t *testing.T) {
+	apitoken.Init(database.DB)
+	resource.Init(database.DB)
+	u, readTok, _ := mkUserTok(t, "alice", models.ScopeRead, false)
+	_, writeTok, _ := mkUserTok(t, "bob", models.ScopeWrite, false)
+	app := stackApp(t, true)
+	r := models.NomadResource{Name: "route-write-res", Type: models.ResourceType("pack"), UserID: u.ID, Description: "keep"}
+	require.NoError(t, database.DB.Create(&r).Error)
+	path := "/v1/resources/" + strconv.FormatUint(uint64(r.ID), 10)
+
+	tests := []struct {
+		name, method, token string
+		status              int
+		code                string
+	}{
+		{"patch read token", "PATCH", readTok, 403, "insufficient_scope"},
+		{"patch no token", "PATCH", "", 401, "unauthorized"},
+		{"patch foreign user", "PATCH", writeTok, 403, "forbidden"},
+		{"delete read token", "DELETE", readTok, 403, "insufficient_scope"},
+		{"delete no token", "DELETE", "", 401, "unauthorized"},
+		{"delete foreign user", "DELETE", writeTok, 403, "forbidden"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			status, resp := sendBody(t, app, tt.method, path, tt.token, `{"description":"changed"}`)
+			assert.Equal(t, tt.status, status, resp)
+			assert.Contains(t, resp, `"code":"`+tt.code+`"`)
+		})
+	}
+	var got models.NomadResource
+	require.NoError(t, database.DB.First(&got, r.ID).Error)
+	assert.Equal(t, "keep", got.Description)
+}
+
+// TestWriteResourceRoutes_SharedWriteLimiter proves PATCH and DELETE count
+// against the same per-token limiter as POST.
+func TestWriteResourceRoutes_SharedWriteLimiter(t *testing.T) {
+	apitoken.Init(database.DB)
+	_, plain, _ := mkUserTok(t, "alice", models.ScopeWrite, false)
+	app := stackApp(t, true)
+
+	const limit = 120
+	for i := range limit {
+		method := "PATCH"
+		if i%2 == 1 {
+			method = "DELETE"
+		}
+		status, body := sendBody(t, app, method, "/v1/resources/999999", plain, `{}`)
+		require.Equal(t, 404, status, body)
+	}
+	status, body := sendBody(t, app, "PATCH", "/v1/resources/999999", plain, `{}`)
+	assert.Equal(t, 429, status, body)
+	assert.Contains(t, body, `"code":"rate_limited"`)
 }

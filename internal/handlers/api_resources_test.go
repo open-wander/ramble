@@ -35,6 +35,8 @@ func resourceAPIApp(t *testing.T) (*fiber.App, *lockedBuffer) {
 	app.Use(logger.RequestLogger(logger.NewJSON(buf)))
 	app.Post("/v1/resources", RequireAPIToken(models.ScopeWrite), CreateResourceAPI)
 	app.Get("/v1/resources/:id<int>", RequireAPIToken(models.ScopeRead), GetResourceAPI)
+	app.Patch("/v1/resources/:id<int>", RequireAPIToken(models.ScopeWrite), UpdateResourceAPI)
+	app.Delete("/v1/resources/:id<int>", RequireAPIToken(models.ScopeWrite), DeleteResourceAPI)
 	app.Get("/v1/namespaces/:namespace/resources/:name", RequireAPIToken(models.ScopeRead), GetResourceByNameAPI)
 	return app, buf
 }

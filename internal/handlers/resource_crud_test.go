@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"io"
 	"net/http/httptest"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
@@ -576,7 +577,8 @@ func TestPostEditResource_Success(t *testing.T) {
 
 	app.Post("/resource/:id/edit", PostEditResource)
 
-	payload := strings.NewReader("name=editable-pack&type=pack&description=Updated+description&license=MIT")
+	// The edit form must carry an allowed repository URL; the service rejects any other.
+	payload := strings.NewReader("name=editable-pack&type=pack&description=Updated+description&license=MIT&repository_url=https://github.com/test/x")
 	req := httptest.NewRequest("POST", "/resource/"+toString(resource.ID)+"/edit", payload)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -590,6 +592,41 @@ func TestPostEditResource_Success(t *testing.T) {
 	database.DB.First(&updated, resource.ID)
 	assert.Equal(t, "Updated description", updated.Description)
 	assert.Equal(t, "MIT", updated.License)
+}
+
+func TestPostEditResource_InvalidRepositoryURL(t *testing.T) {
+	defer cleanupTestData(t)
+
+	user := createTestUser(t, "editbadurl")
+	resource := createTestPack(t, user.ID, "badurl-pack")
+	before := resource.RepositoryURL
+
+	app := setupTestApp()
+	app.Use(func(c *fiber.Ctx) error {
+		sess, _ := Store.Get(c)
+		sess.Set("user_id", user.ID)
+		sess.Save()
+		c.Locals("UserID", user.ID)
+		c.Locals("User", user)
+		return c.Next()
+	})
+	app.Post("/resource/:id/edit", PostEditResource)
+
+	for _, u := range []string{"http://github.com/x/y", "https://evil.example/x"} {
+		payload := strings.NewReader("name=badurl-pack&type=pack&description=changed&license=MIT&repository_url=" + u)
+		req := httptest.NewRequest("POST", "/resource/"+toString(resource.ID)+"/edit", payload)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		body, _ := io.ReadAll(resp.Body)
+		assert.Equal(t, 400, resp.StatusCode, u)
+		assert.Contains(t, string(body), "repository URL must be an https URL")
+
+		var got models.NomadResource
+		database.DB.First(&got, resource.ID)
+		assert.Equal(t, before, got.RepositoryURL)
+		assert.NotEqual(t, "changed", got.Description)
+	}
 }
 
 // PostResetWebhookSecret Tests
