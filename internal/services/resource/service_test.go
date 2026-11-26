@@ -275,8 +275,8 @@ func TestProcessTagEvent_ExistingVersion(t *testing.T) {
 
 // TestRecordFetchFailed_SizeLimit verifies that when a required remote file
 // exceeds the size limit the fetch status is recorded as FAILED and no success
-// content is stored.  This satisfies FR-4 (US-002): oversized downloads must
-// not produce a completed fetch record.
+// content is stored: an oversized download must not produce a completed fetch
+// record.
 func TestRecordFetchFailed_SizeLimit(t *testing.T) {
 	service := NewResourceService(database.DB)
 
@@ -310,7 +310,7 @@ func TestRecordFetchFailed_SizeLimit(t *testing.T) {
 		First(&version).Error
 	require.NoError(t, err)
 
-	// FR-4: fetch status must be FAILED.
+	// The fetch status must be FAILED.
 	assert.Equal(t, models.FetchStatusFailed, version.FetchStatus,
 		"oversized fetch must be recorded as FAILED")
 

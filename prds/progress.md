@@ -1056,3 +1056,15 @@ Logged for the sweep: TestResetWebhookSecret_ChangesOnlySecret cannot tell a sin
 duplicates pre-exist. Schema follow-up candidates: unique index on resource_versions (resource_id, version);
 idx_user_res_name personal-namespace NULL gap.
 Verified: local CI mirror all green. Phase 14 collapsed.
+
+## 2026-11-26 — Phase 14 sweep (invariants + comments)
+
+31 line-targeted breaks via the overlay driver (scratchpad sweep14; 2 first hit a testcontainers start failure
+and were re-run). 29 killed, including every SSRF URL rule, namespace scoping (personal vs org) for duplicate,
+purge and by-name read, org restriction on create/read/write, owner-only delete, membership on patch/versions/
+retry/webhook rotation, duplicate version, retry-only-failed, immutable namespace, canonical tags on POST/PATCH.
+Equivalent (not gaps): member-role (no roles beyond owner/member exist); purge-deleted-only (the live duplicate
+check in the same transaction returns 409 before the purge, so it only ever sees deleted rows).
+Comments: stripped stale FR-4 (US-002) citations in services/resource/service_test.go (old security-bugfix PRD);
+AuthorizeResourceAction doc block is the authorisation contract - kept; swag blocks untouched.
+Verified: local CI mirror all green.
