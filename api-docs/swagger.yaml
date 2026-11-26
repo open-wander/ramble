@@ -1,5 +1,42 @@
 basePath: /
 definitions:
+  handlers.APIErrorBody:
+    properties:
+      code:
+        example: not_found
+        type: string
+      message:
+        example: pack not found
+        type: string
+    type: object
+  handlers.APIErrorResponse:
+    properties:
+      error:
+        $ref: '#/definitions/handlers.APIErrorBody'
+    type: object
+  handlers.CurrentUserResponse:
+    properties:
+      token_expires_at:
+        format: date-time
+        type: string
+      token_org:
+        example: acme
+        type: string
+        x-nullable: true
+      token_scope:
+        enum:
+        - read
+        - write
+        type: string
+      username:
+        example: alice
+        type: string
+    required:
+    - token_expires_at
+    - token_org
+    - token_scope
+    - username
+    type: object
   handlers.JobDetail:
     properties:
       description:
@@ -242,6 +279,7 @@ paths:
     get:
       description: Fetch detailed metadata and version history for a specific Nomad
         Job.
+      operationId: getNamespaceJob
       parameters:
       - description: Namespace (user or org)
         in: path
@@ -263,9 +301,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: Get job details
       tags:
       - nomad-job
@@ -273,6 +313,7 @@ paths:
     get:
       description: Fetch a list of all Nomad Packs within a specific user or organization
         namespace.
+      operationId: listNamespacePacks
       parameters:
       - description: Namespace (user or org)
         in: path
@@ -293,9 +334,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: List packs in a namespace
       tags:
       - nomad-pack
@@ -303,6 +346,7 @@ paths:
     get:
       description: Fetch detailed metadata and version history for a specific Nomad
         Pack.
+      operationId: getNamespacePack
       parameters:
       - description: Namespace (user or org)
         in: path
@@ -324,9 +368,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: Get pack details
       tags:
       - nomad-pack
@@ -637,6 +683,7 @@ paths:
     get:
       description: Fetch a list of all Nomad Jobs available in the registry across
         all namespaces.
+      operationId: listJobs
       produces:
       - application/json
       responses:
@@ -648,12 +695,17 @@ paths:
                 $ref: '#/definitions/handlers.JobSummary'
               type: array
             type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: List all jobs
       tags:
       - nomad-job
   /v1/jobs/search:
     get:
       description: Search for Nomad Jobs across all namespaces by name or description.
+      operationId: searchJobs
       parameters:
       - description: Search query
         in: query
@@ -671,6 +723,14 @@ paths:
                 $ref: '#/definitions/handlers.JobSummary'
               type: array
             type: object
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: Search jobs
       tags:
       - nomad-job
@@ -678,6 +738,7 @@ paths:
     get:
       description: Fetch a list of all Nomad Packs available in the registry across
         all namespaces.
+      operationId: listPacks
       produces:
       - application/json
       responses:
@@ -689,12 +750,17 @@ paths:
                 $ref: '#/definitions/handlers.PackSummary'
               type: array
             type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: List all packs
       tags:
       - nomad-pack
   /v1/packs/search:
     get:
       description: Search for Nomad Packs across all namespaces by name or description.
+      operationId: searchPacks
       parameters:
       - description: Search query
         in: query
@@ -712,6 +778,14 @@ paths:
                 $ref: '#/definitions/handlers.PackSummary'
               type: array
             type: object
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: Search packs
       tags:
       - nomad-pack
@@ -719,6 +793,7 @@ paths:
     get:
       description: Fetch a list of recently updated packs and jobs, optionally filtered
         by time.
+      operationId: listRecent
       parameters:
       - description: ISO8601 timestamp to filter resources updated after this time
         in: query
@@ -739,6 +814,10 @@ paths:
                 $ref: '#/definitions/handlers.RecentResource'
               type: array
             type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: List recently updated resources
       tags:
       - resources
@@ -746,6 +825,7 @@ paths:
     get:
       description: Returns a JSON list of all namespaces that contain at least one
         Nomad Pack.
+      operationId: listRegistries
       produces:
       - application/json
       responses:
@@ -757,12 +837,17 @@ paths:
                 type: string
               type: array
             type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: List all registry namespaces (JSON)
       tags:
       - nomad-pack
   /v1/registries/search:
     get:
       description: Search for namespaces (users/orgs) that have published Nomad Packs.
+      operationId: searchRegistries
       parameters:
       - description: Search query
         in: query
@@ -780,9 +865,42 @@ paths:
                 type: string
               type: array
             type: object
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: Search registry namespaces
       tags:
       - nomad-pack
+  /v1/user:
+    get:
+      description: Identify the user a Bearer token belongs to and describe the token.
+        Use it to check credentials.
+      operationId: getCurrentUser
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.CurrentUserResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Current user and token
+      tags:
+      - user
   /webhooks/github/issues:
     post:
       consumes:
@@ -817,4 +935,10 @@ paths:
       summary: Receive GitHub issue webhooks
       tags:
       - webhooks
+securityDefinitions:
+  bearerAuth:
+    description: 'Ramble API token, sent as the Authorization header: Bearer <token>'
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

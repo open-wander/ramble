@@ -23,13 +23,7 @@ verification in [verification.md](verification.md). PRD: [done/prd-security-bugf
 
 ## Phase 12: API tokens — 3 tasks completed 2026-11-26 (see [TASKS-archive.md](TASKS-archive.md))
 
-## Phase 13: API contract
-
-| # | Task | PRD | Status | Notes |
-|---|------|-----|--------|-------|
-| 13.1 | OpenAPI 3 generation (`make openapi`), spec lint in CI, drift check, attach `openapi.yaml` to releases (US-004, FR-7) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | Check swag v2 OAS3 status vs convert step first |
-| 13.2 | Common `/v1` JSON error shape; migrate existing read endpoints and their tests (US-004, FR-6) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | |
-| 13.3 | `GET /v1/user` whoami endpoint (US-012 server side) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | needs: 12.2, 13.2 |
+## Phase 13: API contract — 3 tasks completed 2026-11-26 (see [TASKS-archive.md](TASKS-archive.md))
 
 ## Phase 14: Resource write API
 

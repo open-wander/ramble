@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"rmbl/internal/models"
 	"strings"
@@ -34,7 +35,9 @@ type PackVersion struct {
 // @Produce json
 // @Param username path string true "Namespace (user or org)"
 // @Success 200 {object} map[string][]PackSummary
-// @Failure 404 {object} map[string]string
+// @Failure 404 {object} APIErrorResponse
+// @Failure 500 {object} APIErrorResponse
+// @ID listNamespacePacks
 // @Router /{username}/v1/packs [get]
 func ListPacksAPI(c *fiber.Ctx) error {
 	namespace := c.Params("username")
@@ -45,12 +48,16 @@ func ListPacksAPI(c *fiber.Ctx) error {
 	var user models.User
 	if err := reqDB(c).Where(iEq("username"), namespace).First(&user).Error; err == nil {
 		userID = user.ID
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
 	} else {
 		var org models.Organization
 		if err := reqDB(c).Where(iEq("name"), namespace).First(&org).Error; err == nil {
 			orgID = &org.ID
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
 		} else {
-			return c.Status(404).JSON(fiber.Map{"error": "Namespace not found"})
+			return APIError(c, fiber.StatusNotFound, codeNotFound, "namespace not found")
 		}
 	}
 
@@ -63,7 +70,7 @@ func ListPacksAPI(c *fiber.Ctx) error {
 	}
 
 	if err := dbQuery.Find(&resources).Error; err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Database error"})
+		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
 	}
 
 	summaries := make([]PackSummary, len(resources))
@@ -83,11 +90,13 @@ func ListPacksAPI(c *fiber.Ctx) error {
 // @Tags nomad-pack
 // @Produce json
 // @Success 200 {object} map[string][]PackSummary
+// @Failure 500 {object} APIErrorResponse
+// @ID listPacks
 // @Router /v1/packs [get]
 func ListAllPacksAPI(c *fiber.Ctx) error {
 	var resources []models.NomadResource
 	if err := reqDB(c).Preload("User").Preload("Organization").Where("type = ?", models.ResourceTypePack).Find(&resources).Error; err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Database error"})
+		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
 	}
 
 	summaries := make([]PackSummary, len(resources))
@@ -121,7 +130,9 @@ func getResourceNamespace(r models.NomadResource) string {
 // @Param username path string true "Namespace (user or org)"
 // @Param packname path string true "Pack name"
 // @Success 200 {object} PackDetail
-// @Failure 404 {object} map[string]string
+// @Failure 404 {object} APIErrorResponse
+// @Failure 500 {object} APIErrorResponse
+// @ID getNamespacePack
 // @Router /{username}/v1/packs/{packname} [get]
 func GetPackAPI(c *fiber.Ctx) error {
 	namespace := c.Params("username")
@@ -133,12 +144,16 @@ func GetPackAPI(c *fiber.Ctx) error {
 	var user models.User
 	if err := reqDB(c).Where(iEq("username"), namespace).First(&user).Error; err == nil {
 		userID = user.ID
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
 	} else {
 		var org models.Organization
 		if err := reqDB(c).Where(iEq("name"), namespace).First(&org).Error; err == nil {
 			orgID = &org.ID
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
 		} else {
-			return c.Status(404).JSON(fiber.Map{"error": "Namespace not found"})
+			return APIError(c, fiber.StatusNotFound, codeNotFound, "namespace not found")
 		}
 	}
 
@@ -151,7 +166,10 @@ func GetPackAPI(c *fiber.Ctx) error {
 	}
 
 	if err := dbQuery.First(&resource).Error; err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "Pack not found"})
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
+		}
+		return APIError(c, fiber.StatusNotFound, codeNotFound, "pack not found")
 	}
 
 	versions := make([]PackVersion, len(resource.Versions))
@@ -208,6 +226,8 @@ func GetRegistries(c *fiber.Ctx) error {
 // @Tags nomad-pack
 // @Produce json
 // @Success 200 {object} map[string][]string
+// @Failure 500 {object} APIErrorResponse
+// @ID listRegistries
 // @Router /v1/registries [get]
 func ListUserRegistriesAPI(c *fiber.Ctx) error {
 	var names []string
@@ -219,7 +239,7 @@ func ListUserRegistriesAPI(c *fiber.Ctx) error {
 		Pluck("coalesce", &names).Error
 
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Database error"})
+		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
 	}
 
 	return c.JSON(fiber.Map{"registries": names})
@@ -232,6 +252,9 @@ func ListUserRegistriesAPI(c *fiber.Ctx) error {
 // @Produce json
 // @Param q query string true "Search query"
 // @Success 200 {object} map[string][]string
+// @Failure 429 {object} APIErrorResponse
+// @Failure 500 {object} APIErrorResponse
+// @ID searchRegistries
 // @Router /v1/registries/search [get]
 func SearchRegistriesAPI(c *fiber.Ctx) error {
 	query := c.Query("q")
@@ -250,7 +273,7 @@ func SearchRegistriesAPI(c *fiber.Ctx) error {
 		Pluck("namespace", &names).Error
 
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Database error"})
+		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
 	}
 
 	return c.JSON(fiber.Map{"registries": names})
@@ -263,6 +286,9 @@ func SearchRegistriesAPI(c *fiber.Ctx) error {
 // @Produce json
 // @Param q query string true "Search query"
 // @Success 200 {object} map[string][]PackSummary
+// @Failure 429 {object} APIErrorResponse
+// @Failure 500 {object} APIErrorResponse
+// @ID searchPacks
 // @Router /v1/packs/search [get]
 func SearchPacksAPI(c *fiber.Ctx) error {
 	query := c.Query("q")
@@ -277,7 +303,7 @@ func SearchPacksAPI(c *fiber.Ctx) error {
 		Limit(20).Find(&resources).Error
 
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Database error"})
+		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
 	}
 
 	summaries := make([]PackSummary, len(resources))
@@ -312,11 +338,13 @@ type JobDetail struct {
 // @Tags nomad-job
 // @Produce json
 // @Success 200 {object} map[string][]JobSummary
+// @Failure 500 {object} APIErrorResponse
+// @ID listJobs
 // @Router /v1/jobs [get]
 func ListAllJobsAPI(c *fiber.Ctx) error {
 	var resources []models.NomadResource
 	if err := reqDB(c).Preload("User").Preload("Organization").Where("type = ?", models.ResourceTypeJob).Find(&resources).Error; err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Database error"})
+		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
 	}
 
 	summaries := make([]JobSummary, len(resources))
@@ -338,6 +366,9 @@ func ListAllJobsAPI(c *fiber.Ctx) error {
 // @Produce json
 // @Param q query string true "Search query"
 // @Success 200 {object} map[string][]JobSummary
+// @Failure 429 {object} APIErrorResponse
+// @Failure 500 {object} APIErrorResponse
+// @ID searchJobs
 // @Router /v1/jobs/search [get]
 func SearchJobsAPI(c *fiber.Ctx) error {
 	query := c.Query("q")
@@ -352,7 +383,7 @@ func SearchJobsAPI(c *fiber.Ctx) error {
 		Limit(20).Find(&resources).Error
 
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Database error"})
+		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
 	}
 
 	summaries := make([]JobSummary, len(resources))
@@ -375,7 +406,9 @@ func SearchJobsAPI(c *fiber.Ctx) error {
 // @Param username path string true "Namespace (user or org)"
 // @Param jobname path string true "Job name"
 // @Success 200 {object} JobDetail
-// @Failure 404 {object} map[string]string
+// @Failure 404 {object} APIErrorResponse
+// @Failure 500 {object} APIErrorResponse
+// @ID getNamespaceJob
 // @Router /{username}/v1/jobs/{jobname} [get]
 func GetJobAPI(c *fiber.Ctx) error {
 	namespace := c.Params("username")
@@ -387,12 +420,16 @@ func GetJobAPI(c *fiber.Ctx) error {
 	var user models.User
 	if err := reqDB(c).Where(iEq("username"), namespace).First(&user).Error; err == nil {
 		userID = user.ID
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
 	} else {
 		var org models.Organization
 		if err := reqDB(c).Where(iEq("name"), namespace).First(&org).Error; err == nil {
 			orgID = &org.ID
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
 		} else {
-			return c.Status(404).JSON(fiber.Map{"error": "Namespace not found"})
+			return APIError(c, fiber.StatusNotFound, codeNotFound, "namespace not found")
 		}
 	}
 
@@ -405,7 +442,10 @@ func GetJobAPI(c *fiber.Ctx) error {
 	}
 
 	if err := dbQuery.First(&resource).Error; err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "Job not found"})
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
+		}
+		return APIError(c, fiber.StatusNotFound, codeNotFound, "job not found")
 	}
 
 	versions := make([]PackVersion, len(resource.Versions))
@@ -464,6 +504,8 @@ type RecentResource struct {
 // @Param since query string false "ISO8601 timestamp to filter resources updated after this time"
 // @Param limit query int false "Maximum number of results (default 50, max 100)"
 // @Success 200 {object} map[string][]RecentResource
+// @Failure 500 {object} APIErrorResponse
+// @ID listRecent
 // @Router /v1/recent [get]
 func ListRecentAPI(c *fiber.Ctx) error {
 	since := c.Query("since")
@@ -492,7 +534,7 @@ func ListRecentAPI(c *fiber.Ctx) error {
 
 	var resources []models.NomadResource
 	if err := query.Find(&resources).Error; err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Database error"})
+		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
 	}
 
 	results := make([]RecentResource, len(resources))

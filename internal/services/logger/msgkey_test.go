@@ -206,8 +206,8 @@ func isOSStdStream(e ast.Expr) bool {
 
 func TestServerCodeDoesNotWriteStdout(t *testing.T) {
 	var hits []string
-	// cmd/nomad-vars is an operator CLI that prints to the terminal on purpose.
-	checked := walkServerFiles(t, []string{"../../../internal", "../../../cmd"}, []string{"cmd/nomad-vars"}, func(fset *token.FileSet, f *ast.File) {
+	// cmd/nomad-vars and cmd/openapi-convert are operator/dev CLIs that print to the terminal on purpose.
+	checked := walkServerFiles(t, []string{"../../../internal", "../../../cmd"}, []string{"cmd/nomad-vars", "cmd/openapi-convert"}, func(fset *token.FileSet, f *ast.File) {
 		hits = append(hits, scanStdoutWrites(fset, f)...)
 	})
 	if checked < 40 {
@@ -324,8 +324,8 @@ func scanStdlibLog(fset *token.FileSet, f *ast.File) []string {
 
 func TestServerCodeDoesNotUseStdlibLog(t *testing.T) {
 	var hits []string
-	// cmd/nomad-vars is an operator CLI that reports to the terminal on purpose.
-	checked := walkServerFiles(t, []string{"../../../internal", "../../../cmd"}, []string{"cmd/nomad-vars"}, func(fset *token.FileSet, f *ast.File) {
+	// cmd/nomad-vars and cmd/openapi-convert are operator/dev CLIs that report to the terminal on purpose.
+	checked := walkServerFiles(t, []string{"../../../internal", "../../../cmd"}, []string{"cmd/nomad-vars", "cmd/openapi-convert"}, func(fset *token.FileSet, f *ast.File) {
 		// test_helper.go is test-only scaffolding called from other packages'
 		// tests; its log.Fatalf runs before any testing.T exists.
 		if strings.HasSuffix(filepath.ToSlash(fset.Position(f.Pos()).Filename), "internal/database/test_helper.go") {
@@ -387,7 +387,7 @@ func scanOSExit(fset *token.FileSet, f *ast.File) []string {
 // TestServerCodeDoesNotUseStdlibLog.
 func TestServerCodeHasNoOSExit(t *testing.T) {
 	var hits []string
-	checked := walkServerFiles(t, []string{"../../../internal", "../../../cmd"}, nil, func(fset *token.FileSet, f *ast.File) {
+	checked := walkServerFiles(t, []string{"../../../internal", "../../../cmd"}, []string{"cmd/openapi-convert"}, func(fset *token.FileSet, f *ast.File) {
 		hits = append(hits, scanOSExit(fset, f)...)
 	})
 	if checked < 40 {

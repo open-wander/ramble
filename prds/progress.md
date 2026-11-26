@@ -865,3 +865,73 @@ Comments: Phase 12 code carried no task/requirement ids; removed "(added by late
 The 9-line RequireAPIToken doc comment is all security contract: kept.
 Verified: build, vet -tags=security, go test -tags=security ./... (apitoken failed once with a testcontainers
 reaper start error - infrastructure, passed on re-run), make gosec exit 0, Nosec 37.
+
+## 2026-11-26 — 13.2 Common /v1 error shape (branch feat/api-contract, stacked on #67)
+
+api_errors.go: APIErrorBody/APIErrorResponse (swag types; APIError marshals them, bytes unchanged), codeNotFound,
+codeMethodNotAllowed, IsAPIPath (case-insensitive, format choice only; isTokenAPIRequest stays exact-case),
+APINotFound, APIRateLimited, APIErrorHandler (fixed messages, never echoes err; non-/v1 -> fiber.DefaultErrorHandler).
+nomad_pack.go: all errors via APIError; lookups now 500 on real DB errors (were 404 for any error);
+@Failure annotations use APIErrorResponse; api-docs regenerated. server.go: fiberConfig ErrorHandler;
+app.All("/v1/*", APINotFound) after the last explicit /v1 route and BEFORE the /:username catch-alls
+(new /v1 routes must be registered above it); newSearchLimiter returns JSON 429 on /v1.
+CLI client (internal/pack/client.go): /v1 list/search errors show the server message for old string and new
+object shapes (LimitReader), else "unexpected status code: N".
+Note: namespaced /{username}/v1/... handlers are not registered in server.go (only tests wire them); those
+paths are served by the content-negotiated catch-alls.
+Advisor review: MINOR. Orchestrator fixed: DB-error rows for the org lookups in GetPackAPI/GetJobAPI (reviewer
+showed removing the branch left the suite green; now red); APIRateLimited helper replaces the "rate_limited"
+literal in server.go. Logged, not fixed: the not-found table covers namespaced handlers; global /v1 not-found
+is covered by the unknown-path test in internal/server; non-/v1 catch-all 404 (GetResource) has no new test
+(unchanged code path; the ErrorHandler only applies to fiber errors).
+Verified: build, vet -tags=security, go test -tags=security ./... (18 ok), make gosec exit 0, Nosec 37,
+make swagger produces no further diff.
+
+PATTERN: routes - app.All("/v1/*") 404 guard must stay below every explicit /v1 route and above /:username catch-alls.
+
+## 2026-11-26 — 13.1 OpenAPI 3 spec
+
+swag v2 still rc6 -> kept swag v1.16.6. New dev tool cmd/openapi-convert (Convert(swaggerJSON) -> YAML):
+openapi2conv.ToV3, keeps only paths with a whole "v1" segment, rewrites bearerAuth apiKey/header/Authorization
+to http bearer (errors on anything else), sets 3.0.3, validates, sorted-key YAML + trailing newline.
+kin-openapi v0.153.0 in go.mod; Makefile OAPI_CODEGEN_VERSION=v2.9.0, OAPI_RUNTIME_VERSION=v1.9.1 (not in
+check-pins: not in the Dockerfile). `make openapi` = swagger + convert (byte-identical on rerun).
+`make openapi-check` = openapi + git diff --exit-code api-docs/ + oapi-codegen types,client into a temp module
+that must compile (fails on unstaged api-docs changes by design). CI swagger step replaced by openapi-check.
+api-docs/openapi_test.go: Validate, unique non-empty operationIds, >=400 responses ref handlers.APIErrorResponse,
+bearerAuth http/bearer, minimum /v1 path count. @ID on all 10 /v1 ops (listPacks, searchPacks, listJobs,
+searchJobs, listRecent, listRegistries, searchRegistries, listNamespacePacks, getNamespacePack,
+getNamespaceJob) - these become generated client method names. No @Security on public reads; write
+endpoints add `@Security bearerAuth` + @Failure 401/403 APIErrorResponse.
+Release: .goreleaser.yml release.extra_files + checksum.extra_files attach openapi.yaml; the signed release
+runs goreleaser from scripts/release-cli-local.sh (not release.yml), so the asset comes from that run.
+logger msgkey source scans now skip cmd/openapi-convert (as for cmd/nomad-vars).
+Advisor review: MINOR. Orchestrator fixed: converter test now has /v1x/packs and /docs/v10 fixtures (substring
+mutation -> red); bearerAuth description no longer suggests users type "Bearer" themselves.
+Verified: build, vet -tags=security, go test -tags=security ./... (20 ok), make gosec/actionlint/check-pins exit 0,
+make openapi deterministic, make openapi-check exit 0 (client compiles).
+
+PATTERN: openapi - operationIds are the generated client's public method names; choose them deliberately and keep them stable.
+
+## 2026-11-26 — 13.3 GET /v1/user; Phase 13 collapsed
+
+internal/handlers/api_user.go: GetCurrentUserAPI behind RequireAPIToken(read); CurrentUserResponse built field by
+field {username, token_scope, token_org (*string, nullable, from the narrowed membership; missing -> 500),
+token_expires_at (UTC)}. Route above the /v1/* 404 guard. Spec: getCurrentUser, bearerAuth, 401/500
+APIErrorResponse, token_org nullable (x-nullable -> nullable via openapi2conv; pinned by openapi_test.go).
+docs/api.md: Authentication section + Current User. Tests: api_user_security_test.go (exact 4 keys, no token/hash/
+email in body, read/write/org cases, 401 cases with wantUnauthorizedBody - security build tag), server route test.
+Advisor review: PASS. Verified: build, vet -tags=security, go test -tags=security ./... (20 ok), make gosec exit 0
+(Nosec 39: +2 justified G304/G306 in the dev-only cmd/openapi-convert), make openapi-check exit 0.
+
+## 2026-11-26 — Phase 13 sweep (invariants + comments)
+
+19 breaks via the overlay driver (scratchpad sweep13). 13 killed directly.
+Not gaps: cv-version (openapi2conv.ToV3 already emits 3.0.3 - equivalent); cv-validate (converter's Validate
+skipped -> api-docs/openapi_test.go validates the committed spec and CI openapi-check catches drift).
+Gaps closed (user chose all): APIErrorHandler rows for 400/404/405/429 (only 403/500 were pinned);
+GetCurrentUserAPI: org token without membership -> 500 (never token_org null), expiry serialised in UTC,
+500 JSON without token locals (no panic); CLI oversized error body (64 KiB message beyond maxErrorBody ->
+"unexpected status code"). All six re-run: killed.
+Comments: no task ids; long blocks are swag annotations (codegen directives) - untouched.
+Verified: build, vet -tags=security, go test -tags=security ./... (20 ok), make gosec exit 0.

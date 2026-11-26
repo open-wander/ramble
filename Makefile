@@ -26,6 +26,20 @@ test:
 swagger:
 	go run github.com/swaggo/swag/cmd/swag@$(SWAG_VERSION) init -g main.go --output api-docs --dir ./cmd/ramble,./internal/handlers,./internal/models --parseDependency --parseInternal
 
+# OpenAPI 3 spec of the /v1 API: swag writes Swagger 2.0, the converter keeps
+# the JSON API paths and emits api-docs/openapi.yaml.
+openapi: swagger
+	go run ./cmd/openapi-convert -in api-docs/swagger.json -out api-docs/openapi.yaml
+
+# Regenerates the spec, fails if it differs from the committed one (so it fails
+# on a tree with uncommitted api-docs changes), then proves oapi-codegen can
+# generate a client from it and that the result compiles.
+openapi-check: openapi
+	git diff --exit-code api-docs/
+	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && \
+	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) -generate types,client -package rambleclient -o "$$tmp/client.go" api-docs/openapi.yaml && \
+	(cd "$$tmp" && go mod init rambleclientcheck && go get github.com/oapi-codegen/runtime@$(OAPI_RUNTIME_VERSION) && go build ./...) && echo "openapi client generates and compiles"
+
 # Static analysis tools. Pinned so a PR never fails because a tool changed
 # overnight; the weekly security workflow runs both at master so new checks and
 # toolchain breaks show up early - bump these when it passes. Both are master
@@ -38,6 +52,9 @@ ACTIONLINT_VERSION ?= v1.7.12
 # check-pins fails if the two drift apart.
 SWAG_VERSION ?= v1.16.6
 TAILWIND_VERSION ?= v4.1.18
+# Only used by openapi-check; not in the Dockerfile, so not in check-pins.
+OAPI_CODEGEN_VERSION ?= v2.9.0
+OAPI_RUNTIME_VERSION ?= v1.9.1
 
 actionlint:
 	go run github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
@@ -164,4 +181,4 @@ release:
 		*) echo "Invalid choice" ;; \
 	esac
 
-.PHONY: build run dev migrate test swagger bootstrap update security staticcheck gosec actionlint check-pins docker-build docker-push nomad-vars tailwind-install css-build css-watch deploy release release-patch release-minor release-major release-cli
+.PHONY: build run dev migrate test swagger openapi openapi-check bootstrap update security staticcheck gosec actionlint check-pins docker-build docker-push nomad-vars tailwind-install css-build css-watch deploy release release-patch release-minor release-major release-cli

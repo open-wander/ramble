@@ -74,6 +74,9 @@ archives:
 
 checksum:
   name_template: 'checksums.txt'
+  extra_files:
+    - glob: ./api-docs/openapi.yaml
+      name_template: openapi.yaml
 
 snapshot:
   version_template: "{{ .Tag }}-next"
@@ -106,3 +109,6 @@ release:
   draft: false
   prerelease: auto
   name_template: "{{.Tag}}"
+  extra_files:
+    - glob: ./api-docs/openapi.yaml
+      name_template: openapi.yaml

@@ -11,6 +11,10 @@ import (
 // @license.name MPL-2.0
 // @host ramble.openwander.org
 // @BasePath /
+// @securityDefinitions.apikey bearerAuth
+// @in header
+// @name Authorization
+// @description Ramble API token, sent as the Authorization header: Bearer <token>
 func main() {
 	cmd.Execute()
 }

@@ -96,7 +96,7 @@ func (c *Client) ListRegistries() ([]string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, statusError(resp)
 	}
 
 	var result RegistryListResponse
@@ -116,7 +116,7 @@ func (c *Client) SearchRegistries(query string) ([]string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, statusError(resp)
 	}
 
 	var result RegistryListResponse
@@ -136,7 +136,7 @@ func (c *Client) ListAllPacks() ([]PackSummary, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, statusError(resp)
 	}
 
 	var result PackListResponse
@@ -203,7 +203,7 @@ func (c *Client) SearchPacks(query string) ([]PackSummary, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, statusError(resp)
 	}
 
 	var result PackListResponse
@@ -223,7 +223,7 @@ func (c *Client) ListAllJobs() ([]JobSummary, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, statusError(resp)
 	}
 
 	var result JobListResponse
@@ -267,7 +267,7 @@ func (c *Client) SearchJobs(query string) ([]JobSummary, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, statusError(resp)
 	}
 
 	var result JobListResponse
@@ -327,4 +327,40 @@ func (c *Client) getJSON(path string) (*http.Response, error) {
 	req.Header.Set("Accept", "application/json")
 
 	return c.HTTPClient.Do(req) // #nosec G704 -- BaseURL is from trusted server config
+}
+
+// maxErrorBody caps how much of an error body is read.
+const maxErrorBody = 4 << 10
+
+// statusError builds the error for an unexpected response. It includes the
+// server's message when the body is a /v1 JSON error and falls back to the
+// status code alone.
+func statusError(resp *http.Response) error {
+	if msg := errorMessage(resp); msg != "" {
+		return fmt.Errorf("server error (%d): %s", resp.StatusCode, msg)
+	}
+	return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+}
+
+// errorMessage extracts the message from a JSON error body. It accepts the
+// current shape {"error":{"code":"...","message":"..."}} and the older
+// {"error":"..."}. Any other body yields "".
+func errorMessage(resp *http.Response) string {
+	var body struct {
+		Error json.RawMessage `json:"error"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxErrorBody)).Decode(&body); err != nil {
+		return ""
+	}
+	var legacy string
+	if json.Unmarshal(body.Error, &legacy) == nil {
+		return legacy
+	}
+	var obj struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(body.Error, &obj) == nil {
+		return obj.Message
+	}
+	return ""
 }

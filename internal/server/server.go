@@ -283,17 +283,7 @@ func registerRoutes(app *fiber.App) {
 		return c.Redirect("/swagger/index.html", fiber.StatusMovedPermanently)
 	})
 
-	// Rate limiter for search endpoints
-	searchLimiter := limiter.New(limiter.Config{
-		Max:        60,
-		Expiration: 1 * time.Minute,
-		KeyGenerator: func(c *fiber.Ctx) string {
-			return c.IP()
-		},
-		LimitReached: func(c *fiber.Ctx) error {
-			return c.Status(fiber.StatusTooManyRequests).SendString("Too many search requests. Please try again later.")
-		},
-	})
+	searchLimiter := newSearchLimiter()
 
 	// Routes
 	app.Get("/", handlers.Home)
@@ -422,6 +412,7 @@ func registerRoutes(app *fiber.App) {
 	}
 
 	// API Routes (must be before catch-all /:username routes)
+	app.Get("/v1/user", handlers.RequireAPIToken(models.ScopeRead), handlers.GetCurrentUserAPI)
 	app.Get("/v1/recent", handlers.ListRecentAPI)
 	app.Get("/v1/packs", handlers.ListAllPacksAPI)
 	app.Get("/v1/packs/search", searchLimiter, handlers.SearchPacksAPI)
@@ -429,6 +420,9 @@ func registerRoutes(app *fiber.App) {
 	app.Get("/v1/registries/search", searchLimiter, handlers.SearchRegistriesAPI)
 	app.Get("/v1/jobs", handlers.ListAllJobsAPI)
 	app.Get("/v1/jobs/search", searchLimiter, handlers.SearchJobsAPI)
+	// Unmatched /v1 paths answer with the JSON 404 instead of falling into the
+	// /:username catch-alls below. Register every future /v1 route above this.
+	app.All("/v1/*", handlers.APINotFound)
 
 	// Webhook Routes
 	app.Post("/webhooks/github/issues", handlers.HandleGitHubIssueWebhook)
@@ -441,10 +435,29 @@ func registerRoutes(app *fiber.App) {
 	app.Get("/:username/:resourcename/v/:version/raw", handlers.GetRawResourceVersion)
 }
 
+// newSearchLimiter limits the HTML /search page and the /v1 search routes;
+// only the /v1 branch answers in the JSON error shape.
+func newSearchLimiter() fiber.Handler {
+	return limiter.New(limiter.Config{
+		Max:        60,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			if handlers.IsAPIPath(c.Path()) {
+				return handlers.APIRateLimited(c)
+			}
+			return c.Status(fiber.StatusTooManyRequests).SendString("Too many search requests. Please try again later.")
+		},
+	})
+}
+
 // fiberConfig builds the Fiber configuration.
 func fiberConfig(views fiber.Views) fiber.Config {
 	return fiber.Config{
 		Views:                   views,
+		ErrorHandler:            handlers.APIErrorHandler,
 		EnableTrustedProxyCheck: true,
 		TrustedProxies:          trustedProxies(os.Getenv("TRUSTED_PROXIES")),
 		ProxyHeader:             fiber.HeaderXForwardedFor,
