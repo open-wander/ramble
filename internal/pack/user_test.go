@@ -21,6 +21,9 @@ func TestTokenURLAllowed(t *testing.T) {
 		{"http://127.1.2.3", true},
 		{"http://[::1]:3000", true},
 		{"http://example.com", false},
+		{"http://10.0.0.1", false},
+		{"http://192.168.1.10:8080", false},
+		{"http://[2001:db8::1]", false},
 		{"http://localhost.evil.com", false},
 		{"http://127.0.0.1.nip.io", false},
 		{"ftp://localhost", false},
@@ -81,7 +84,10 @@ func TestCurrentUser(t *testing.T) {
 }
 
 func TestCurrentUserRefusesPlainHTTP(t *testing.T) {
-	_, err := NewClient("http://example.com").CurrentUser(context.Background(), "s3cr3t")
-	assert.Error(t, err)
+	// The refusal must come before any connection attempt, not from a failed
+	// request: the error names the refusal.
+	_, err := NewClient("http://registry.example.invalid").CurrentUser(context.Background(), "s3cr3t")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "refusing to send a token")
 	assert.NotContains(t, err.Error(), "s3cr3t")
 }

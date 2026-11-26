@@ -1191,3 +1191,14 @@ Advisor review: MINOR. Orchestrator: plain-http test used an unused counting ser
 .invalid, refusal asserted; job/pack name default drops .nomad.hcl/.nomad/.hcl (web.nomad.hcl -> web) +
 TestDefaultName + docs; delete of a missing resource says "<kind> NS/N not found".
 Verified: local CI mirror green (testcontainers timeouts re-run). Phase 16 collapsed.
+
+## 2026-11-26 — Phase 16 sweep (invariants + comments)
+
+15 line-targeted breaks via the overlay driver (scratchpad sweep16; CLI packages, no containers). 13 killed first
+time. 2 survived and were closed with tests: plain http to a non-loopback IP (TestTokenURLAllowed rows for
+10.0.0.1, 192.168.1.10, 2001:db8::1); CurrentUser's own URL refusal (the old test passed on the network error to
+example.com; now an .invalid host and the refusal text is asserted). Both re-run: killed.
+Killed: https-only, no-host, no redirects, empty-token refusal, client URL refusal, 1 MiB body cap, token kept
+only for the same URL, RAMBLE_TOKEN precedence, delete needs a terminal or --yes, y/yes only, pack/job kind check,
+control characters stripped, registry list never prints the token.
+Comments: no stale references; nothing over 10 lines outside swag/generated code.
