@@ -21,13 +21,7 @@ verification in [verification.md](verification.md). PRD: [done/prd-security-bugf
 
 ## Phase 11: zerolog to log/slog — 5 tasks completed 2026-10-14 (see [TASKS-archive.md](TASKS-archive.md))
 
-## Phase 12: API tokens
-
-| # | Task | PRD | Status | Notes |
-|---|------|-----|--------|-------|
-| 12.1 | APIToken model, token generation (`rmbl_` + 40 base62), SHA-256 storage, expiry rules (US-001, FR-2) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | internal/services/apitoken (Create/Authenticate/List/Revoke/TouchLastUsed/CountActive, sentinels). Svc not yet wired with Init at startup: 12.2 does that |
-| 12.2 | Bearer middleware `RequireAPIToken(scope)`: scopes, org restriction, unverified-email and no-admin rules, CSRF exemption for cookie-less Bearer on /v1, 120/min write limit, `token_prefix` logging, redaction test (US-003, FR-1/3/4) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | handlers.RequireAPIToken + APIError (api_errors.go), TokenAllowsOrg/APIOrgForbidden, NewAPIWriteLimiter (not mounted yet), isTokenAPIRequest CSRF exemption, token_prefix log, audit via/token_id |
-| 12.3 | Token settings page `/settings/tokens`: create (shown once), list, revoke, 25-token cap, audit events, i18n (US-002) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | needs: 12.1 |
+## Phase 12: API tokens — 3 tasks completed 2026-11-26 (see [TASKS-archive.md](TASKS-archive.md))
 
 ## Phase 13: API contract
 

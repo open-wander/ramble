@@ -355,6 +355,9 @@ func registerRoutes(app *fiber.App) {
 	// Org Routes
 	app.Get("/orgs/new", handlers.RequireAuth, handlers.GetCreateOrg)
 	app.Post("/orgs/new", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostCreateOrg)
+	app.Get("/settings/tokens", handlers.RequireAuth, handlers.GetTokenSettings)
+	app.Post("/settings/tokens", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostCreateToken)
+	app.Delete("/settings/tokens/:id<int>", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.DeleteToken)
 	app.Get("/orgs/:orgname/settings", handlers.RequireAuth, handlers.RequireOrgOwner, handlers.GetOrgSettings)
 	app.Post("/orgs/:orgname/update", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.RequireOrgOwner, handlers.PostUpdateOrg)
 	app.Post("/orgs/:orgname/members/add", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.RequireOrgOwner, handlers.PostAddMember)

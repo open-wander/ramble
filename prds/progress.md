@@ -827,3 +827,22 @@ RULES FOR 13.x/14.x/15.x handlers (from advisor risks):
 
 PATTERN: fiber - a helper that writes a response and returns c.JSON's nil error cannot signal refusal; use a bool check plus a separate responder.
 PATTERN: audit - keys containing "token" are redacted by redactDetails; add trusted fields after redaction.
+
+## 2026-11-26 — 12.3 Token settings page; Phase 12 collapsed
+
+New: internal/handlers/tokens.go (GetTokenSettings, PostCreateToken, DeleteToken), views/settings_tokens.html,
+views/partials/token_row.html, internal/server/tokens_csrf_security_test.go (real stack via stackApp: POST/DELETE
+without CSRF -> 403). Routes before the catch-alls; :id<int>; "settings" already reserved. Create response is a
+full page with Cache-Control: no-store; plaintext never in session/flash/header/audit. Handler rejects expiry "0",
+negative, non-integer (the service maps 0 to the default 90); malformed or non-member org id -> 403 (no oracle).
+Org column branches on OrganizationID ("(deleted organisation)" for soft-deleted orgs). Copy button uses hyperscript.
+Advisor review: MINOR. Orchestrator fixed: DeleteToken errors set HX-Reswap: none (main.html swaps 4xx/5xx, a 404
+replaced the <tr> with bare text); repeated revoke no longer writes a second token.revoke audit event (audit only
+when RevokedAt >= request start; mutation -> red); test helper doTokenReq dead return value dropped; rebuilt
+public/css/style.css (text-green-600, border-green-200 were missing).
+Verified: build, vet -tags=security, go test -tags=security ./... (18 ok, exit 0), make gosec exit 0, Nosec 37.
+
+PATTERN: htmx - main.html swaps 4xx/5xx globally; a row-targeted hx-delete must set HX-Reswap: none on errors.
+PATTERN: tooling - the Tailwind v4 standalone binary is SIGKILLed (exit 137) on this macOS until ad-hoc re-signed:
+`codesign --force --sign - tailwindcss` (gitignored local binary). New Tailwind classes need `make css-build` and
+the rebuilt public/css/style.css committed.
