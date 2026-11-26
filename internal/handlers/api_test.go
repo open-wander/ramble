@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"encoding/json"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
@@ -332,7 +334,7 @@ func TestListPacksAPI_NamespaceNotFound(t *testing.T) {
 	resp, err := app.Test(req)
 
 	assert.NoError(t, err)
-	assert.Equal(t, 404, resp.StatusCode)
+	assertAPIError(t, resp, 404, "not_found", "namespace not found")
 }
 
 func TestListPacksAPI_OrgNamespace(t *testing.T) {
@@ -407,7 +409,7 @@ func TestGetPackAPI_NotFound(t *testing.T) {
 	resp, err := app.Test(req)
 
 	assert.NoError(t, err)
-	assert.Equal(t, 404, resp.StatusCode)
+	assertAPIError(t, resp, 404, "not_found", "pack not found")
 }
 
 func TestGetPackAPI_NamespaceNotFound(t *testing.T) {
@@ -418,7 +420,7 @@ func TestGetPackAPI_NamespaceNotFound(t *testing.T) {
 	resp, err := app.Test(req)
 
 	assert.NoError(t, err)
-	assert.Equal(t, 404, resp.StatusCode)
+	assertAPIError(t, resp, 404, "not_found", "namespace not found")
 }
 
 func TestWantsJSON(t *testing.T) {
@@ -803,7 +805,7 @@ func TestGetJobAPI_NotFound(t *testing.T) {
 	resp, err := app.Test(req)
 
 	assert.NoError(t, err)
-	assert.Equal(t, 404, resp.StatusCode)
+	assertAPIError(t, resp, 404, "not_found", "job not found")
 }
 
 func TestGetJobAPI_NamespaceNotFound(t *testing.T) {
@@ -814,7 +816,7 @@ func TestGetJobAPI_NamespaceNotFound(t *testing.T) {
 	resp, err := app.Test(req)
 
 	assert.NoError(t, err)
-	assert.Equal(t, 404, resp.StatusCode)
+	assertAPIError(t, resp, 404, "not_found", "namespace not found")
 }
 
 // ==================== Recent API Tests ====================
@@ -941,4 +943,17 @@ func TestListRecentAPI_MultipleVersionsReturnsLatest(t *testing.T) {
 		}
 	}
 	t.Fatal("Should find multi-version-pack in results")
+}
+
+// assertAPIError checks the status and the exact {"error":{"code","message"}} body.
+func assertAPIError(t *testing.T, resp *http.Response, status int, code, message string) {
+	t.Helper()
+	assert.Equal(t, status, resp.StatusCode)
+	assert.Contains(t, resp.Header.Get("Content-Type"), "application/json")
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	var got APIErrorResponse
+	require.NoError(t, json.Unmarshal(body, &got), string(body))
+	assert.Equal(t, APIErrorResponse{Error: APIErrorBody{Code: code, Message: message}}, got)
+	assert.JSONEq(t, `{"error":{"code":"`+code+`","message":"`+message+`"}}`, string(body))
 }

@@ -435,3 +435,40 @@ func TestNewClient_HTTPClientConfig(t *testing.T) {
 	assert.NotNil(t, client.HTTPClient)
 	assert.NotNil(t, client.HTTPClient.Transport)
 }
+
+func TestV1ErrorMessages(t *testing.T) {
+	tests := []struct {
+		name    string
+		status  int
+		body    string
+		wantErr string
+	}{
+		{"new shape", 500, `{"error":{"code":"internal_error","message":"internal error"}}`, "server error (500): internal error"},
+		{"old shape", 500, `{"error":"Database error"}`, "server error (500): Database error"},
+		{"text body", 502, "Bad Gateway", "unexpected status code: 502"},
+		{"empty body", 503, "", "unexpected status code: 503"},
+		{"object without message", 429, `{"error":{"code":"rate_limited"}}`, "unexpected status code: 429"},
+	}
+	calls := map[string]func(*Client) error{
+		"ListRegistries":   func(c *Client) error { _, err := c.ListRegistries(); return err },
+		"SearchRegistries": func(c *Client) error { _, err := c.SearchRegistries("q"); return err },
+		"ListAllPacks":     func(c *Client) error { _, err := c.ListAllPacks(); return err },
+		"SearchPacks":      func(c *Client) error { _, err := c.SearchPacks("q"); return err },
+		"ListAllJobs":      func(c *Client) error { _, err := c.ListAllJobs(); return err },
+		"SearchJobs":       func(c *Client) error { _, err := c.SearchJobs("q"); return err },
+	}
+	for _, tt := range tests {
+		for name, call := range calls {
+			t.Run(tt.name+"/"+name, func(t *testing.T) {
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(tt.status)
+					_, _ = w.Write([]byte(tt.body))
+				}))
+				defer srv.Close()
+				err := call(NewClient(srv.URL))
+				require.Error(t, err)
+				assert.Equal(t, tt.wantErr, err.Error())
+			})
+		}
+	}
+}

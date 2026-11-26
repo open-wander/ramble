@@ -865,3 +865,26 @@ Comments: Phase 12 code carried no task/requirement ids; removed "(added by late
 The 9-line RequireAPIToken doc comment is all security contract: kept.
 Verified: build, vet -tags=security, go test -tags=security ./... (apitoken failed once with a testcontainers
 reaper start error - infrastructure, passed on re-run), make gosec exit 0, Nosec 37.
+
+## 2026-11-26 — 13.2 Common /v1 error shape (branch feat/api-contract, stacked on #67)
+
+api_errors.go: APIErrorBody/APIErrorResponse (swag types; APIError marshals them, bytes unchanged), codeNotFound,
+codeMethodNotAllowed, IsAPIPath (case-insensitive, format choice only; isTokenAPIRequest stays exact-case),
+APINotFound, APIRateLimited, APIErrorHandler (fixed messages, never echoes err; non-/v1 -> fiber.DefaultErrorHandler).
+nomad_pack.go: all errors via APIError; lookups now 500 on real DB errors (were 404 for any error);
+@Failure annotations use APIErrorResponse; api-docs regenerated. server.go: fiberConfig ErrorHandler;
+app.All("/v1/*", APINotFound) after the last explicit /v1 route and BEFORE the /:username catch-alls
+(new /v1 routes must be registered above it); newSearchLimiter returns JSON 429 on /v1.
+CLI client (internal/pack/client.go): /v1 list/search errors show the server message for old string and new
+object shapes (LimitReader), else "unexpected status code: N".
+Note: namespaced /{username}/v1/... handlers are not registered in server.go (only tests wire them); those
+paths are served by the content-negotiated catch-alls.
+Advisor review: MINOR. Orchestrator fixed: DB-error rows for the org lookups in GetPackAPI/GetJobAPI (reviewer
+showed removing the branch left the suite green; now red); APIRateLimited helper replaces the "rate_limited"
+literal in server.go. Logged, not fixed: the not-found table covers namespaced handlers; global /v1 not-found
+is covered by the unknown-path test in internal/server; non-/v1 catch-all 404 (GetResource) has no new test
+(unchanged code path; the ErrorHandler only applies to fiber errors).
+Verified: build, vet -tags=security, go test -tags=security ./... (18 ok), make gosec exit 0, Nosec 37,
+make swagger produces no further diff.
+
+PATTERN: routes - app.All("/v1/*") 404 guard must stay below every explicit /v1 route and above /:username catch-alls.

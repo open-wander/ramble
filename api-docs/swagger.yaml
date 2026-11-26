@@ -1,5 +1,19 @@
 basePath: /
 definitions:
+  handlers.APIErrorBody:
+    properties:
+      code:
+        example: not_found
+        type: string
+      message:
+        example: pack not found
+        type: string
+    type: object
+  handlers.APIErrorResponse:
+    properties:
+      error:
+        $ref: '#/definitions/handlers.APIErrorBody'
+    type: object
   handlers.JobDetail:
     properties:
       description:
@@ -263,9 +277,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: Get job details
       tags:
       - nomad-job
@@ -293,9 +309,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: List packs in a namespace
       tags:
       - nomad-pack
@@ -324,9 +342,11 @@ paths:
         "404":
           description: Not Found
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: Get pack details
       tags:
       - nomad-pack
@@ -648,6 +668,10 @@ paths:
                 $ref: '#/definitions/handlers.JobSummary'
               type: array
             type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: List all jobs
       tags:
       - nomad-job
@@ -671,6 +695,14 @@ paths:
                 $ref: '#/definitions/handlers.JobSummary'
               type: array
             type: object
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: Search jobs
       tags:
       - nomad-job
@@ -689,6 +721,10 @@ paths:
                 $ref: '#/definitions/handlers.PackSummary'
               type: array
             type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: List all packs
       tags:
       - nomad-pack
@@ -712,6 +748,14 @@ paths:
                 $ref: '#/definitions/handlers.PackSummary'
               type: array
             type: object
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: Search packs
       tags:
       - nomad-pack
@@ -739,6 +783,10 @@ paths:
                 $ref: '#/definitions/handlers.RecentResource'
               type: array
             type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: List recently updated resources
       tags:
       - resources
@@ -757,6 +805,10 @@ paths:
                 type: string
               type: array
             type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: List all registry namespaces (JSON)
       tags:
       - nomad-pack
@@ -780,6 +832,14 @@ paths:
                 type: string
               type: array
             type: object
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
       summary: Search registry namespaces
       tags:
       - nomad-pack
