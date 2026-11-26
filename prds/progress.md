@@ -1068,3 +1068,22 @@ check in the same transaction returns 409 before the purge, so it only ever sees
 Comments: stripped stale FR-4 (US-002) citations in services/resource/service_test.go (old security-bugfix PRD);
 AuthorizeResourceAction doc block is the authorisation contract - kept; swag blocks untouched.
 Verified: local CI mirror all green.
+
+## 2026-11-26 — 15.1 Organisation service extraction
+
+New internal/services/org (plain functions taking db first; never reads database.DB, failingDB tests depend on
+it): CreateOrg (trim, required, reserved, case-insensitive user/org clash, org + owner membership in ONE
+transaction, 23505 -> ErrNameTaken), GetByName, GetByID, MemberRole, RequireOwner, UpdateDescription (single
+column, not Save), ParseRole (strict owner|member), AddMember (strict role, restores soft-deleted row), RemoveMember
+(org row FOR UPDATE, ErrLastOwner when target is an owner and live owners <= 1). Sentinels + IsInputError.
+Reserved list moved to leaf package internal/names; handlers.IsReservedName is a wrapper.
+Web handlers delegate; existing org tests unmodified and green. Web behaviour changes (for the PR): membership
+failure on create now rolls back (500 org.create_failed, was silent success); remove-member delete error now 500;
+remove audit only after a real delete; 23505 on org name -> 400 not 500; PostUpdateOrg writes one column.
+Web keeps lenient role mapping (unknown -> member) before calling AddMember.
+Advisor review: MINOR. Orchestrator fixed: AddMember doc comment; PostRemoveMember no longer audits a
+not-member removal and maps ErrNotFound -> 404.
+Carry to 15.3: organizations.name unique index covers soft-deleted rows -> name reuse after delete needs a decision.
+Carry to 15.4: role change must refuse demoting the last owner with the same lock + count (AddMember rejects live
+members, so a separate SetRole path). Service still needs MemberCount, ListMembers, DeleteOrg.
+Verified: local CI mirror all green.
