@@ -23,6 +23,7 @@ import (
 	"rmbl/internal/database"
 	"rmbl/internal/handlers"
 	"rmbl/internal/models"
+	"rmbl/internal/services/apitoken"
 	"rmbl/internal/services/logger"
 	resourcesvc "rmbl/internal/services/resource"
 )
@@ -60,6 +61,7 @@ func Run(cfg Config) error {
 
 	// Initialize resource service
 	resourcesvc.Init(database.DB)
+	apitoken.Init(database.DB)
 
 	if cfg.Seed || os.Getenv("AUTO_SEED") == "true" {
 		database.SeedInitialUser(database.DB)
@@ -108,6 +110,25 @@ func Run(cfg Config) error {
 	// Request ID tracing + structured access log
 	useRequestLogging(app, logger.Log)
 
+	useSecurityMiddleware(app, os.Getenv("ENV") == "production")
+	useSessionMiddleware(app, cfg.Version)
+
+	// 5. Routes (registerRoutes)
+	registerRoutes(app)
+
+	// 6. Start Server
+	port := cfg.Port
+	if port == "" {
+		port = "3000"
+	}
+	addr := ":" + port
+	logStarted(logger.Log, addr, cfg.Version)
+	return app.Listen(addr)
+}
+
+// useSecurityMiddleware registers HTTPS redirect, helmet, Permissions-Policy
+// and CSRF, in that order.
+func useSecurityMiddleware(app *fiber.App, isProduction bool) {
 	// HTTPS enforcement middleware (only in production)
 	app.Use(func(c *fiber.Ctx) error {
 		if os.Getenv("ENV") == "production" {
@@ -139,7 +160,6 @@ func Run(cfg Config) error {
 	})
 
 	// CSRF Middleware
-	isProduction := os.Getenv("ENV") == "production"
 	app.Use(csrf.New(csrf.Config{
 		KeyLookup:      "header:X-CSRF-Token",
 		ContextKey:     "csrf",
@@ -149,8 +169,8 @@ func Run(cfg Config) error {
 		CookieHTTPOnly: true,
 		Expiration:     1 * time.Hour,
 		SingleUseToken: false,
-		// Signature-authenticated webhooks are called by external services without cookies.
-		Next: isWebhookRequest,
+		// Webhooks and cookie-less Bearer-token /v1 requests skip CSRF.
+		Next: isCSRFExempt,
 		Extractor: func(c *fiber.Ctx) (string, error) {
 			// Check header first (for HTMX requests)
 			if token := c.Get("X-CSRF-Token"); token != "" {
@@ -163,7 +183,11 @@ func Run(cfg Config) error {
 			return "", csrf.ErrTokenNotFound
 		},
 	}))
+}
 
+// useSessionMiddleware registers the session and flash middleware. It must
+// run after CSRF, which provides the "csrf" local it republishes.
+func useSessionMiddleware(app *fiber.App, version string) {
 	// Maximum absolute session lifetime (7 days)
 	const maxSessionLifetime = 7 * 24 * time.Hour
 
@@ -227,26 +251,23 @@ func Run(cfg Config) error {
 		}
 
 		c.Locals("CSRFToken", c.Locals("csrf"))
-		c.Locals("LatestVersion", cfg.Version)
+		c.Locals("LatestVersion", version)
 		return c.Next()
 	})
-
-	// 5. Routes (registerRoutes)
-	registerRoutes(app)
-
-	// 6. Start Server
-	port := cfg.Port
-	if port == "" {
-		port = "3000"
-	}
-	addr := ":" + port
-	logStarted(logger.Log, addr, cfg.Version)
-	return app.Listen(addr)
 }
 
 // registerRoutes registers every route. It touches no DB, session or template
 // state, so a test can call it on a bare app and inspect the route table.
 func registerRoutes(app *fiber.App) {
+	// /v1 API. Per route, never app.Use or a group that
+	// includes /admin:
+	//   apiWriteLimiter := handlers.NewAPIWriteLimiter() // ONE per registerRoutes
+	//   app.Post("/v1/...", handlers.RequireAPIToken("write"), apiWriteLimiter, h)
+	// The limiter must come AFTER RequireAPIToken (it keys by token ID, which
+	// only exists once the token is authenticated), so a group-level limiter
+	// would run too early. Share the one instance so the 120/min budget spans
+	// endpoints.
+
 	// Static files
 	app.Static("/public", "./public")
 	app.Static("/favicon.ico", "./public/favicon.ico")
@@ -334,6 +355,9 @@ func registerRoutes(app *fiber.App) {
 	// Org Routes
 	app.Get("/orgs/new", handlers.RequireAuth, handlers.GetCreateOrg)
 	app.Post("/orgs/new", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostCreateOrg)
+	app.Get("/settings/tokens", handlers.RequireAuth, handlers.GetTokenSettings)
+	app.Post("/settings/tokens", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.PostCreateToken)
+	app.Delete("/settings/tokens/:id<int>", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.DeleteToken)
 	app.Get("/orgs/:orgname/settings", handlers.RequireAuth, handlers.RequireOrgOwner, handlers.GetOrgSettings)
 	app.Post("/orgs/:orgname/update", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.RequireOrgOwner, handlers.PostUpdateOrg)
 	app.Post("/orgs/:orgname/members/add", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.RequireOrgOwner, handlers.PostAddMember)
@@ -553,6 +577,21 @@ func trustedProxies(env string) []string {
 		return defaultTrustedProxies
 	}
 	return out
+}
+
+// isCSRFExempt reports whether CSRF is skipped for the request.
+func isCSRFExempt(c *fiber.Ctx) bool {
+	return isWebhookRequest(c) || isTokenAPIRequest(c)
+}
+
+// isTokenAPIRequest reports whether the request is a /v1 call authenticated
+// only by a Bearer header. With a session cookie present the request is
+// cookie-authenticated and keeps CSRF. The prefix check is exact and
+// case-sensitive so odd spellings fail closed.
+func isTokenAPIRequest(c *fiber.Ctx) bool {
+	return strings.HasPrefix(c.Path(), "/v1/") &&
+		c.Cookies(handlers.SessionCookieName) == "" &&
+		handlers.HasBearerAuth(c)
 }
 
 // resourceWebhookPath matches exactly /resource/<digits>/webhook; the digit

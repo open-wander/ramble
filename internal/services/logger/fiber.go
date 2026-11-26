@@ -8,6 +8,11 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/requestid"
 )
 
+// LocalTokenPrefix is the c.Locals key under which token authentication stores
+// the 12-char token prefix, so the access line can carry it. The logger cannot
+// import the apitoken service (it imports this package), hence a plain key.
+const LocalTokenPrefix = "api_token_prefix"
+
 // RequestLogger logs one http.request line per request through slog and
 // attaches a request-scoped logger carrying request_id to the request's user
 // context, read back with logger.FromContext(c.UserContext()). It must run
@@ -33,12 +38,17 @@ func RequestLogger(base *slog.Logger) fiber.Handler {
 		}
 
 		status := c.Response().StatusCode()
-		reqLog.Log(c.UserContext(), levelForStatus(status), "http.request",
+		attrs := []slog.Attr{
 			slog.String("method", c.Method()),
 			slog.String("path", c.Path()),
 			slog.Int("status", status),
 			slog.Float64("duration_ms", float64(time.Since(start).Microseconds())/1000),
-			slog.String("client_ip", c.IP()))
+			slog.String("client_ip", c.IP()),
+		}
+		if p, ok := c.Locals(LocalTokenPrefix).(string); ok && p != "" {
+			attrs = append(attrs, slog.String("token_prefix", p))
+		}
+		reqLog.LogAttrs(c.UserContext(), levelForStatus(status), "http.request", attrs...)
 		return nil
 	}
 }

@@ -752,3 +752,116 @@ http.request, server.started; an unsigned POST to /webhooks/github/issues -> 401
 webhook.signature_missing (WARN) carrying the access line's request_id; no stdlib.log lines.
 (An unsigned POST to a non-route gets 403 from CSRF, as before - not a regression.)
 Docs: ramble CLAUDE.md (in #63), infra docs/prod-logging.md f5b4f89, prod-logs skill.
+
+## 2026-11-26 — Import: programmatic management (#65)
+
+Imported `prd-programmatic-management.md` research -> backlog. 26 tasks across Phases 12-17
+(API tokens, API contract, resource write API, organisation API, CLI, Terraform provider and release)
+from US-001..US-015 and FR-1..FR-10. Target: Ramble v0.6.0 + terraform-provider-ramble v0.1.0, one release.
+
+Decisions (PRD section 8): owners may delete empty orgs (API + settings page); webhook secret kept
+as sensitive TF state; 404 unknown / 403 not permitted, as the web UI; invite the issue author to the
+provider repo before v0.1.0 is tagged; HashiCorp terraform-plugin-codegen not used (oapi-codegen client).
+
+Operator steps (17.1 repo, 17.4 GitHub App/secret, GPG key, registry): agent stops and gives
+step-by-step instructions when reached; does not set these up itself.
+
+Confirmed present: internal/handlers/{resource_crud,org,resource_auth,audit,nomad_pack}.go,
+internal/services/resource/service.go (AuthorizeResourceAction, CreateResource),
+internal/server/server.go (CSRF exemption fn ~l.563, /v1 routes ~l.401), Makefile `swagger` target (swag, Swagger 2.0).
+
+PATTERN: oss - Ramble is public: no contributor names in code comments, prds/ files or commits; use roles or issue numbers.
+
+## 2026-11-26 — 12.1 APIToken model and token service
+
+Files: internal/models/models.go (APIToken, ScopeRead/ScopeWrite; explicit fields, no soft delete),
+internal/database/{database,test_helper}.go (AutoMigrate), new internal/services/apitoken/
+{service.go, service_test.go, service_security_test.go}.
+API for 12.2/12.3: Generate, HashToken, New/Init/Svc, WithContext, Create(userID, name, scope, orgID,
+days) -> (plain, row, err), Authenticate(plain) -> AuthResult{Token, User} or only ErrInvalidToken,
+List -> []TokenView (no hash, Expired/Revoked flags), CountActive, Revoke(userID, id) -> row or
+ErrNotFound (idempotent), TouchLastUsed (single conditional UPDATE, once/minute).
+Sentinels: ErrInvalidName/Scope/Expiry, ErrNotOrgMember, ErrTooManyTokens, ErrInvalidToken, ErrNotFound.
+Create locks the user row FOR UPDATE so concurrent creates cannot pass the 25 cap; an unknown
+user is a wrapped (non-sentinel) error -> handlers map it to 500. Authenticate does not check
+IsAdmin/EmailVerified: 12.2 middleware owns those (distinct 403s). apitoken.Init is NOT called at
+startup yet; 12.2 wires it next to resource.Init.
+Advisor review: MINOR. Orchestrator fixed: cap test relied on Limit() in UPDATE (GORM/Postgres
+ignores it, expired all 24 tokens) -> now expires one token by ID and asserts the next create fails;
+added 64/65 multibyte name cases (mutation len() for RuneCountInString -> red); test helper
+Suffix -> suffix. Open nits: no t0+60s boundary test for TouchLastUsed; concurrent Revoke returns
+now instead of stored RevokedAt.
+Verified by orchestrator: go build, go vet, go test -tags=security ./... (18 ok, exit 0), make gosec exit 0.
+
+PATTERN: gorm - GORM on Postgres drops Limit() from UPDATE/DELETE; a test that limits an update touches every matching row.
+PATTERN: mutation - a mutation that makes the SQL or build error looks like a caught failure but proves nothing; check the failure is the assertion.
+
+## 2026-11-26 — 12.2 Bearer middleware
+
+New: internal/handlers/api_auth.go (RequireAPIToken(scope) panics on bad scope; bearerToken/HasBearerAuth;
+TokenAllowsOrg(c, *uint) + APIOrgForbidden(c); NewAPIWriteLimiter 120/min keyed by token ID, skips
+GET/HEAD/OPTIONS; LocalAPIToken, APITokenFromCtx), internal/handlers/api_errors.go (APIError, codes
+unauthorized/insufficient_scope/forbidden/email_unverified/rate_limited/internal_error).
+server.go: apitoken.Init next to resourcesvc.Init; useSecurityMiddleware/useSessionMiddleware extracted
+from Run() (same order) so tests use production wiring; isCSRFExempt = webhook || isTokenAPIRequest
+(/v1/ prefix exact, no session_id cookie, Bearer header). handlers.SessionCookieName exported, session
+KeyLookup pinned to it. logger.LocalTokenPrefix -> token_prefix on http.request. AuditLog adds via=token
+and token_id AFTER redactDetails (token_id matches the redaction filter).
+Middleware sets UserID (uint), User (models.User, IsAdmin forced false), APIToken; overwrites session
+locals when both cookie and token are present; calls TouchLastUsed (failure logged, not fatal).
+Advisor review: MINOR. Orchestrator fixed: #nosec G101 on msgInvalidToken -> renamed msgUnauthenticated
+(learning: rename, don't nosec); memberships load DB error now 500 internal_error, not 401; org-restricted
+tokens only load that org's membership (new test TestRequireAPIToken_OrgRestrictedTokenNarrowsMemberships;
+mutation dropping the filter -> red). Verified: build, vet -tags=security, go test -tags=security ./...
+(18 ok, exit 0), make gosec exit 0, Nosec count unchanged (37).
+
+RULES FOR 13.x/14.x/15.x handlers (from advisor risks):
+- Mount NewAPIWriteLimiter once per registerRoutes, chained AFTER RequireAPIToken (a group-level limiter
+  runs before auth and sees no token). Per-process memory store: limit is per replica.
+- Never mount RequireAPIToken via app.Use or on a group that covers /admin.
+- API handlers must never use an IsAdmin bypass or re-read IsAdmin from the DB (PostRetryFetch
+  resource_crud.go:361 and requests.go:506 do; do not reuse those paths as-is). FR-3.
+- Every handler that acts on an org-owned or personal target calls
+  `if !TokenAllowsOrg(c, target) { return APIOrgForbidden(c) }` (nil target = personal).
+- Adding CORS with credentials later would undo the CSRF exemption's safety; needs review.
+
+PATTERN: fiber - a helper that writes a response and returns c.JSON's nil error cannot signal refusal; use a bool check plus a separate responder.
+PATTERN: audit - keys containing "token" are redacted by redactDetails; add trusted fields after redaction.
+
+## 2026-11-26 — 12.3 Token settings page; Phase 12 collapsed
+
+New: internal/handlers/tokens.go (GetTokenSettings, PostCreateToken, DeleteToken), views/settings_tokens.html,
+views/partials/token_row.html, internal/server/tokens_csrf_security_test.go (real stack via stackApp: POST/DELETE
+without CSRF -> 403). Routes before the catch-alls; :id<int>; "settings" already reserved. Create response is a
+full page with Cache-Control: no-store; plaintext never in session/flash/header/audit. Handler rejects expiry "0",
+negative, non-integer (the service maps 0 to the default 90); malformed or non-member org id -> 403 (no oracle).
+Org column branches on OrganizationID ("(deleted organisation)" for soft-deleted orgs). Copy button uses hyperscript.
+Advisor review: MINOR. Orchestrator fixed: DeleteToken errors set HX-Reswap: none (main.html swaps 4xx/5xx, a 404
+replaced the <tr> with bare text); repeated revoke no longer writes a second token.revoke audit event (audit only
+when RevokedAt >= request start; mutation -> red); test helper doTokenReq dead return value dropped; rebuilt
+public/css/style.css (text-green-600, border-green-200 were missing).
+Verified: build, vet -tags=security, go test -tags=security ./... (18 ok, exit 0), make gosec exit 0, Nosec 37.
+
+PATTERN: htmx - main.html swaps 4xx/5xx globally; a row-targeted hx-delete must set HX-Reswap: none on errors.
+PATTERN: tooling - the Tailwind v4 standalone binary is SIGKILLed (exit 137) on this macOS until ad-hoc re-signed:
+`codesign --force --sign - tailwindcss` (gitignored local binary). New Tailwind classes need `make css-build` and
+the rebuilt public/css/style.css committed.
+
+## 2026-11-26 — Phase 12 sweep (invariants + comments)
+
+Driver: scratchpad overlay script, 41 exact-match breaks, each in the insecure direction, compile-safe;
+working tree checked unchanged after every run. Result: 36 killed directly; touch-interval re-run after a
+NOMATCH (search string missed `)`) -> killed.
+Survivors and verdicts:
+- svc-cap-lock (FOR UPDATE -> FOR SHARE): refuted; TestCreate_CapConcurrent fails 14/15 runs (probabilistic).
+- tok-org-zero (org id 0 accepted by the form parser): equivalent; the service rejects org 0 with the same 403.
+- auth-userid-overwrite / auth-user-overwrite: GAP -> TestRequireAPIToken_TokenUserOverridesSessionUser
+  (cookie-user locals set before RequireAPIToken; handler must see the token user). Both mutants now red.
+- route-verified (RequireVerifiedEmail dropped from POST /settings/tokens): GAP ->
+  TestRegisterRoutes_TokenWritesRequireVerifiedEmail (route table, reflect pointer match, POST and DELETE). Red.
+- svc-generate-bias (b >= 248 -> b >= 255): GAP (user asked for it) -> TestGenerate_Uniform, chi-square over
+  800k chars, threshold 140 (61 df); passes 3/3, mutant scores 4774.
+Comments: Phase 12 code carried no task/requirement ids; removed "(added by later tasks)" in server.go.
+The 9-line RequireAPIToken doc comment is all security contract: kept.
+Verified: build, vet -tags=security, go test -tags=security ./... (apitoken failed once with a testcontainers
+reaper start error - infrastructure, passed on re-run), make gosec exit 0, Nosec 37.

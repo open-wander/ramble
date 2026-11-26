@@ -6,7 +6,7 @@ warn_at_tasks: 12
 
 ## Project
 name: Ramble
-repo: /Users/stokvis/dev/open-wander/core/ramble
+repo: /Users/stokvis/dev/open-wander/ramble
 created: 2026-05-30
 
 ## Commands (from Makefile / project)

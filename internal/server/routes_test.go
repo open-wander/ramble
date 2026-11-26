@@ -1,6 +1,7 @@
 package server
 
 import (
+	"reflect"
 	"rmbl/internal/handlers"
 	"strings"
 	"testing"
@@ -70,5 +71,42 @@ func TestRegisterRoutes_TopLevelSegmentsAreReserved(t *testing.T) {
 	}
 	if len(seen) < 20 {
 		t.Fatalf("only %d distinct top-level segments seen; the guard is not inspecting the router", len(seen))
+	}
+}
+
+// TestRegisterRoutes_TokenWritesRequireVerifiedEmail fails when creating or
+// revoking an API token stops requiring a logged-in user with a verified email.
+func TestRegisterRoutes_TokenWritesRequireVerifiedEmail(t *testing.T) {
+	app := fiber.New()
+	registerRoutes(app)
+
+	ptr := func(h fiber.Handler) uintptr { return reflect.ValueOf(h).Pointer() }
+	want := map[string]bool{
+		"POST /settings/tokens":            false,
+		"DELETE /settings/tokens/:id<int>": false,
+	}
+	for _, r := range app.GetRoutes() {
+		key := r.Method + " " + r.Path
+		if _, ok := want[key]; !ok {
+			continue
+		}
+		var auth, verified bool
+		for _, h := range r.Handlers {
+			switch ptr(h) {
+			case ptr(handlers.RequireAuth):
+				auth = true
+			case ptr(handlers.RequireVerifiedEmail):
+				verified = true
+			}
+		}
+		if !auth || !verified {
+			t.Errorf("%s: RequireAuth=%v RequireVerifiedEmail=%v, want both", key, auth, verified)
+		}
+		want[key] = true
+	}
+	for key, seen := range want {
+		if !seen {
+			t.Errorf("route %s not registered", key)
+		}
 	}
 }

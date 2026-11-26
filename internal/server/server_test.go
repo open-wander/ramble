@@ -302,3 +302,46 @@ func TestIsWebhookRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestIsTokenAPIRequest(t *testing.T) {
+	tests := []struct {
+		name   string
+		path   string
+		auth   string
+		cookie string
+		want   bool
+	}{
+		{"v1 bearer no cookie", "/v1/resources", "Bearer rmbl_x", "", true},
+		{"v1 bearer lowercase scheme", "/v1/resources", "bearer rmbl_x", "", true},
+		{"v1 bearer with session cookie", "/v1/resources", "Bearer rmbl_x", "session_id=abc", false},
+		{"v1 no bearer", "/v1/resources", "", "", false},
+		{"v1 basic scheme", "/v1/resources", "Basic abc", "", false},
+		{"v1x prefix", "/v1x/resources", "Bearer rmbl_x", "", false},
+		{"v1 no trailing path", "/v1", "Bearer rmbl_x", "", false},
+		{"uppercase V1", "/V1/resources", "Bearer rmbl_x", "", false},
+		{"non-v1 bearer", "/resource/1/delete", "Bearer rmbl_x", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := fiber.New()
+			var got bool
+			app.Post("/*", func(c *fiber.Ctx) error {
+				got = isTokenAPIRequest(c)
+				return nil
+			})
+			req := httptest.NewRequest("POST", tt.path, nil)
+			if tt.auth != "" {
+				req.Header.Set("Authorization", tt.auth)
+			}
+			if tt.cookie != "" {
+				req.Header.Set("Cookie", tt.cookie)
+			}
+			if _, err := app.Test(req); err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Errorf("isTokenAPIRequest = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

@@ -81,6 +81,7 @@ func Connect() {
 		&models.PackRequest{},
 		&models.SiteSetting{},
 		&models.AuditLog{},
+		&models.APIToken{},
 	)
 	if err != nil {
 		logger.Log.Error("db.migrate_failed", logger.Err(err))

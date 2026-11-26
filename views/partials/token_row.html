@@ -1,0 +1,18 @@
+<tr id="token-{{.ID}}">
+    <td class="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{{.Name}}</td>
+    <td class="px-4 py-3 text-sm font-mono text-gray-500 dark:text-gray-400">{{.Prefix}}&hellip;</td>
+    <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{{.Scope}}</td>
+    <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{{if .OrganizationID}}{{if .OrganizationName}}{{.OrganizationName}}{{else}}(deleted organisation){{end}}{{else}}All{{end}}</td>
+    <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{{.ExpiresAt.Format "2006-01-02"}}</td>
+    <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{{if .LastUsedAt}}{{.LastUsedAt.Format "2006-01-02"}}{{else}}Never{{end}}</td>
+    <td class="px-4 py-3 text-sm">
+        {{if .Revoked}}<span class="text-red-600 dark:text-red-400">Revoked</span>
+        {{else if .Expired}}<span class="text-yellow-600 dark:text-yellow-400">Expired</span>
+        {{else}}<span class="text-green-600 dark:text-green-400">Active</span>{{end}}
+    </td>
+    <td class="px-4 py-3 text-sm text-right">
+        {{if and (not .Revoked) (not .Expired)}}
+        <button type="button" hx-delete="/settings/tokens/{{.ID}}" hx-target="#token-{{.ID}}" hx-swap="outerHTML" hx-confirm="Revoke this token? Anything using it will stop working." class="text-red-600 dark:text-red-400 hover:text-red-900">Revoke</button>
+        {{end}}
+    </td>
+</tr>
