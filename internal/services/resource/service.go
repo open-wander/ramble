@@ -18,10 +18,48 @@ import (
 
 var tagRegex = regexp.MustCompile(`^[a-z0-9-]+$`)
 
+// Tag length bounds, in bytes (tags are ASCII once valid).
+const (
+	minTagLen = 2
+	maxTagLen = 20
+)
+
+// maxQuotedTagRunes caps how much of a rejected tag an error message echoes.
+const maxQuotedTagRunes = 32
+
+// ValidateCanonicalTags reports whether every tag is already in its stored
+// form: lowercase, 2-20 characters of a-z, 0-9 and dash, each tag once. It
+// never normalises; the web form does that through resolveTags. The returned
+// error wraps ErrInvalidTags and names the first offending tag.
+func ValidateCanonicalTags(tags []string) error {
+	seen := make(map[string]struct{}, len(tags))
+	for _, t := range tags {
+		shown := t
+		if r := []rune(t); len(r) > maxQuotedTagRunes {
+			shown = string(r[:maxQuotedTagRunes]) + "..."
+		}
+		if len(t) < minTagLen || len(t) > maxTagLen {
+			return fmt.Errorf("%w: tag %q must be %d-%d characters", ErrInvalidTags, shown, minTagLen, maxTagLen)
+		}
+		if !tagRegex.MatchString(t) {
+			if l := strings.ToLower(t); l != t && tagRegex.MatchString(l) {
+				return fmt.Errorf("%w: tag %q must be lowercase: use %q", ErrInvalidTags, shown, l)
+			}
+			return fmt.Errorf("%w: tag %q may contain only a-z, 0-9 and -", ErrInvalidTags, shown)
+		}
+		if _, dup := seen[t]; dup {
+			return fmt.Errorf("%w: tag %q is duplicated", ErrInvalidTags, shown)
+		}
+		seen[t] = struct{}{}
+	}
+	return nil
+}
+
 // Sentinel errors for authorization checks.
 var (
 	ErrUnauthorized     = errors.New("unauthorized")
 	ErrResourceNotFound = errors.New("resource not found")
+	ErrInvalidTags      = errors.New("invalid tags")
 )
 
 // Role constants matching models.Membership.Role values.

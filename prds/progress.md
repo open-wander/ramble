@@ -1023,3 +1023,20 @@ Advisor review: MINOR. Carried into new task 14.6 (user decisions):
 - limiter test only alternates PATCH/DELETE; add POST.
 Nit (not fixed): UpdateResourceAPI parses :id twice.
 Verified: local CI mirror all green.
+
+## 2026-11-26 — 14.6 Resource API follow-ups (purge on re-create, strict API tags)
+
+First run BLOCKED on part 2 (the user asked "should tags not be case sensitive?"); parts 1 and 3 done. User then
+confirmed: tags case-insensitive, lowercase stored form, API strict (422), web lenient. Second run (14.6b) did part 2.
+Part 1: CreateResource runs live duplicate check, purge and insert in ONE transaction after validation and org
+authorisation. namespaceNameScope helper shared by the duplicate check and the purge (same namespace rule).
+Purge hard-deletes soft-deleted rows holding the name in the target namespace + resource_versions, resource_tags,
+user_stars rows. resolveTags runs on tx. purge_test.go: personal, org, case variant, other namespace untouched,
+live duplicate purges nothing, rejected create purges nothing, rollback on failing insert.
+Part 2: resource.ValidateCanonicalTags(tags) / ErrInvalidTags (min/max consts shared with resolveTags, quoted tag
+truncated to 32 runes, lowercase hint only when the lowercase form is valid; orchestrator: message now names the
+offending tag too). Called in CreateResourceAPI and UpdateResourceAPI (non-nil only) before any lookup -> 422
+invalid_tags. Not in IsInputError (web unchanged). Two older API tests updated to canonical input.
+Part 3: shared-limiter test cycles POST, PATCH, DELETE; 121st -> 429.
+Advisor review: MINOR (cosmetic message - fixed). Verified: local CI mirror all green.
+NOTE for 17.2: provider tags attribute = list/set of canonical lowercase strings; the API never normalises.

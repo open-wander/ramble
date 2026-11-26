@@ -157,7 +157,7 @@ func decodeStrictJSON(body []byte, v any) error {
 // @Failure 403 {object} APIErrorResponse
 // @Failure 404 {object} APIErrorResponse
 // @Failure 409 {object} APIErrorResponse
-// @Failure 422 {object} APIErrorResponse
+// @Failure 422 {object} APIErrorResponse "invalid_name, invalid_type, invalid_repository_url, invalid_version or invalid_tags"
 // @Failure 429 {object} APIErrorResponse
 // @Failure 500 {object} APIErrorResponse
 // @ID createResource
@@ -172,6 +172,10 @@ func CreateResourceAPI(c *fiber.Ctx) error {
 	var req CreateResourceRequest
 	if err := decodeStrictJSON(c.Body(), &req); err != nil {
 		return APIError(c, fiber.StatusBadRequest, codeBadRequest, "invalid JSON body")
+	}
+
+	if err := resource.ValidateCanonicalTags(req.Tags); err != nil {
+		return APIError(c, fiber.StatusUnprocessableEntity, codeInvalidTags, err.Error())
 	}
 
 	orgID, found, err := resolveCreateNamespace(c, u, req.Namespace)
@@ -322,7 +326,7 @@ func loadResourceForWrite(c *fiber.Ctx) (r *models.NomadResource, ok bool, err e
 
 // UpdateResourceAPI godoc
 // @Summary Update a resource
-// @Description Change description, repository_url, file_path, license or tags of a pack or job. Omitted and null fields stay unchanged; an empty string clears description and file_path, an empty license becomes "Unknown" and an empty tags list removes all tags. name, type and namespace cannot be changed and are answered with 422 immutable_field. Organization members may edit. Needs a write token.
+// @Description Change description, repository_url, file_path, license or tags of a pack or job. Omitted and null fields stay unchanged; an empty string clears description and file_path, an empty license becomes "Unknown" and an empty tags list removes all tags. Tags must be lowercase, 2-20 characters of a-z, 0-9 and dash, without duplicates; anything else is answered with 422 invalid_tags. name, type and namespace cannot be changed and are answered with 422 immutable_field. Organization members may edit. Needs a write token.
 // @Tags resources
 // @Accept json
 // @Produce json
@@ -334,7 +338,7 @@ func loadResourceForWrite(c *fiber.Ctx) (r *models.NomadResource, ok bool, err e
 // @Failure 401 {object} APIErrorResponse
 // @Failure 403 {object} APIErrorResponse
 // @Failure 404 {object} APIErrorResponse
-// @Failure 422 {object} APIErrorResponse
+// @Failure 422 {object} APIErrorResponse "immutable_field, invalid_repository_url or invalid_tags"
 // @Failure 429 {object} APIErrorResponse
 // @Failure 500 {object} APIErrorResponse
 // @ID updateResource
@@ -355,6 +359,12 @@ func UpdateResourceAPI(c *fiber.Ctx) error {
 	}
 	if f := req.immutableField(); f != "" {
 		return APIError(c, fiber.StatusUnprocessableEntity, codeImmutableField, f+" cannot be changed")
+	}
+
+	if req.Tags != nil {
+		if err := resource.ValidateCanonicalTags(*req.Tags); err != nil {
+			return APIError(c, fiber.StatusUnprocessableEntity, codeInvalidTags, err.Error())
+		}
 	}
 
 	r, ok, err := loadResourceForWrite(c)

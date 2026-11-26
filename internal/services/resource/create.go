@@ -86,7 +86,7 @@ func (s *ResourceService) resolveTags(tags string) []models.Tag {
 	}
 	for tn := range strings.SplitSeq(tags, ",") {
 		tn = strings.ToLower(strings.TrimSpace(tn))
-		if len(tn) < 2 || len(tn) > 20 || !tagRegex.MatchString(tn) {
+		if len(tn) < minTagLen || len(tn) > maxTagLen || !tagRegex.MatchString(tn) {
 			continue
 		}
 		var tag models.Tag
@@ -94,6 +94,45 @@ func (s *ResourceService) resolveTags(tags string) []models.Tag {
 		out = append(out, tag)
 	}
 	return out
+}
+
+// namespaceNameScope restricts q to resources named name (case-insensitive:
+// resource URLs are resolved with LOWER(name) = LOWER(?)) in the namespace of
+// the caller: the organization when orgID is set, else the user's personal
+// namespace. The duplicate check and the purge both use it.
+func namespaceNameScope(q *gorm.DB, name string, userID uint, orgID *uint) *gorm.DB {
+	q = q.Where("LOWER(name) = LOWER(?)", name)
+	if orgID != nil {
+		return q.Where("organization_id = ?", *orgID)
+	}
+	return q.Where("user_id = ? AND organization_id IS NULL", userID)
+}
+
+// purgeDeletedName permanently removes soft-deleted resources that hold name
+// in the namespace, with their versions, tag links and stars, so the name can
+// be reused. Live resources are never touched.
+func purgeDeletedName(tx *gorm.DB, name string, userID uint, orgID *uint) error {
+	var ids []uint
+	q := namespaceNameScope(tx.Unscoped().Model(&models.NomadResource{}), name, userID, orgID).
+		Where("deleted_at IS NOT NULL")
+	if err := q.Pluck("id", &ids).Error; err != nil {
+		return fmt.Errorf("could not find deleted resources: %w", err)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	if err := tx.Unscoped().Where("resource_id IN ?", ids).Delete(&models.ResourceVersion{}).Error; err != nil {
+		return fmt.Errorf("could not purge versions: %w", err)
+	}
+	for _, table := range []string{"resource_tags", "user_stars"} {
+		if err := tx.Exec("DELETE FROM "+table+" WHERE nomad_resource_id IN ?", ids).Error; err != nil {
+			return fmt.Errorf("could not purge %s: %w", table, err)
+		}
+	}
+	if err := tx.Unscoped().Where("id IN ?", ids).Delete(&models.NomadResource{}).Error; err != nil {
+		return fmt.Errorf("could not purge deleted resources: %w", err)
+	}
+	return nil
 }
 
 // IsInputError reports whether err is a rejection of the caller's input
@@ -138,21 +177,6 @@ func (s *ResourceService) CreateResource(input CreateInput, userID uint, orgID *
 		}
 	}
 
-	// Case-insensitive: resource URLs are resolved with LOWER(name) = LOWER(?).
-	dupQuery := s.db.Model(&models.NomadResource{}).Where("LOWER(name) = LOWER(?)", input.Name)
-	if orgID != nil {
-		dupQuery = dupQuery.Where("organization_id = ?", *orgID)
-	} else {
-		dupQuery = dupQuery.Where("user_id = ? AND organization_id IS NULL", userID)
-	}
-	var dups int64
-	if err := dupQuery.Count(&dups).Error; err != nil {
-		return nil, fmt.Errorf("could not check for duplicates: %w", err)
-	}
-	if dups > 0 {
-		return nil, ErrDuplicateName
-	}
-
 	license := input.License
 	if license == "" {
 		license = unknownLicense
@@ -162,8 +186,6 @@ func (s *ResourceService) CreateResource(input CreateInput, userID uint, orgID *
 			}
 		}
 	}
-
-	tags := s.resolveTags(input.Tags)
 
 	secret, err := s.GenerateWebhookSecret()
 	if err != nil {
@@ -180,18 +202,36 @@ func (s *ResourceService) CreateResource(input CreateInput, userID uint, orgID *
 		WebhookSecret:  secret,
 		UserID:         userID,
 		OrganizationID: orgID,
-		Tags:           tags,
 		Versions:       []models.ResourceVersion{{Version: input.Version}},
 	}
 
-	// A unique violation is reported as a duplicate. idx_user_res_name only
-	// covers part of the namespace rules (NULL organization_id values are
-	// distinct), so the pre-check above is the main guard.
-	if err := s.db.Create(&resource).Error; err != nil {
-		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == pgUniqueViolationSQL {
-			return nil, ErrDuplicateName
+	// The duplicate check, the purge of soft-deleted holders of the name and
+	// the insert share one transaction: a failed insert restores the purged
+	// rows. A unique violation is reported as a duplicate. idx_user_res_name
+	// only covers part of the namespace rules (NULL organization_id values are
+	// distinct), so the live check is the main guard.
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		var dups int64
+		if err := namespaceNameScope(tx.Model(&models.NomadResource{}), input.Name, userID, orgID).Count(&dups).Error; err != nil {
+			return fmt.Errorf("could not check for duplicates: %w", err)
 		}
-		return nil, fmt.Errorf("could not create resource: %w", err)
+		if dups > 0 {
+			return ErrDuplicateName
+		}
+		if err := purgeDeletedName(tx, input.Name, userID, orgID); err != nil {
+			return err
+		}
+		resource.Tags = (&ResourceService{db: tx}).resolveTags(input.Tags)
+		if err := tx.Create(&resource).Error; err != nil {
+			if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == pgUniqueViolationSQL {
+				return ErrDuplicateName
+			}
+			return fmt.Errorf("could not create resource: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	var user models.User

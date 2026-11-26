@@ -160,12 +160,11 @@ func TestCreateResourceAPI_ResponseTagsAreStoredTags(t *testing.T) {
 	app, _ := resourceAPIApp(t)
 	u := mkAPIUser(t, "alice", true, "")
 	plain, _ := mkAPIToken(t, u, models.ScopeWrite)
-	// "DB" is normalised to lower case; "a" is too short and dropped.
-	status, body := postResource(t, app, plain, validBody(t, u.Username, uniqueName(t, "tg"), map[string]any{"tags": []string{"DB", "a"}}))
+	status, body := postResource(t, app, plain, validBody(t, u.Username, uniqueName(t, "tg"), map[string]any{"tags": []string{"db", "ci-cd"}}))
 	require.Equal(t, 201, status, body)
 	var got ResourceResponse
 	require.NoError(t, json.Unmarshal([]byte(body), &got))
-	assert.Equal(t, []string{"db"}, got.Tags)
+	assert.Equal(t, []string{"ci-cd", "db"}, got.Tags)
 }
 
 func TestCreateResourceAPI_Namespaces(t *testing.T) {
@@ -349,9 +348,9 @@ func TestGetResourceAPI_EqualsCreateResponse(t *testing.T) {
 	wr, _ := mkAPIToken(t, u, models.ScopeWrite)
 	rd, _ := mkAPIToken(t, u, models.ScopeRead)
 
-	// Unsorted tags with a duplicate: the create response must already show
-	// the stored form, not the request order.
-	tags := []string{"zeta", "db", "alpha", "db"}
+	// Unsorted tags: the create response must already show the stored form,
+	// not the request order.
+	tags := []string{"zeta", "db", "alpha"}
 	for _, tt := range []struct {
 		name string
 		ns   string

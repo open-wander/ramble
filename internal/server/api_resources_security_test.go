@@ -140,8 +140,8 @@ func TestWriteResourceRoutes_Middleware(t *testing.T) {
 	assert.Equal(t, "keep", got.Description)
 }
 
-// TestWriteResourceRoutes_SharedWriteLimiter proves PATCH and DELETE count
-// against the same per-token limiter as POST.
+// TestWriteResourceRoutes_SharedWriteLimiter proves POST, PATCH and DELETE
+// count against one per-token limiter.
 func TestWriteResourceRoutes_SharedWriteLimiter(t *testing.T) {
 	apitoken.Init(database.DB)
 	_, plain, _ := mkUserTok(t, "alice", models.ScopeWrite, false)
@@ -149,12 +149,19 @@ func TestWriteResourceRoutes_SharedWriteLimiter(t *testing.T) {
 
 	const limit = 120
 	for i := range limit {
-		method := "PATCH"
-		if i%2 == 1 {
-			method = "DELETE"
+		var status int
+		var body string
+		switch i % 3 {
+		case 0:
+			status, body = sendBody(t, app, "POST", "/v1/resources", plain, `{`)
+			require.Equal(t, 400, status, body)
+		case 1:
+			status, body = sendBody(t, app, "PATCH", "/v1/resources/999999", plain, `{}`)
+			require.Equal(t, 404, status, body)
+		default:
+			status, body = sendBody(t, app, "DELETE", "/v1/resources/999999", plain, `{}`)
+			require.Equal(t, 404, status, body)
 		}
-		status, body := sendBody(t, app, method, "/v1/resources/999999", plain, `{}`)
-		require.Equal(t, 404, status, body)
 	}
 	status, body := sendBody(t, app, "PATCH", "/v1/resources/999999", plain, `{}`)
 	assert.Equal(t, 429, status, body)

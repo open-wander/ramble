@@ -1158,7 +1158,8 @@ paths:
           schema:
             $ref: '#/definitions/handlers.APIErrorResponse'
         "422":
-          description: Unprocessable Entity
+          description: invalid_name, invalid_type, invalid_repository_url, invalid_version
+            or invalid_tags
           schema:
             $ref: '#/definitions/handlers.APIErrorResponse'
         "429":
@@ -1258,9 +1259,10 @@ paths:
       description: Change description, repository_url, file_path, license or tags
         of a pack or job. Omitted and null fields stay unchanged; an empty string
         clears description and file_path, an empty license becomes "Unknown" and an
-        empty tags list removes all tags. name, type and namespace cannot be changed
-        and are answered with 422 immutable_field. Organization members may edit.
-        Needs a write token.
+        empty tags list removes all tags. Tags must be lowercase, 2-20 characters
+        of a-z, 0-9 and dash, without duplicates; anything else is answered with 422
+        invalid_tags. name, type and namespace cannot be changed and are answered
+        with 422 immutable_field. Organization members may edit. Needs a write token.
       operationId: updateResource
       parameters:
       - description: Resource ID
@@ -1298,7 +1300,7 @@ paths:
           schema:
             $ref: '#/definitions/handlers.APIErrorResponse'
         "422":
-          description: Unprocessable Entity
+          description: immutable_field, invalid_repository_url or invalid_tags
           schema:
             $ref: '#/definitions/handlers.APIErrorResponse'
         "429":

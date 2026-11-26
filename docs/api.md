@@ -86,7 +86,7 @@ The response is `201` with the new resource:
 
 `webhook_secret` is returned only in this response. Store it safely; it is not shown again. The content of the version is fetched in the background after the response.
 
-`tags` in the response are the stored tags: they are lower-cased, a tag containing a comma is split in two, and invalid tags are dropped. Compare against the response, not the request.
+`tags` must be lowercase, 2-20 characters of `a-z`, `0-9` and `-`, with no duplicates. The API rejects anything else with `422 invalid_tags` instead of normalising it (the web form still normalises). The response lists the stored tags sorted by name.
 
 | Status | Code | Cause |
 |--------|------|-------|
@@ -101,6 +101,7 @@ The response is `201` with the new resource:
 | 422 | `invalid_type` | `type` is not `pack` or `job` |
 | 422 | `invalid_repository_url` | The URL is not an https URL on an allowed git host |
 | 422 | `invalid_version` | `version` is empty or longer than 64 characters |
+| 422 | `invalid_tags` | A tag is not lowercase 2-20 characters of `a-z`, `0-9` and `-`, or appears twice |
 | 429 | `rate_limited` | Too many requests |
 
 ### Get a Resource
@@ -153,6 +154,7 @@ The response is `200` with the updated resource, in the same shape as `GET /v1/r
 | 404 | `not_found` | The ID does not exist, or the resource was deleted |
 | 422 | `immutable_field` | The body contains `name`, `type` or `namespace` |
 | 422 | `invalid_repository_url` | The URL is not an https URL on an allowed git host |
+| 422 | `invalid_tags` | A tag is not lowercase 2-20 characters of `a-z`, `0-9` and `-`, or appears twice |
 | 429 | `rate_limited` | Write rate limit exceeded |
 
 ### Delete a Resource
@@ -165,6 +167,8 @@ curl -X DELETE https://ramble.openwander.org/v1/resources/42 \
 ```
 
 Only an owner may delete: the owning user of a personal resource, or an owner of the organisation (a plain member gets `403 forbidden`). The response is `204` with no body. Afterwards the resource is `404` on every endpoint, including a second `DELETE`.
+
+A deleted name can be reused: creating a resource (here or in the web UI) with the same name, compared case-insensitively, in the same namespace permanently removes the deleted resource together with its versions, stars and tag links, then creates the new one in the same transaction. A resource that is still live with that name is a `409 conflict`.
 
 | Status | Code | Cause |
 |--------|------|-------|
@@ -372,7 +376,7 @@ and may change. Unknown `/v1` paths return `404 not_found` in the same shape.
 | 404 | `not_found` | Namespace, pack, job or path does not exist |
 | 405 | `method_not_allowed` | Method not supported on this path |
 | 409 | `conflict` | The resource already exists |
-| 422 | `invalid_name`, `invalid_type`, `invalid_repository_url`, `invalid_version` | A field failed validation (see the endpoint) |
+| 422 | `invalid_name`, `invalid_type`, `invalid_repository_url`, `invalid_version`, `invalid_tags` | A field failed validation (see the endpoint) |
 | 429 | `rate_limited` | Too many requests |
 | 500 | `internal_error` | Unexpected server or database error |
 

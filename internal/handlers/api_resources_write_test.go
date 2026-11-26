@@ -290,3 +290,123 @@ func TestUpdateResourceAPI_WithoutLocalsIs500(t *testing.T) {
 		assert.Equal(t, "internal_error", apiErrCode(t, body))
 	}
 }
+
+func TestCreateResourceAPI_ReusesDeletedName(t *testing.T) {
+	app, _ := resourceAPIApp(t)
+	u := mkAPIUser(t, "alice", true, "")
+	plain, _ := mkAPIToken(t, u, models.ScopeWrite)
+	name := uniqueName(t, "reuse")
+
+	status, body := postResource(t, app, plain, validBody(t, u.Username, name, nil))
+	require.Equal(t, 201, status, body)
+	var first ResourceResponse
+	require.NoError(t, json.Unmarshal([]byte(body), &first))
+
+	status, body = sendJSON(t, app, "DELETE", plain, resPath(first.ID), "")
+	require.Equal(t, 204, status, body)
+
+	status, body = postResource(t, app, plain, validBody(t, u.Username, name, nil))
+	require.Equal(t, 201, status, body)
+	var second ResourceResponse
+	require.NoError(t, json.Unmarshal([]byte(body), &second))
+	assert.NotEqual(t, first.ID, second.ID)
+
+	var n int64
+	require.NoError(t, database.DB.Unscoped().Model(&models.NomadResource{}).Where("id = ?", first.ID).Count(&n).Error)
+	assert.EqualValues(t, 0, n)
+
+	// A live name is still a conflict.
+	status, body = postResource(t, app, plain, validBody(t, u.Username, name, nil))
+	assert.Equal(t, 409, status, body)
+}
+
+var badTagCases = []struct {
+	name string
+	tags []string
+}{
+	{"uppercase", []string{"DB"}},
+	{"too short", []string{"a"}},
+	{"comma", []string{"a,b"}},
+	{"space", []string{"bad tag"}},
+	{"too long", []string{strings.Repeat("a", 21)}},
+	{"duplicate", []string{"db", "db"}},
+}
+
+func countTagRows(t *testing.T) int64 {
+	t.Helper()
+	var n int64
+	require.NoError(t, database.DB.Unscoped().Model(&models.Tag{}).Count(&n).Error)
+	return n
+}
+
+func TestCreateResourceAPI_RejectsNonCanonicalTags(t *testing.T) {
+	app, _ := resourceAPIApp(t)
+	u := mkAPIUser(t, "alice", true, "")
+	plain, _ := mkAPIToken(t, u, models.ScopeWrite)
+
+	for _, tt := range badTagCases {
+		t.Run(tt.name, func(t *testing.T) {
+			name := uniqueName(t, "bt")
+			before := countTagRows(t)
+			status, body := postResource(t, app, plain, validBody(t, u.Username, name, map[string]any{"tags": tt.tags}))
+			require.Equal(t, 422, status, body)
+			assert.Contains(t, body, `"code":"invalid_tags"`)
+
+			var n int64
+			require.NoError(t, database.DB.Unscoped().Model(&models.NomadResource{}).Where("name = ?", name).Count(&n).Error)
+			assert.EqualValues(t, 0, n)
+			assert.Equal(t, before, countTagRows(t))
+		})
+	}
+
+	t.Run("canonical accepted", func(t *testing.T) {
+		got := createViaAPI(t, app, plain, u.Username, map[string]any{"tags": []string{"db", "ci-cd"}})
+		assert.Equal(t, []string{"ci-cd", "db"}, got.Tags)
+	})
+}
+
+func TestUpdateResourceAPI_RejectsNonCanonicalTags(t *testing.T) {
+	app, _ := resourceAPIApp(t)
+	u := mkAPIUser(t, "alice", true, "")
+	plain, _ := mkAPIToken(t, u, models.ScopeWrite)
+	created := createViaAPI(t, app, plain, u.Username, map[string]any{"tags": []string{"keep1", "keep2"}})
+	path := resPath(created.ID)
+
+	for _, tt := range badTagCases {
+		t.Run(tt.name, func(t *testing.T) {
+			before := countTagRows(t)
+			b, err := json.Marshal(map[string]any{"description": "changed", "tags": tt.tags})
+			require.NoError(t, err)
+			status, body := sendJSON(t, app, "PATCH", plain, path, string(b))
+			require.Equal(t, 422, status, body)
+			assert.Contains(t, body, `"code":"invalid_tags"`)
+
+			row := loadRow(t, created.ID)
+			assert.Equal(t, created.Description, row.Description)
+			var names []string
+			for _, tg := range row.Tags {
+				names = append(names, tg.Name)
+			}
+			assert.ElementsMatch(t, []string{"keep1", "keep2"}, names)
+			assert.Equal(t, before, countTagRows(t))
+		})
+	}
+
+	t.Run("canonical accepted, clear and keep", func(t *testing.T) {
+		status, body := sendJSON(t, app, "PATCH", plain, path, `{"tags":["db","ci-cd"]}`)
+		require.Equal(t, 200, status, body)
+		var r ResourceResponse
+		require.NoError(t, json.Unmarshal([]byte(body), &r))
+		assert.Equal(t, []string{"ci-cd", "db"}, r.Tags)
+
+		status, body = sendJSON(t, app, "PATCH", plain, path, `{"tags":null,"description":"x"}`)
+		require.Equal(t, 200, status, body)
+		require.NoError(t, json.Unmarshal([]byte(body), &r))
+		assert.Equal(t, []string{"ci-cd", "db"}, r.Tags)
+
+		status, body = sendJSON(t, app, "PATCH", plain, path, `{"tags":[]}`)
+		require.Equal(t, 200, status, body)
+		require.NoError(t, json.Unmarshal([]byte(body), &r))
+		assert.Empty(t, r.Tags)
+	})
+}
