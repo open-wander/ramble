@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"rmbl/internal/models"
@@ -209,4 +210,58 @@ func UpdateOrgAPI(c *fiber.Ctx) error {
 	}
 
 	return respondOrg(c, fiber.StatusOK, org)
+}
+
+// resourceCount formats n as "1 resource" or "N resources".
+func resourceCount(n int64) string {
+	if n == 1 {
+		return "1 resource"
+	}
+	return fmt.Sprintf("%d resources", n)
+}
+
+// DeleteOrgAPI godoc
+// @Summary Delete an organization
+// @Description Delete an organization and its memberships. Only an owner may delete, and only when the organization has no live resources; otherwise the answer is 409 org_not_empty with the count in the message. The name becomes free for reuse. Audited as org.delete. Needs a write token.
+// @Tags orgs
+// @Produce json
+// @Security bearerAuth
+// @Param name path string true "Organization name"
+// @Success 204 "Deleted"
+// @Failure 401 {object} APIErrorResponse
+// @Failure 403 {object} APIErrorResponse
+// @Failure 404 {object} APIErrorResponse
+// @Failure 409 {object} APIErrorResponse "org_not_empty"
+// @Failure 429 {object} APIErrorResponse
+// @Failure 500 {object} APIErrorResponse
+// @ID deleteOrg
+// @Router /v1/orgs/{name} [delete]
+func DeleteOrgAPI(c *fiber.Ctx) error {
+	u, uok := c.Locals("User").(models.User)
+	_, tokOK := APITokenFromCtx(c)
+	if !uok || !tokOK {
+		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
+	}
+
+	org, ok, err := loadOrgForToken(c)
+	if !ok {
+		return err
+	}
+
+	if err := orgsvc.DeleteOrg(reqDB(c), org.ID, u.ID); err != nil {
+		if ne, ok := errors.AsType[*orgsvc.NotEmptyError](err); ok {
+			return APIError(c, fiber.StatusConflict, codeOrgNotEmpty, "organization still has "+resourceCount(ne.Count))
+		}
+		switch {
+		case errors.Is(err, orgsvc.ErrNotFound):
+			return APIError(c, fiber.StatusNotFound, codeNotFound, "organization not found")
+		case errors.Is(err, orgsvc.ErrNotOwner):
+			return APIError(c, fiber.StatusForbidden, codeForbidden, "only an owner can delete this organization")
+		}
+		logger.FromContext(c.UserContext()).Error("org.delete_failed", logger.Err(err))
+		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
+	}
+
+	AuditLog(c, "org.delete", "organization", org.ID, org.Name, nil)
+	return c.SendStatus(fiber.StatusNoContent)
 }

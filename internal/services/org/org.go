@@ -11,6 +11,7 @@ import (
 
 	"rmbl/internal/models"
 	"rmbl/internal/names"
+	"rmbl/internal/services/resource"
 )
 
 const pgUniqueViolation = "23505"
@@ -45,6 +46,9 @@ func CreateOrg(db *gorm.DB, ownerID uint, name, description string) (models.Orga
 		}
 		if count > 0 {
 			return ErrNameTaken
+		}
+		if err := purgeDeletedOrgs(tx, name); err != nil {
+			return err
 		}
 		if err := tx.Create(&org).Error; err != nil {
 			if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == pgUniqueViolation {
@@ -216,4 +220,71 @@ func RemoveMember(db *gorm.DB, orgID, userID uint) error {
 		}
 		return nil
 	})
+}
+
+// DeleteOrg soft-deletes an empty organisation and its memberships. The
+// caller must be an owner, checked again under the row lock. Live resources
+// block the delete with a *NotEmptyError. The lock conflicts with the share
+// lock CreateResource takes, so a resource cannot appear in an organisation
+// being deleted.
+func DeleteOrg(db *gorm.DB, orgID, userID uint) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		var org models.Organization
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&org, orgID).Error; err != nil {
+			return mapNotFound(err)
+		}
+		if err := RequireOwner(tx, orgID, userID); err != nil {
+			return err
+		}
+		var n int64
+		if err := tx.Model(&models.NomadResource{}).Where("organization_id = ?", orgID).Count(&n).Error; err != nil {
+			return fmt.Errorf("org: count resources: %w", err)
+		}
+		if n > 0 {
+			return &NotEmptyError{Count: n}
+		}
+		if err := tx.Where("organization_id = ?", orgID).Delete(&models.Membership{}).Error; err != nil {
+			return fmt.Errorf("org: delete memberships: %w", err)
+		}
+		if err := tx.Delete(&org).Error; err != nil {
+			return fmt.Errorf("org: delete: %w", err)
+		}
+		return nil
+	})
+}
+
+// purgeDeletedOrgs hard-deletes soft-deleted organisations that hold name so
+// it can be reused, with their memberships and soft-deleted resources. An
+// organisation deleted by an admin can still own live resources; then the name
+// stays taken. Tokens restricted to a purged organisation go with it through
+// the foreign key; they could no longer authenticate anyway.
+func purgeDeletedOrgs(tx *gorm.DB, name string) error {
+	var ids []uint
+	if err := tx.Unscoped().Model(&models.Organization{}).
+		Where(nameClause, name).Where("deleted_at IS NOT NULL").
+		Pluck("id", &ids).Error; err != nil {
+		return fmt.Errorf("org: find deleted: %w", err)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	var live int64
+	if err := tx.Model(&models.NomadResource{}).Where("organization_id IN ?", ids).Count(&live).Error; err != nil {
+		return fmt.Errorf("org: count resources of deleted: %w", err)
+	}
+	if live > 0 {
+		return ErrNameTaken
+	}
+	// Resources first: their organization_id is ON DELETE SET NULL, which
+	// would otherwise move them into a personal namespace.
+	if err := resource.PurgeDeletedInOrgs(tx, ids); err != nil {
+		return err
+	}
+	if err := tx.Unscoped().Where("organization_id IN ?", ids).Delete(&models.Membership{}).Error; err != nil {
+		return fmt.Errorf("org: purge memberships: %w", err)
+	}
+	if err := tx.Unscoped().Where("id IN ?", ids).Delete(&models.Organization{}).Error; err != nil {
+		return fmt.Errorf("org: purge: %w", err)
+	}
+	return nil
 }

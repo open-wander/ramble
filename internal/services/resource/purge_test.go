@@ -3,10 +3,12 @@ package resource
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"rmbl/internal/database"
 	"rmbl/internal/models"
@@ -184,4 +186,80 @@ func TestCreateResource_InsertFailureRollsBackPurge(t *testing.T) {
 	_, err := NewResourceService(failing).CreateResource(validInput("x"), e.alice.ID, nil)
 	require.ErrorIs(t, err, boom)
 	assertIntact(t, dead.ID)
+}
+
+func TestPurgeDeletedInOrgs(t *testing.T) {
+	e := newPurgeEnv(t, "purgeorg")
+	dead := e.deadResource(t, "dead", &e.org.ID)
+	live, err := e.svc.CreateResource(validInput("live"), e.alice.ID, &e.org.ID)
+	require.NoError(t, err)
+	personalDead := e.deadResource(t, "pdead", nil)
+
+	require.NoError(t, database.DB.Transaction(func(tx *gorm.DB) error {
+		return PurgeDeletedInOrgs(tx, []uint{e.org.ID})
+	}))
+	assertPurged(t, dead.ID)
+	r, _, _, _ := rowsFor(t, live.ID)
+	assert.EqualValues(t, 1, r)
+	assertIntact(t, personalDead.ID)
+	hardDelete(t, live.ID)
+
+	require.NoError(t, database.DB.Transaction(func(tx *gorm.DB) error {
+		return PurgeDeletedInOrgs(tx, nil)
+	}))
+}
+
+// A create that waits on the organisation row while it is being deleted must
+// fail with ErrOrgNotFound once the delete commits.
+func TestCreateResource_OrgDeletedConcurrently(t *testing.T) {
+	e := newPurgeEnv(t, "racedel")
+
+	locked := make(chan struct{})
+	release := make(chan struct{})
+	deleted := make(chan error, 1)
+	go func() {
+		deleted <- database.DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&models.Organization{}, e.org.ID).Error; err != nil {
+				return err
+			}
+			if err := tx.Delete(&models.Organization{}, e.org.ID).Error; err != nil {
+				return err
+			}
+			close(locked)
+			<-release
+			return nil
+		})
+	}()
+	select {
+	case <-locked:
+	case err := <-deleted:
+		t.Fatalf("delete finished early: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out taking the org lock")
+	}
+
+	// The pre-check outside the transaction still sees the live row, so the
+	// create reaches the locking re-check and blocks there.
+	created := make(chan error, 1)
+	go func() {
+		_, err := e.svc.CreateResource(validInput("racing"), e.alice.ID, &e.org.ID)
+		created <- err
+	}()
+	select {
+	case err := <-created:
+		t.Fatalf("create did not wait for the delete: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	close(release)
+	select {
+	case err := <-created:
+		require.ErrorIs(t, err, ErrOrgNotFound)
+	case <-time.After(10 * time.Second):
+		t.Fatal("create did not finish after the delete committed")
+	}
+	require.NoError(t, <-deleted)
+	var n int64
+	require.NoError(t, database.DB.Unscoped().Model(&models.NomadResource{}).Where("organization_id = ?", e.org.ID).Count(&n).Error)
+	assert.Zero(t, n)
 }

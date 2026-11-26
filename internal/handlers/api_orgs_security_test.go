@@ -71,3 +71,33 @@ func TestUpdateOrgAPI_AdminFlagDoesNotBypassOwnership(t *testing.T) {
 	assert.Equal(t, 403, status, body)
 	assert.Equal(t, "keep", orgNamed(t, org.Name).Description)
 }
+
+func TestDeleteOrgAPI_OrgRestrictedTokenOnlyOwnOrg(t *testing.T) {
+	app := orgAPIApp(t)
+	u := mkAPIUser(t, "alice", true, "")
+	orgA := mkOrgWithMember(t, u, "owner")
+	orgB := mkOrgWithMember(t, u, "owner")
+	w, _, err := apitoken.Svc.Create(u.ID, "w", models.ScopeWrite, &orgA.ID, 30)
+	require.NoError(t, err)
+
+	status, body := sendJSON(t, app, "DELETE", w, "/v1/orgs/"+orgB.Name, "")
+	assert.Equal(t, 403, status, body)
+	assert.Equal(t, "forbidden", apiErrCode(t, body))
+	assert.Equal(t, int64(1), countOrgsNamed(t, orgB.Name))
+
+	status, _ = sendJSON(t, app, "DELETE", w, "/v1/orgs/"+uniqueName(t, "nope"), "")
+	assert.Equal(t, 404, status)
+}
+
+func TestDeleteOrgAPI_AdminFlagDoesNotBypassOwnership(t *testing.T) {
+	app := orgAPIApp(t)
+	owner := mkAPIUser(t, "alice", true, "")
+	admin := mkAPIUser(t, "root", true, "")
+	require.NoError(t, database.DB.Model(&admin).Update("is_admin", true).Error)
+	org := orgsvcCreate(t, owner, uniqueName(t, "adm"))
+	plain, _ := mkAPIToken(t, admin, models.ScopeWrite)
+
+	status, body := sendJSON(t, app, "DELETE", plain, "/v1/orgs/"+org.Name, "")
+	assert.Equal(t, 403, status, body)
+	assert.Equal(t, int64(1), countOrgsNamed(t, org.Name))
+}

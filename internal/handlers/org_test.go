@@ -660,3 +660,97 @@ func TestPostCreateOrg_InvalidName(t *testing.T) {
 	database.DB.Model(&models.Organization{}).Joins("JOIN memberships ON memberships.organization_id = organizations.id").Where("memberships.user_id = ?", user.ID).Count(&n)
 	assert.Zero(t, n)
 }
+
+func deleteOrgApp(user models.User) *fiber.App {
+	app := setupTestApp()
+	app.Use(func(c *fiber.Ctx) error {
+		sess, _ := Store.Get(c)
+		sess.Set("user_id", user.ID)
+		sess.Save()
+		c.Locals("UserID", user.ID)
+		c.Locals("User", user)
+		return c.Next()
+	})
+	app.Post("/orgs/:orgname/delete", RequireOrgOwner, PostDeleteOrg)
+	app.Get("/flash", func(c *fiber.Ctx) error {
+		sess, _ := Store.Get(c)
+		msg, _ := sess.Get("flash_message").(string)
+		return c.SendString(msg)
+	})
+	return app
+}
+
+func TestPostDeleteOrg_OwnerDeletesEmptyOrg(t *testing.T) {
+	defer cleanupOrgTestData(t)
+	owner := createTestUser(t, "delowner")
+	org := models.Organization{Name: "testdelorg"}
+	database.DB.Create(&org)
+	database.DB.Create(&models.Membership{UserID: owner.ID, OrganizationID: org.ID, Role: "owner"})
+	app := deleteOrgApp(owner)
+
+	resp, err := app.Test(httptest.NewRequest("POST", "/orgs/testdelorg/delete", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	assert.Equal(t, "/", resp.Header.Get("HX-Redirect"))
+
+	var n int64
+	database.DB.Model(&models.Organization{}).Where("id = ?", org.ID).Count(&n)
+	assert.Zero(t, n)
+	database.DB.Model(&models.Membership{}).Where("organization_id = ?", org.ID).Count(&n)
+	assert.Zero(t, n)
+
+	var audit models.AuditLog
+	assert.NoError(t, database.DB.Where("action = ? AND target_id = ?", "org.delete", org.ID).First(&audit).Error)
+	assert.Equal(t, "testdelorg", audit.TargetName)
+
+	req := httptest.NewRequest("GET", "/flash", nil)
+	for _, ck := range resp.Cookies() {
+		req.AddCookie(ck)
+	}
+	fresp, err := app.Test(req)
+	assert.NoError(t, err)
+	body, _ := io.ReadAll(fresp.Body)
+	assert.Equal(t, "Organization 'testdelorg' deleted.", string(body))
+}
+
+func TestPostDeleteOrg_NotOwner(t *testing.T) {
+	defer cleanupOrgTestData(t)
+	owner := createTestUser(t, "delowner2")
+	member := createTestUser(t, "delmember")
+	org := models.Organization{Name: "testdelorg2"}
+	database.DB.Create(&org)
+	database.DB.Create(&models.Membership{UserID: owner.ID, OrganizationID: org.ID, Role: "owner"})
+	database.DB.Create(&models.Membership{UserID: member.ID, OrganizationID: org.ID, Role: "member"})
+	app := deleteOrgApp(member)
+
+	resp, err := app.Test(httptest.NewRequest("POST", "/orgs/testdelorg2/delete", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
+
+	var n int64
+	database.DB.Model(&models.Organization{}).Where("id = ?", org.ID).Count(&n)
+	assert.EqualValues(t, 1, n)
+}
+
+func TestPostDeleteOrg_NotEmpty(t *testing.T) {
+	defer cleanupOrgTestData(t)
+	owner := createTestUser(t, "delowner3")
+	org := models.Organization{Name: "testdelorg3"}
+	database.DB.Create(&org)
+	database.DB.Create(&models.Membership{UserID: owner.ID, OrganizationID: org.ID, Role: "owner"})
+	res := models.NomadResource{Name: "delres", UserID: owner.ID, OrganizationID: &org.ID}
+	assert.NoError(t, database.DB.Create(&res).Error)
+	defer database.DB.Unscoped().Delete(&res)
+	app := deleteOrgApp(owner)
+
+	resp, err := app.Test(httptest.NewRequest("POST", "/orgs/testdelorg3/delete", nil))
+	assert.NoError(t, err)
+	assert.Equal(t, 409, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "still has 1 resource.")
+	assert.Empty(t, resp.Header.Get("HX-Redirect"))
+
+	var n int64
+	database.DB.Model(&models.Organization{}).Where("id = ?", org.ID).Count(&n)
+	assert.EqualValues(t, 1, n)
+}

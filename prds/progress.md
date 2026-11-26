@@ -1103,3 +1103,25 @@ org.load_failed on 500) is for DELETE and members. Routes above the /v1/* guard 
 docs/api.md Organizations section. Orchestrator: email_unverified rows on write tables; 409 wording generalised.
 Advisor review: MINOR (docs only, fixed). Verified: local CI mirror green (database/server/apitoken re-run after
 testcontainers start failures).
+
+## 2026-11-26 — 15.3 Owner deletion of empty organisations
+
+orgsvc.DeleteOrg: one transaction, org row FOR UPDATE, RequireOwner re-checked inside, live resource count ->
+*NotEmptyError{Count}, then soft-delete memberships and org. API DeleteOrgAPI (deleteOrg): 204 / 403 / 404 /
+409 org_not_empty (count pluralised) / audit org.delete. Web POST /orgs/:orgname/delete (Danger zone,
+hx-confirm, flash + HX-Redirect /), same service and audit.
+Orchestrator decision (by analogy with the resource purge the user chose): CreateOrg purges soft-deleted orgs
+with the same name (case-insensitive) with their memberships and soft-deleted resources
+(resource.PurgeDeletedInOrgs; resources first because nomad_resources.organization_id is ON DELETE SET NULL),
+but keeps the name taken (ErrNameTaken) while a LIVE resource references the deleted org (admin delete case).
+api_tokens restricted to a purged org cascade away (already unusable).
+CreateResource re-reads the org FOR SHARE inside its transaction, so a create racing a delete gets
+ErrOrgNotFound.
+Advisor review: MINOR. Orchestrator: replaced the CSRF test (passed even with the route removed: global CSRF 403s
+any POST) with TestCSRF_OrgDeleteNeedsToken: real owner session through the stack, no token -> 403 and org
+survives; with token -> 200 and deleted (overlay mutation removing the route -> red).
+Follow-ups: web PostDeleteOrg ErrNotOwner/ErrNotFound mappings untested (middleware answers first; service and API
+cover the in-transaction owner re-check). Residual races: UpdateResource transfer into an org and AddMember run
+outside a transaction against a concurrent DeleteOrg; a transfer after the count leaves a live resource in a
+deleted org (name then stays taken).
+Verified: local CI mirror green.

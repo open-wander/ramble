@@ -346,6 +346,27 @@ An omitted or `null` `description` is left unchanged; an empty string clears it.
 | 422 | `immutable_field` | The body contains `name` |
 | 429 | `rate_limited` | Write rate limit exceeded |
 
+### Delete an Organization
+
+`DELETE /v1/orgs/{name}` deletes an organization and its memberships. It needs a `write` token and counts against the write rate limit. Only an owner of the organization may delete it, and only when it has no live resources: delete or move them first. The response is `204` with no body.
+
+```bash
+curl -X DELETE https://ramble.openwander.org/v1/orgs/myorg \
+  -H "Authorization: Bearer <your-token>"
+```
+
+A deleted name can be reused: creating an organization with the same name, compared case-insensitively, permanently removes the deleted organization with its memberships and deleted resources. The one exception is an organization an administrator deleted while it still owned live resources; its name stays taken.
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 401 | `unauthorized` | Missing, invalid or expired token |
+| 403 | `insufficient_scope` | The token is a read token |
+| 403 | `email_unverified` | The account email is not verified |
+| 403 | `forbidden` | You are not an owner of the organization, or the token is restricted to another organization |
+| 404 | `not_found` | The organization does not exist or is already deleted |
+| 409 | `org_not_empty` | The organization still has resources; the message gives the count, for example `organization still has 3 resources` |
+| 429 | `rate_limited` | Write rate limit exceeded |
+
 ## Global Endpoints
 
 ### List All Packs

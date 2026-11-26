@@ -689,6 +689,60 @@ paths:
             tags:
                 - orgs
     /v1/orgs/{name}:
+        delete:
+            description: Delete an organization and its memberships. Only an owner may delete, and only when the organization has no live resources; otherwise the answer is 409 org_not_empty with the count in the message. The name becomes free for reuse. Audited as org.delete. Needs a write token.
+            operationId: deleteOrg
+            parameters:
+                - description: Organization name
+                  in: path
+                  name: name
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "204":
+                    description: Deleted
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Forbidden
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: org_not_empty
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Too Many Requests
+                "500":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Internal Server Error
+            security:
+                - bearerAuth: []
+            summary: Delete an organization
+            tags:
+                - orgs
         get:
             description: Fetch an organization by name, ignoring case. Name, description and member count are public, so any authenticated token may read any organization; a token restricted to one organization may read only that one. Needs a read token.
             operationId: getOrg

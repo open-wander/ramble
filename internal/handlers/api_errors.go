@@ -19,6 +19,7 @@ const (
 	codeMethodNotAllowed  = "method_not_allowed"
 	codeBadRequest        = "bad_request"
 	codeConflict          = "conflict"
+	codeOrgNotEmpty       = "org_not_empty"
 
 	codeInvalidName          = "invalid_name"
 	codeInvalidType          = "invalid_type"

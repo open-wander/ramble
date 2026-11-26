@@ -2,7 +2,10 @@
 // handlers and the /v1 API.
 package org
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 const (
 	RoleOwner  = "owner"
@@ -23,6 +26,14 @@ var (
 	ErrLastOwner       = errors.New("org: cannot remove the last owner")
 	ErrInvalidRole     = errors.New("org: invalid role")
 )
+
+// NotEmptyError is returned by DeleteOrg when live resources still belong to
+// the organisation.
+type NotEmptyError struct{ Count int64 }
+
+func (e *NotEmptyError) Error() string {
+	return fmt.Sprintf("org: still has %d resources", e.Count)
+}
 
 // IsInputError reports whether err is a fault in the caller's input. Not
 // found, not owner, not member and last owner are mapped by callers one by

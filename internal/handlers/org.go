@@ -117,6 +117,38 @@ func PostUpdateOrg(c *fiber.Ctx) error {
 	return c.SendStatus(200)
 }
 
+// PostDeleteOrg deletes an empty organization through the same service as
+// DELETE /v1/orgs/{name}.
+func PostDeleteOrg(c *fiber.Ctx) error {
+	orgID := c.Locals("OrgID").(uint)
+	sess, _ := Store.Get(c)
+	userID := sess.Get("user_id").(uint)
+	org, err := orgsvc.GetByID(reqDB(c), orgID)
+	if err != nil {
+		return orgLoadError(c, err)
+	}
+
+	if err := orgsvc.DeleteOrg(reqDB(c), orgID, userID); err != nil {
+		if ne, ok := errors.AsType[*orgsvc.NotEmptyError](err); ok {
+			return c.Status(409).SendString("This organization still has " + resourceCount(ne.Count) + ". Delete or move them first.")
+		}
+		switch {
+		case errors.Is(err, orgsvc.ErrNotFound):
+			return c.Status(404).SendString("Organization not found")
+		case errors.Is(err, orgsvc.ErrNotOwner):
+			return c.Status(403).SendString("You must be an owner of this organization")
+		}
+		logger.FromContext(c.UserContext()).Error("org.delete_failed", logger.Err(err))
+		return c.Status(500).SendString("Failed to delete organization")
+	}
+
+	AuditLog(c, "org.delete", "organization", org.ID, org.Name, nil)
+
+	SetFlash(c, "success", "Organization '"+org.Name+"' deleted.")
+	c.Set("HX-Redirect", "/")
+	return c.SendStatus(200)
+}
+
 func PostAddMember(c *fiber.Ctx) error {
 	orgID := c.Locals("OrgID").(uint)
 	username := c.FormValue("username")

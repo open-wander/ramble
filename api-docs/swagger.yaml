@@ -1106,6 +1106,52 @@ paths:
       tags:
       - orgs
   /v1/orgs/{name}:
+    delete:
+      description: Delete an organization and its memberships. Only an owner may delete,
+        and only when the organization has no live resources; otherwise the answer
+        is 409 org_not_empty with the count in the message. The name becomes free
+        for reuse. Audited as org.delete. Needs a write token.
+      operationId: deleteOrg
+      parameters:
+      - description: Organization name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "409":
+          description: org_not_empty
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Delete an organization
+      tags:
+      - orgs
     get:
       description: Fetch an organization by name, ignoring case. Name, description
         and member count are public, so any authenticated token may read any organization;

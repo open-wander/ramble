@@ -29,6 +29,7 @@ func newOrgAPIApp(t *testing.T, writeLimiter fiber.Handler) *fiber.App {
 	app.Post("/v1/orgs", RequireAPIToken(models.ScopeWrite), writeLimiter, CreateOrgAPI)
 	app.Get("/v1/orgs/:name", RequireAPIToken(models.ScopeRead), GetOrgAPI)
 	app.Patch("/v1/orgs/:name", RequireAPIToken(models.ScopeWrite), writeLimiter, UpdateOrgAPI)
+	app.Delete("/v1/orgs/:name", RequireAPIToken(models.ScopeWrite), writeLimiter, DeleteOrgAPI)
 	return app
 }
 
@@ -293,4 +294,79 @@ func TestOrgAPI_WriteLimiter(t *testing.T) {
 		last, _ = sendJSON(t, app, "POST", plain, "/v1/orgs", `{`)
 	}
 	assert.Equal(t, 429, last)
+}
+
+func TestDeleteOrgAPI(t *testing.T) {
+	app := orgAPIApp(t)
+	owner := mkAPIUser(t, "alice", true, "")
+	member := mkAPIUser(t, "bob", true, "")
+	outsider := mkAPIUser(t, "carol", true, "")
+	unverified := mkAPIUser(t, "dave", false, "")
+	name := uniqueName(t, "del")
+	org := orgsvcCreate(t, owner, name)
+	_, err := orgsvc.AddMember(database.DB, org.ID, member.Username, orgsvc.RoleMember)
+	require.NoError(t, err)
+	_, err = orgsvc.AddMember(database.DB, org.ID, unverified.Username, orgsvc.RoleOwner)
+	require.NoError(t, err)
+	ownerTok, _ := mkAPIToken(t, owner, models.ScopeWrite)
+	memberTok, _ := mkAPIToken(t, member, models.ScopeWrite)
+	outTok, _ := mkAPIToken(t, outsider, models.ScopeWrite)
+	readTok, _ := mkAPIToken(t, owner, models.ScopeRead)
+	unvTok, _ := mkAPIToken(t, unverified, models.ScopeWrite)
+	path := "/v1/orgs/" + name
+
+	rejections := []struct {
+		name   string
+		token  string
+		path   string
+		status int
+		code   string
+	}{
+		{"no token", "", path, 401, "unauthorized"},
+		{"read scope", readTok, path, 403, "insufficient_scope"},
+		{"member", memberTok, path, 403, "forbidden"},
+		{"non-member", outTok, path, 403, "forbidden"},
+		{"unverified email", unvTok, path, 403, "email_unverified"},
+		{"unknown org", ownerTok, "/v1/orgs/" + uniqueName(t, "nope"), 404, "not_found"},
+	}
+	for _, tt := range rejections {
+		t.Run(tt.name, func(t *testing.T) {
+			status, body := sendJSON(t, app, "DELETE", tt.token, tt.path, "")
+			require.Equal(t, tt.status, status, body)
+			assert.Equal(t, tt.code, apiErrCode(t, body))
+			assert.Equal(t, int64(1), countOrgsNamed(t, name))
+		})
+	}
+	assert.Empty(t, auditRows(t, "org.delete", org.ID))
+
+	t.Run("not empty", func(t *testing.T) {
+		for i, want := range []string{"organization still has 1 resource", "organization still has 2 resources"} {
+			r := models.NomadResource{Name: uniqueName(t, "res"), UserID: owner.ID, OrganizationID: &org.ID}
+			require.NoError(t, database.DB.Create(&r).Error)
+			t.Cleanup(func() { database.DB.Unscoped().Delete(&r) })
+			status, body := sendJSON(t, app, "DELETE", ownerTok, path, "")
+			require.Equal(t, 409, status, "%d %s", i, body)
+			assert.Equal(t, "org_not_empty", apiErrCode(t, body))
+			assert.Contains(t, body, want+`"`)
+		}
+		assert.Equal(t, int64(1), countOrgsNamed(t, name))
+		assert.Empty(t, auditRows(t, "org.delete", org.ID))
+		require.NoError(t, database.DB.Exec("DELETE FROM nomad_resources WHERE organization_id = ?", org.ID).Error)
+	})
+
+	t.Run("owner deletes", func(t *testing.T) {
+		status, body := sendJSON(t, app, "DELETE", ownerTok, "/v1/orgs/"+strings.ToUpper(name), "")
+		require.Equal(t, 204, status, body)
+		assert.Empty(t, body)
+		assert.Zero(t, countOrgsNamed(t, name))
+		rows := auditRows(t, "org.delete", org.ID)
+		require.Len(t, rows, 1)
+		assert.Equal(t, "organization", rows[0].TargetType)
+
+		status, body = getJSON(t, app, ownerTok, path)
+		assert.Equal(t, 404, status, body)
+		status, body = sendJSON(t, app, "DELETE", ownerTok, path, "")
+		assert.Equal(t, 404, status, body)
+		assert.Len(t, auditRows(t, "org.delete", org.ID), 1)
+	})
 }
