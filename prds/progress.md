@@ -752,3 +752,22 @@ http.request, server.started; an unsigned POST to /webhooks/github/issues -> 401
 webhook.signature_missing (WARN) carrying the access line's request_id; no stdlib.log lines.
 (An unsigned POST to a non-route gets 403 from CSRF, as before - not a regression.)
 Docs: ramble CLAUDE.md (in #63), infra docs/prod-logging.md f5b4f89, prod-logs skill.
+
+## 2026-11-26 — Import: programmatic management (#65)
+
+Imported `prd-programmatic-management.md` research -> backlog. 26 tasks across Phases 12-17
+(API tokens, API contract, resource write API, organisation API, CLI, Terraform provider and release)
+from US-001..US-015 and FR-1..FR-10. Target: Ramble v0.6.0 + terraform-provider-ramble v0.1.0, one release.
+
+Decisions (PRD section 8): owners may delete empty orgs (API + settings page); webhook secret kept
+as sensitive TF state; 404 unknown / 403 not permitted, as the web UI; invite the issue author to the
+provider repo before v0.1.0 is tagged; HashiCorp terraform-plugin-codegen not used (oapi-codegen client).
+
+Operator steps (17.1 repo, 17.4 GitHub App/secret, GPG key, registry): agent stops and gives
+step-by-step instructions when reached; does not set these up itself.
+
+Confirmed present: internal/handlers/{resource_crud,org,resource_auth,audit,nomad_pack}.go,
+internal/services/resource/service.go (AuthorizeResourceAction, CreateResource),
+internal/server/server.go (CSRF exemption fn ~l.563, /v1 routes ~l.401), Makefile `swagger` target (swag, Swagger 2.0).
+
+PATTERN: oss - Ramble is public: no contributor names in code comments, prds/ files or commits; use roles or issue numbers.
