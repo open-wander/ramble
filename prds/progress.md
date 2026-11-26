@@ -991,3 +991,17 @@ Advisor review: MINOR. Orchestrator fixed: CSRF/401 (above); dead CreateInput.Ow
 error table in status order. Logged, not fixed: no test pins that fetchVersionContent receives the trimmed
 version (async goroutine; mutation to req.Version survives).
 Verified: local CI mirror all green.
+
+## 2026-11-26 — 14.3 GET /v1/resources/{id} and /v1/namespaces/{ns}/resources/{name}
+
+Service read.go: withAPIPreloads (User, Organization, Tags by name, Versions created_at DESC, id DESC; content
+and readme omitted), GetResource(id), GetResourceByNamespace(ns, name) (username first, then org; both
+case-insensitive; unknown namespace and unknown name both ErrResourceNotFound; DB errors wrapped -> 500).
+GetResourceWithVersions removed (no callers; turned DB errors into 404). Handlers GetResourceAPI (paramID,
+:id<int>) and GetResourceByNameAPI: 404 before the token org check (403); RequireAPIToken(read), no limiter.
+POST /v1/resources now renders from GetResource so POST and GET bodies are equal (DB timestamp precision,
+tag order). Orchestrator fix: a failed reload after the commit logs resource.reload_failed and returns the
+in-memory copy with 201 (was 500 - client would lose the only copy of webhook_secret and get 409 on retry).
+Orchestrator added: same-created_at tie-break test (id DESC; mutation -> red). Logged: no test for the reload
+fallback (needs a DB failure after a successful create).
+Advisor review: MINOR. Verified: local CI mirror all green.

@@ -103,6 +103,30 @@ The response is `201` with the new resource:
 | 422 | `invalid_version` | `version` is empty or longer than 64 characters |
 | 429 | `rate_limited` | Too many requests |
 
+### Get a Resource
+
+Both read endpoints need a `read` token (a `write` token also works) and return `200` with the same body as the create response, without `webhook_secret`.
+
+```bash
+# by ID
+curl https://ramble.openwander.org/v1/resources/42 \
+  -H "Authorization: Bearer <your-token>"
+
+# by namespace and name
+curl https://ramble.openwander.org/v1/namespaces/alice/resources/mysql \
+  -H "Authorization: Bearer <your-token>"
+```
+
+`GET /v1/resources/{id}` looks a resource up by its numeric ID. `GET /v1/namespaces/{namespace}/resources/{name}` looks it up by namespace (a username or an organisation name) and name. Both are matched case-insensitively; a username takes precedence over an organisation of the same name. The `namespace/name` form is the import ID of the Terraform provider.
+
+`tags` are sorted by name and `latest_version` is the newest version. A deleted resource is `404`, like one that never existed.
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 401 | `unauthorized` | Missing, invalid or expired token |
+| 403 | `forbidden` | The token is restricted to an organisation and the resource belongs to another organisation or to a personal namespace |
+| 404 | `not_found` | The ID, namespace or name does not exist, or the resource was deleted |
+
 ## Global Endpoints
 
 ### List All Packs

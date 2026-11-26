@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"gorm.io/gorm"
 	"rmbl/internal/models"
 )
 
@@ -52,16 +51,4 @@ func (s *ResourceService) RecordWebhookFailure(resourceID uint, errMsg string) e
 			"last_webhook_status":   "failure",
 			"last_webhook_error":    errMsg,
 		}).Error
-}
-
-// GetResourceWithVersions loads a resource with its versions ordered by creation date
-func (s *ResourceService) GetResourceWithVersions(id uint) (*models.NomadResource, error) {
-	var resource models.NomadResource
-	if err := s.db.Preload("Versions", func(db *gorm.DB) *gorm.DB {
-		return db.Order("resource_versions.created_at DESC")
-	}).First(&resource, id).Error; err != nil {
-		return nil, fmt.Errorf("resource not found")
-	}
-
-	return &resource, nil
 }

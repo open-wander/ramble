@@ -217,6 +217,69 @@ definitions:
       url:
         type: string
     type: object
+  handlers.ResourceResponse:
+    properties:
+      created_at:
+        format: date-time
+        type: string
+      description:
+        example: MySQL on Nomad
+        type: string
+      file_path:
+        example: packs/mysql
+        type: string
+      id:
+        example: 42
+        type: integer
+      latest_version:
+        example: v1.0.0
+        type: string
+      license:
+        example: MIT
+        type: string
+      name:
+        example: mysql
+        type: string
+      namespace:
+        example: alice
+        type: string
+      repository_url:
+        example: https://github.com/alice/packs
+        type: string
+      tags:
+        example:
+        - database
+        - sql
+        items:
+          type: string
+        type: array
+      type:
+        enum:
+        - pack
+        - job
+        example: pack
+        type: string
+      updated_at:
+        format: date-time
+        type: string
+      webhook_url:
+        example: https://ramble.openwander.org/resource/42/webhook
+        type: string
+    required:
+    - created_at
+    - description
+    - file_path
+    - id
+    - latest_version
+    - license
+    - name
+    - namespace
+    - repository_url
+    - tags
+    - type
+    - updated_at
+    - webhook_url
+    type: object
 host: ramble.openwander.org
 info:
   contact:
@@ -843,6 +906,51 @@ paths:
       summary: Search jobs
       tags:
       - nomad-job
+  /v1/namespaces/{namespace}/resources/{name}:
+    get:
+      description: Fetch a pack or job by its namespace (a username or an organization
+        name) and name, both case-insensitive. Needs a read token. The namespace/name
+        pair is the import ID of the Terraform provider.
+      operationId: getResourceByName
+      parameters:
+      - description: Username or organization name
+        in: path
+        name: namespace
+        required: true
+        type: string
+      - description: Resource name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.ResourceResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Get a resource by namespace and name
+      tags:
+      - resources
   /v1/packs:
     get:
       description: Fetch a list of all Nomad Packs available in the registry across
@@ -1042,6 +1150,45 @@ paths:
       security:
       - bearerAuth: []
       summary: Create a resource
+      tags:
+      - resources
+  /v1/resources/{id}:
+    get:
+      description: Fetch a pack or job by its numeric ID. Needs a read token. The
+        response never includes webhook_secret.
+      operationId: getResource
+      parameters:
+      - description: Resource ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.ResourceResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Get a resource by ID
       tags:
       - resources
   /v1/user:

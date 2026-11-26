@@ -549,6 +549,72 @@
                 }
             }
         },
+        "/v1/namespaces/{namespace}/resources/{name}": {
+            "get": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Fetch a pack or job by its namespace (a username or an organization name) and name, both case-insensitive. Needs a read token. The namespace/name pair is the import ID of the Terraform provider.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "resources"
+                ],
+                "summary": "Get a resource by namespace and name",
+                "operationId": "getResourceByName",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Username or organization name",
+                        "name": "namespace",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Resource name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ResourceResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/packs": {
             "get": {
                 "description": "Fetch a list of all Nomad Packs available in the registry across all namespaces.",
@@ -833,6 +899,65 @@
                     },
                     "429": {
                         "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/resources/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Fetch a pack or job by its numeric ID. Needs a read token. The response never includes webhook_secret.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "resources"
+                ],
+                "summary": "Get a resource by ID",
+                "operationId": "getResource",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Resource ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ResourceResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/handlers.APIErrorResponse"
                         }
@@ -1611,6 +1736,88 @@
                 },
                 "url": {
                     "type": "string"
+                }
+            }
+        },
+        "handlers.ResourceResponse": {
+            "type": "object",
+            "required": [
+                "created_at",
+                "description",
+                "file_path",
+                "id",
+                "latest_version",
+                "license",
+                "name",
+                "namespace",
+                "repository_url",
+                "tags",
+                "type",
+                "updated_at",
+                "webhook_url"
+            ],
+            "properties": {
+                "created_at": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "description": {
+                    "type": "string",
+                    "example": "MySQL on Nomad"
+                },
+                "file_path": {
+                    "type": "string",
+                    "example": "packs/mysql"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 42
+                },
+                "latest_version": {
+                    "type": "string",
+                    "example": "v1.0.0"
+                },
+                "license": {
+                    "type": "string",
+                    "example": "MIT"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "mysql"
+                },
+                "namespace": {
+                    "type": "string",
+                    "example": "alice"
+                },
+                "repository_url": {
+                    "type": "string",
+                    "example": "https://github.com/alice/packs"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "database",
+                        "sql"
+                    ]
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "pack",
+                        "job"
+                    ],
+                    "example": "pack"
+                },
+                "updated_at": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "webhook_url": {
+                    "type": "string",
+                    "example": "https://ramble.openwander.org/resource/42/webhook"
                 }
             }
         }

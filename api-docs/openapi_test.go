@@ -134,3 +134,56 @@ func TestOpenAPICreateResource(t *testing.T) {
 	assert.Contains(t, resp.Value.Properties, "latest_version")
 	assert.Empty(t, resp.Value.AllOf, "embedded ResourceResponse must be flattened")
 }
+
+func TestOpenAPIGetResource(t *testing.T) {
+	doc := loadSpec(t)
+	for _, tt := range []struct {
+		path   string
+		opID   string
+		params []string
+	}{
+		{"/v1/resources/{id}", "getResource", []string{"id"}},
+		{"/v1/namespaces/{namespace}/resources/{name}", "getResourceByName", []string{"namespace", "name"}},
+	} {
+		t.Run(tt.opID, func(t *testing.T) {
+			item := doc.Paths.Find(tt.path)
+			require.NotNil(t, item)
+			op := item.Get
+			require.NotNil(t, op)
+			assert.Equal(t, tt.opID, op.OperationID)
+
+			require.NotNil(t, op.Security)
+			var found bool
+			for _, req := range *op.Security {
+				if _, ok := req["bearerAuth"]; ok {
+					found = true
+				}
+			}
+			assert.True(t, found, "bearerAuth security")
+
+			var names []string
+			for _, p := range op.Parameters {
+				assert.Equal(t, "path", p.Value.In)
+				assert.True(t, p.Value.Required)
+				names = append(names, p.Value.Name)
+			}
+			assert.ElementsMatch(t, tt.params, names)
+
+			ok := op.Responses.Value("200")
+			require.NotNil(t, ok)
+			assert.Equal(t, "#/components/schemas/handlers.ResourceResponse",
+				ok.Value.Content.Get("application/json").Schema.Ref)
+			for _, code := range []string{"401", "403", "404", "500"} {
+				r := op.Responses.Value(code)
+				if assert.NotNil(t, r, code) {
+					assert.Equal(t, errorSchemaRef, r.Value.Content.Get("application/json").Schema.Ref, code)
+				}
+			}
+		})
+	}
+
+	resp := doc.Components.Schemas["handlers.ResourceResponse"]
+	require.NotNil(t, resp)
+	assert.NotContains(t, resp.Value.Properties, "webhook_secret")
+	assert.Contains(t, resp.Value.Properties, "latest_version")
+}

@@ -4,6 +4,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -105,4 +106,54 @@ func TestCreateResourceAPI_ErrorBodiesNeverEchoInput(t *testing.T) {
 	assert.Equal(t, 400, status)
 	assert.NotContains(t, body, marker)
 	assert.NotContains(t, buf.String(), marker)
+}
+
+func TestGetResourceAPI_OrgRestrictedToken(t *testing.T) {
+	app, _ := resourceAPIApp(t)
+	u := mkAPIUser(t, "alice", true, "")
+	orgA := mkOrgWithMember(t, u, "member")
+	orgB := mkOrgWithMember(t, u, "member")
+	wr, _ := mkAPIToken(t, u, models.ScopeWrite)
+	restricted, _, err := apitoken.Svc.Create(u.ID, "t", models.ScopeRead, &orgA.ID, 30)
+	require.NoError(t, err)
+
+	type res struct {
+		ns   string
+		name string
+		id   uint
+	}
+	mk := func(ns string) res {
+		name := uniqueName(t, "rr")
+		status, body := postResource(t, app, wr, validBody(t, ns, name, nil))
+		require.Equal(t, 201, status, body)
+		var r ResourceResponse
+		require.NoError(t, json.Unmarshal([]byte(body), &r))
+		return res{ns, name, r.ID}
+	}
+	own, other, personal := mk(orgA.Name), mk(orgB.Name), mk(u.Username)
+
+	tests := []struct {
+		name       string
+		r          res
+		wantStatus int
+	}{
+		{"own org", own, 200},
+		{"other org", other, 403},
+		{"personal", personal, 403},
+	}
+	for _, tt := range tests {
+		for _, path := range []string{
+			fmt.Sprintf("/v1/resources/%d", tt.r.id),
+			"/v1/namespaces/" + tt.r.ns + "/resources/" + tt.r.name,
+		} {
+			t.Run(tt.name+" "+path, func(t *testing.T) {
+				status, body := getJSON(t, app, restricted, path)
+				require.Equal(t, tt.wantStatus, status, body)
+				if tt.wantStatus == 403 {
+					assert.Equal(t, "forbidden", apiErrCode(t, body))
+					assert.NotContains(t, body, tt.r.name)
+				}
+			})
+		}
+	}
 }

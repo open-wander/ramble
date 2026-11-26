@@ -188,8 +188,82 @@ func CreateResourceAPI(c *fiber.Ctx) error {
 	go fetchVersionContent(detachedLogCtx(c), res.ID, res.Versions[0].Version, res.RepositoryURL, string(res.Type), res.Name, res.FilePath)
 
 	AuditLog(c, "resource.create", "resource", res.ID, res.Name, nil)
+
+	// Render from the same read as GET so both agree on timestamp precision
+	// and tag order. The row is committed, so a failed reload is not a failed
+	// create: it is logged and the in-memory copy is returned, because this is
+	// the only response that carries the webhook secret.
+	stored, err := resourceService(c).GetResource(res.ID)
+	if err != nil {
+		logger.FromContext(c.UserContext()).Error("resource.reload_failed", logger.Err(err))
+		stored = res
+	}
 	return c.Status(fiber.StatusCreated).JSON(CreateResourceResponse{
-		ResourceResponse: newResourceResponse(c, *res),
+		ResourceResponse: newResourceResponse(c, *stored),
 		WebhookSecret:    res.WebhookSecret,
 	})
+}
+
+// GetResourceAPI godoc
+// @Summary Get a resource by ID
+// @Description Fetch a pack or job by its numeric ID. Needs a read token. The response never includes webhook_secret.
+// @Tags resources
+// @Produce json
+// @Security bearerAuth
+// @Param id path int true "Resource ID"
+// @Success 200 {object} ResourceResponse
+// @Failure 401 {object} APIErrorResponse
+// @Failure 403 {object} APIErrorResponse
+// @Failure 404 {object} APIErrorResponse
+// @Failure 500 {object} APIErrorResponse
+// @ID getResource
+// @Router /v1/resources/{id} [get]
+func GetResourceAPI(c *fiber.Ctx) error {
+	id, err := paramID(c, "id")
+	if err != nil {
+		return APIError(c, fiber.StatusNotFound, codeNotFound, "resource not found")
+	}
+	return renderResourceAPI(c, func(s *resource.ResourceService) (*models.NomadResource, error) {
+		return s.GetResource(id)
+	})
+}
+
+// GetResourceByNameAPI godoc
+// @Summary Get a resource by namespace and name
+// @Description Fetch a pack or job by its namespace (a username or an organization name) and name, both case-insensitive. Needs a read token. The namespace/name pair is the import ID of the Terraform provider.
+// @Tags resources
+// @Produce json
+// @Security bearerAuth
+// @Param namespace path string true "Username or organization name"
+// @Param name path string true "Resource name"
+// @Success 200 {object} ResourceResponse
+// @Failure 401 {object} APIErrorResponse
+// @Failure 403 {object} APIErrorResponse
+// @Failure 404 {object} APIErrorResponse
+// @Failure 500 {object} APIErrorResponse
+// @ID getResourceByName
+// @Router /v1/namespaces/{namespace}/resources/{name} [get]
+func GetResourceByNameAPI(c *fiber.Ctx) error {
+	namespace, name := c.Params("namespace"), c.Params("name")
+	return renderResourceAPI(c, func(s *resource.ResourceService) (*models.NomadResource, error) {
+		return s.GetResourceByNamespace(namespace, name)
+	})
+}
+
+// renderResourceAPI runs a lookup and answers with the resource. The 404 comes
+// before the token's organisation check: the organisation has to be loaded to
+// apply the restriction, and resources are public anyway.
+func renderResourceAPI(c *fiber.Ctx, load func(*resource.ResourceService) (*models.NomadResource, error)) error {
+	r, err := load(resourceService(c))
+	if err != nil {
+		if errors.Is(err, resource.ErrResourceNotFound) {
+			return APIError(c, fiber.StatusNotFound, codeNotFound, "resource not found")
+		}
+		logger.FromContext(c.UserContext()).Error("resource.get_failed", logger.Err(err))
+		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
+	}
+	if !TokenAllowsOrg(c, r.OrganizationID) {
+		return APIOrgForbidden(c)
+	}
+	return c.JSON(newResourceResponse(c, *r))
 }
