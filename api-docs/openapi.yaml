@@ -1,0 +1,438 @@
+components:
+    schemas:
+        handlers.APIErrorBody:
+            properties:
+                code:
+                    example: not_found
+                    type: string
+                message:
+                    example: pack not found
+                    type: string
+            type: object
+        handlers.APIErrorResponse:
+            properties:
+                error:
+                    $ref: '#/components/schemas/handlers.APIErrorBody'
+            type: object
+        handlers.JobDetail:
+            properties:
+                description:
+                    type: string
+                name:
+                    type: string
+                versions:
+                    description: Reuse PackVersion structure
+                    items:
+                        $ref: '#/components/schemas/handlers.PackVersion'
+                    type: array
+            type: object
+        handlers.JobSummary:
+            properties:
+                description:
+                    type: string
+                name:
+                    type: string
+                namespace:
+                    type: string
+            type: object
+        handlers.PackDetail:
+            properties:
+                description:
+                    type: string
+                name:
+                    type: string
+                versions:
+                    items:
+                        $ref: '#/components/schemas/handlers.PackVersion'
+                    type: array
+            type: object
+        handlers.PackSummary:
+            properties:
+                description:
+                    type: string
+                name:
+                    type: string
+                namespace:
+                    type: string
+            type: object
+        handlers.PackVersion:
+            properties:
+                url:
+                    type: string
+                version:
+                    type: string
+            type: object
+        handlers.RecentResource:
+            properties:
+                description:
+                    type: string
+                id:
+                    type: integer
+                latest_version:
+                    type: string
+                name:
+                    type: string
+                namespace:
+                    type: string
+                tags:
+                    items:
+                        type: string
+                    type: array
+                type:
+                    type: string
+                updated_at:
+                    type: string
+                url:
+                    type: string
+            type: object
+    securitySchemes:
+        bearerAuth:
+            bearerFormat: token
+            description: 'Ramble API token, sent as the Authorization header: Bearer <token>'
+            scheme: bearer
+            type: http
+info:
+    contact:
+        name: API Support
+    description: This is the API documentation for the RMBL Nomad Job & Pack Registry.
+    license:
+        name: MPL-2.0
+    title: RMBL Nomad Registry API
+    version: "1.0"
+openapi: 3.0.3
+paths:
+    /{username}/v1/jobs/{jobname}:
+        get:
+            description: Fetch detailed metadata and version history for a specific Nomad Job.
+            operationId: getNamespaceJob
+            parameters:
+                - description: Namespace (user or org)
+                  in: path
+                  name: username
+                  required: true
+                  schema:
+                    type: string
+                - description: Job name
+                  in: path
+                  name: jobname
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.JobDetail'
+                    description: OK
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Not Found
+                "500":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Internal Server Error
+            summary: Get job details
+            tags:
+                - nomad-job
+    /{username}/v1/packs:
+        get:
+            description: Fetch a list of all Nomad Packs within a specific user or organization namespace.
+            operationId: listNamespacePacks
+            parameters:
+                - description: Namespace (user or org)
+                  in: path
+                  name: username
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties:
+                                    items:
+                                        $ref: '#/components/schemas/handlers.PackSummary'
+                                    type: array
+                                type: object
+                    description: OK
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Not Found
+                "500":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Internal Server Error
+            summary: List packs in a namespace
+            tags:
+                - nomad-pack
+    /{username}/v1/packs/{packname}:
+        get:
+            description: Fetch detailed metadata and version history for a specific Nomad Pack.
+            operationId: getNamespacePack
+            parameters:
+                - description: Namespace (user or org)
+                  in: path
+                  name: username
+                  required: true
+                  schema:
+                    type: string
+                - description: Pack name
+                  in: path
+                  name: packname
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.PackDetail'
+                    description: OK
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Not Found
+                "500":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Internal Server Error
+            summary: Get pack details
+            tags:
+                - nomad-pack
+    /v1/jobs:
+        get:
+            description: Fetch a list of all Nomad Jobs available in the registry across all namespaces.
+            operationId: listJobs
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties:
+                                    items:
+                                        $ref: '#/components/schemas/handlers.JobSummary'
+                                    type: array
+                                type: object
+                    description: OK
+                "500":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Internal Server Error
+            summary: List all jobs
+            tags:
+                - nomad-job
+    /v1/jobs/search:
+        get:
+            description: Search for Nomad Jobs across all namespaces by name or description.
+            operationId: searchJobs
+            parameters:
+                - description: Search query
+                  in: query
+                  name: q
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties:
+                                    items:
+                                        $ref: '#/components/schemas/handlers.JobSummary'
+                                    type: array
+                                type: object
+                    description: OK
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Too Many Requests
+                "500":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Internal Server Error
+            summary: Search jobs
+            tags:
+                - nomad-job
+    /v1/packs:
+        get:
+            description: Fetch a list of all Nomad Packs available in the registry across all namespaces.
+            operationId: listPacks
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties:
+                                    items:
+                                        $ref: '#/components/schemas/handlers.PackSummary'
+                                    type: array
+                                type: object
+                    description: OK
+                "500":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Internal Server Error
+            summary: List all packs
+            tags:
+                - nomad-pack
+    /v1/packs/search:
+        get:
+            description: Search for Nomad Packs across all namespaces by name or description.
+            operationId: searchPacks
+            parameters:
+                - description: Search query
+                  in: query
+                  name: q
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties:
+                                    items:
+                                        $ref: '#/components/schemas/handlers.PackSummary'
+                                    type: array
+                                type: object
+                    description: OK
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Too Many Requests
+                "500":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Internal Server Error
+            summary: Search packs
+            tags:
+                - nomad-pack
+    /v1/recent:
+        get:
+            description: Fetch a list of recently updated packs and jobs, optionally filtered by time.
+            operationId: listRecent
+            parameters:
+                - description: ISO8601 timestamp to filter resources updated after this time
+                  in: query
+                  name: since
+                  schema:
+                    type: string
+                - description: Maximum number of results (default 50, max 100)
+                  in: query
+                  name: limit
+                  schema:
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties:
+                                    items:
+                                        $ref: '#/components/schemas/handlers.RecentResource'
+                                    type: array
+                                type: object
+                    description: OK
+                "500":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Internal Server Error
+            summary: List recently updated resources
+            tags:
+                - resources
+    /v1/registries:
+        get:
+            description: Returns a JSON list of all namespaces that contain at least one Nomad Pack.
+            operationId: listRegistries
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties:
+                                    items:
+                                        type: string
+                                    type: array
+                                type: object
+                    description: OK
+                "500":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Internal Server Error
+            summary: List all registry namespaces (JSON)
+            tags:
+                - nomad-pack
+    /v1/registries/search:
+        get:
+            description: Search for namespaces (users/orgs) that have published Nomad Packs.
+            operationId: searchRegistries
+            parameters:
+                - description: Search query
+                  in: query
+                  name: q
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties:
+                                    items:
+                                        type: string
+                                    type: array
+                                type: object
+                    description: OK
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Too Many Requests
+                "500":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Internal Server Error
+            summary: Search registry namespaces
+            tags:
+                - nomad-pack
+servers:
+    - url: https://ramble.openwander.org/

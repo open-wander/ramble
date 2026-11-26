@@ -484,6 +484,7 @@ const docTemplate = `{
                     "nomad-job"
                 ],
                 "summary": "List all jobs",
+                "operationId": "listJobs",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -516,6 +517,7 @@ const docTemplate = `{
                     "nomad-job"
                 ],
                 "summary": "Search jobs",
+                "operationId": "searchJobs",
                 "parameters": [
                     {
                         "type": "string",
@@ -563,6 +565,7 @@ const docTemplate = `{
                     "nomad-pack"
                 ],
                 "summary": "List all packs",
+                "operationId": "listPacks",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -595,6 +598,7 @@ const docTemplate = `{
                     "nomad-pack"
                 ],
                 "summary": "Search packs",
+                "operationId": "searchPacks",
                 "parameters": [
                     {
                         "type": "string",
@@ -642,6 +646,7 @@ const docTemplate = `{
                     "resources"
                 ],
                 "summary": "List recently updated resources",
+                "operationId": "listRecent",
                 "parameters": [
                     {
                         "type": "string",
@@ -688,6 +693,7 @@ const docTemplate = `{
                     "nomad-pack"
                 ],
                 "summary": "List all registry namespaces (JSON)",
+                "operationId": "listRegistries",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -720,6 +726,7 @@ const docTemplate = `{
                     "nomad-pack"
                 ],
                 "summary": "Search registry namespaces",
+                "operationId": "searchRegistries",
                 "parameters": [
                     {
                         "type": "string",
@@ -868,6 +875,7 @@ const docTemplate = `{
                     "nomad-job"
                 ],
                 "summary": "Get job details",
+                "operationId": "getNamespaceJob",
                 "parameters": [
                     {
                         "type": "string",
@@ -916,6 +924,7 @@ const docTemplate = `{
                     "nomad-pack"
                 ],
                 "summary": "List packs in a namespace",
+                "operationId": "listNamespacePacks",
                 "parameters": [
                     {
                         "type": "string",
@@ -963,6 +972,7 @@ const docTemplate = `{
                     "nomad-pack"
                 ],
                 "summary": "Get pack details",
+                "operationId": "getNamespacePack",
                 "parameters": [
                     {
                         "type": "string",
@@ -1308,6 +1318,14 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        }
+    },
+    "securityDefinitions": {
+        "bearerAuth": {
+            "description": "Ramble API token, sent as the Authorization header: Bearer \u003ctoken\u003e",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
         }
     }
 }`

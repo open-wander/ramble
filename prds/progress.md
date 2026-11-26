@@ -888,3 +888,27 @@ Verified: build, vet -tags=security, go test -tags=security ./... (18 ok), make 
 make swagger produces no further diff.
 
 PATTERN: routes - app.All("/v1/*") 404 guard must stay below every explicit /v1 route and above /:username catch-alls.
+
+## 2026-11-26 — 13.1 OpenAPI 3 spec
+
+swag v2 still rc6 -> kept swag v1.16.6. New dev tool cmd/openapi-convert (Convert(swaggerJSON) -> YAML):
+openapi2conv.ToV3, keeps only paths with a whole "v1" segment, rewrites bearerAuth apiKey/header/Authorization
+to http bearer (errors on anything else), sets 3.0.3, validates, sorted-key YAML + trailing newline.
+kin-openapi v0.153.0 in go.mod; Makefile OAPI_CODEGEN_VERSION=v2.9.0, OAPI_RUNTIME_VERSION=v1.9.1 (not in
+check-pins: not in the Dockerfile). `make openapi` = swagger + convert (byte-identical on rerun).
+`make openapi-check` = openapi + git diff --exit-code api-docs/ + oapi-codegen types,client into a temp module
+that must compile (fails on unstaged api-docs changes by design). CI swagger step replaced by openapi-check.
+api-docs/openapi_test.go: Validate, unique non-empty operationIds, >=400 responses ref handlers.APIErrorResponse,
+bearerAuth http/bearer, minimum /v1 path count. @ID on all 10 /v1 ops (listPacks, searchPacks, listJobs,
+searchJobs, listRecent, listRegistries, searchRegistries, listNamespacePacks, getNamespacePack,
+getNamespaceJob) - these become generated client method names. No @Security on public reads; write
+endpoints add `@Security bearerAuth` + @Failure 401/403 APIErrorResponse.
+Release: .goreleaser.yml release.extra_files + checksum.extra_files attach openapi.yaml; the signed release
+runs goreleaser from scripts/release-cli-local.sh (not release.yml), so the asset comes from that run.
+logger msgkey source scans now skip cmd/openapi-convert (as for cmd/nomad-vars).
+Advisor review: MINOR. Orchestrator fixed: converter test now has /v1x/packs and /docs/v10 fixtures (substring
+mutation -> red); bearerAuth description no longer suggests users type "Bearer" themselves.
+Verified: build, vet -tags=security, go test -tags=security ./... (20 ok), make gosec/actionlint/check-pins exit 0,
+make openapi deterministic, make openapi-check exit 0 (client compiles).
+
+PATTERN: openapi - operationIds are the generated client's public method names; choose them deliberately and keep them stable.

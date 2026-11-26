@@ -256,6 +256,7 @@ paths:
     get:
       description: Fetch detailed metadata and version history for a specific Nomad
         Job.
+      operationId: getNamespaceJob
       parameters:
       - description: Namespace (user or org)
         in: path
@@ -289,6 +290,7 @@ paths:
     get:
       description: Fetch a list of all Nomad Packs within a specific user or organization
         namespace.
+      operationId: listNamespacePacks
       parameters:
       - description: Namespace (user or org)
         in: path
@@ -321,6 +323,7 @@ paths:
     get:
       description: Fetch detailed metadata and version history for a specific Nomad
         Pack.
+      operationId: getNamespacePack
       parameters:
       - description: Namespace (user or org)
         in: path
@@ -657,6 +660,7 @@ paths:
     get:
       description: Fetch a list of all Nomad Jobs available in the registry across
         all namespaces.
+      operationId: listJobs
       produces:
       - application/json
       responses:
@@ -678,6 +682,7 @@ paths:
   /v1/jobs/search:
     get:
       description: Search for Nomad Jobs across all namespaces by name or description.
+      operationId: searchJobs
       parameters:
       - description: Search query
         in: query
@@ -710,6 +715,7 @@ paths:
     get:
       description: Fetch a list of all Nomad Packs available in the registry across
         all namespaces.
+      operationId: listPacks
       produces:
       - application/json
       responses:
@@ -731,6 +737,7 @@ paths:
   /v1/packs/search:
     get:
       description: Search for Nomad Packs across all namespaces by name or description.
+      operationId: searchPacks
       parameters:
       - description: Search query
         in: query
@@ -763,6 +770,7 @@ paths:
     get:
       description: Fetch a list of recently updated packs and jobs, optionally filtered
         by time.
+      operationId: listRecent
       parameters:
       - description: ISO8601 timestamp to filter resources updated after this time
         in: query
@@ -794,6 +802,7 @@ paths:
     get:
       description: Returns a JSON list of all namespaces that contain at least one
         Nomad Pack.
+      operationId: listRegistries
       produces:
       - application/json
       responses:
@@ -815,6 +824,7 @@ paths:
   /v1/registries/search:
     get:
       description: Search for namespaces (users/orgs) that have published Nomad Packs.
+      operationId: searchRegistries
       parameters:
       - description: Search query
         in: query
@@ -877,4 +887,10 @@ paths:
       summary: Receive GitHub issue webhooks
       tags:
       - webhooks
+securityDefinitions:
+  bearerAuth:
+    description: 'Ramble API token, sent as the Authorization header: Bearer <token>'
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

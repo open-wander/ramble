@@ -2,6 +2,10 @@
 
 Ramble provides a REST API for programmatic access to packs and jobs.
 
+## OpenAPI Specification
+
+The `/v1` API is described by an OpenAPI 3.0 spec at `api-docs/openapi.yaml` in the repository. It is generated from the handler annotations (`make openapi`), checked for drift in CI, and attached to every GitHub release as `openapi.yaml`. Use it with `oapi-codegen` or any other OpenAPI generator. The interactive docs at `/api-docs` (Swagger UI) still serve the Swagger 2.0 document, which also covers the HTML routes.
+
 ## Content Negotiation
 
 The API uses content negotiation. Send `Accept: application/json` header to receive JSON responses.

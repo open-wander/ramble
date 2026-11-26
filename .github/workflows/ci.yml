@@ -50,12 +50,12 @@ jobs:
     - name: Run tests
       run: go test -tags=security -v ./...
 
-    - name: Check Swagger docs are up to date
+    # Regenerates api-docs/, fails on drift, then generates and compiles an
+    # oapi-codegen client from openapi.yaml.
+    - name: Check OpenAPI spec is up to date and generates a client
       run: |
-        make swagger
-        if ! git diff --quiet api-docs/; then
-          echo "Swagger docs are out of date. Run 'make swagger' and commit the changes."
-          git diff api-docs/
+        if ! make openapi-check; then
+          echo "OpenAPI spec is out of date or does not generate a client. Run 'make openapi' and commit the changes."
           exit 1
         fi
 

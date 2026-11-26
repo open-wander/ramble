@@ -37,6 +37,7 @@ type PackVersion struct {
 // @Success 200 {object} map[string][]PackSummary
 // @Failure 404 {object} APIErrorResponse
 // @Failure 500 {object} APIErrorResponse
+// @ID listNamespacePacks
 // @Router /{username}/v1/packs [get]
 func ListPacksAPI(c *fiber.Ctx) error {
 	namespace := c.Params("username")
@@ -90,6 +91,7 @@ func ListPacksAPI(c *fiber.Ctx) error {
 // @Produce json
 // @Success 200 {object} map[string][]PackSummary
 // @Failure 500 {object} APIErrorResponse
+// @ID listPacks
 // @Router /v1/packs [get]
 func ListAllPacksAPI(c *fiber.Ctx) error {
 	var resources []models.NomadResource
@@ -130,6 +132,7 @@ func getResourceNamespace(r models.NomadResource) string {
 // @Success 200 {object} PackDetail
 // @Failure 404 {object} APIErrorResponse
 // @Failure 500 {object} APIErrorResponse
+// @ID getNamespacePack
 // @Router /{username}/v1/packs/{packname} [get]
 func GetPackAPI(c *fiber.Ctx) error {
 	namespace := c.Params("username")
@@ -224,6 +227,7 @@ func GetRegistries(c *fiber.Ctx) error {
 // @Produce json
 // @Success 200 {object} map[string][]string
 // @Failure 500 {object} APIErrorResponse
+// @ID listRegistries
 // @Router /v1/registries [get]
 func ListUserRegistriesAPI(c *fiber.Ctx) error {
 	var names []string
@@ -250,6 +254,7 @@ func ListUserRegistriesAPI(c *fiber.Ctx) error {
 // @Success 200 {object} map[string][]string
 // @Failure 429 {object} APIErrorResponse
 // @Failure 500 {object} APIErrorResponse
+// @ID searchRegistries
 // @Router /v1/registries/search [get]
 func SearchRegistriesAPI(c *fiber.Ctx) error {
 	query := c.Query("q")
@@ -283,6 +288,7 @@ func SearchRegistriesAPI(c *fiber.Ctx) error {
 // @Success 200 {object} map[string][]PackSummary
 // @Failure 429 {object} APIErrorResponse
 // @Failure 500 {object} APIErrorResponse
+// @ID searchPacks
 // @Router /v1/packs/search [get]
 func SearchPacksAPI(c *fiber.Ctx) error {
 	query := c.Query("q")
@@ -333,6 +339,7 @@ type JobDetail struct {
 // @Produce json
 // @Success 200 {object} map[string][]JobSummary
 // @Failure 500 {object} APIErrorResponse
+// @ID listJobs
 // @Router /v1/jobs [get]
 func ListAllJobsAPI(c *fiber.Ctx) error {
 	var resources []models.NomadResource
@@ -361,6 +368,7 @@ func ListAllJobsAPI(c *fiber.Ctx) error {
 // @Success 200 {object} map[string][]JobSummary
 // @Failure 429 {object} APIErrorResponse
 // @Failure 500 {object} APIErrorResponse
+// @ID searchJobs
 // @Router /v1/jobs/search [get]
 func SearchJobsAPI(c *fiber.Ctx) error {
 	query := c.Query("q")
@@ -400,6 +408,7 @@ func SearchJobsAPI(c *fiber.Ctx) error {
 // @Success 200 {object} JobDetail
 // @Failure 404 {object} APIErrorResponse
 // @Failure 500 {object} APIErrorResponse
+// @ID getNamespaceJob
 // @Router /{username}/v1/jobs/{jobname} [get]
 func GetJobAPI(c *fiber.Ctx) error {
 	namespace := c.Params("username")
@@ -496,6 +505,7 @@ type RecentResource struct {
 // @Param limit query int false "Maximum number of results (default 50, max 100)"
 // @Success 200 {object} map[string][]RecentResource
 // @Failure 500 {object} APIErrorResponse
+// @ID listRecent
 // @Router /v1/recent [get]
 func ListRecentAPI(c *fiber.Ctx) error {
 	since := c.Query("since")
