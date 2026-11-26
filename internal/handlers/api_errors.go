@@ -65,8 +65,7 @@ func APIErrorHandler(c *fiber.Ctx, err error) error {
 		return fiber.DefaultErrorHandler(c, err)
 	}
 	status, code, msg := fiber.StatusInternalServerError, codeInternal, "internal error"
-	var fe *fiber.Error
-	if errors.As(err, &fe) {
+	if fe, ok := errors.AsType[*fiber.Error](err); ok {
 		switch fe.Code {
 		case fiber.StatusBadRequest:
 			status, code, msg = fe.Code, "bad_request", "bad request"
