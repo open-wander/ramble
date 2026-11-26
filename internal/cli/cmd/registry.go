@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"text/tabwriter"
 
@@ -154,8 +153,8 @@ func runRegistryList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tURL\tNAMESPACE\tDEFAULT")
+	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "NAME\tURL\tNAMESPACE\tDEFAULT\tLOGGED IN")
 	for name, reg := range cfg.Registries {
 		isDefault := ""
 		if name == cfg.DefaultRegistry {
@@ -165,7 +164,11 @@ func runRegistryList(cmd *cobra.Command, args []string) error {
 		if namespace == "" {
 			namespace = "(all)"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", name, reg.URL, namespace, isDefault)
+		loggedIn := ""
+		if reg.Token != "" {
+			loggedIn = "yes"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", name, reg.URL, namespace, isDefault, loggedIn)
 	}
 	return w.Flush()
 }

@@ -129,3 +129,12 @@ Pack templates use `[[ ]]` delimiters and support these functions:
 | `coalesce` | First non-empty value | `[[ coalesce (var "name" .) "default" ]]` |
 | `toJSON` | Convert to JSON | `[[ var "config" . \| toJSON ]]` |
 | `indent N` | Indent by N spaces | `[[ var "block" . \| indent 2 ]]` |
+
+## publish and delete
+
+`ramble pack publish` registers a pack from a Git repository or adds a new version, and `ramble pack delete NAMESPACE/NAME` removes it. Both need an API token (see [Authentication](/docs/cli/auth)). Details, flags and CI usage are in [Publish and Delete](/docs/cli/publish).
+
+```bash
+ramble pack publish --repo https://github.com/alice/repo --version v1.0.0
+ramble pack delete alice/name
+```

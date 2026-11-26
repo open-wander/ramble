@@ -174,3 +174,10 @@ included) for one consistent format - no console/text handler.
 | 15.2 | `POST/GET/PATCH /v1/orgs` (US-010) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | api_orgs.go createOrg/getOrg/updateOrg; names.IsValid shared |
 | 15.3 | Owner deletion of empty orgs: `DELETE /v1/orgs/{name}` (409 when resources remain) plus matching button on org settings page (US-010) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | DeleteOrg (409 org_not_empty), web Danger zone, name reuse purge |
 | 15.4 | Members API: list, PUT role, DELETE, last-owner 409, strict role validation (US-011) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | listOrgMembers/putOrgMember/removeOrgMember; last_owner, invalid_role |
+
+## Phase 16: CLI
+
+| # | Task | PRD | Status | Notes |
+|---|------|-----|--------|-------|
+| 16.1 | `ramble login` / `logout`, token stored 0600, `RAMBLE_TOKEN` override (US-012) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | auth.go login/logout; pack.CurrentUser; Config.TokenFor |
+| 16.2 | Generated client in `internal/cli/apiclient`; `pack`/`job publish` and `delete`; docs/cli (US-013, FR-9) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | internal/cli/apiclient; pack|job publish|delete; docs/cli/publish.md |

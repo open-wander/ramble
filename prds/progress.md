@@ -1157,3 +1157,48 @@ member_count, FOR SHARE re-check in resource create, org-restricted token (read/
 listing, immutable name. No gaps.
 Comments: no stale task/requirement references in Phase 15 code; long blocks are swag annotations or the
 limiter contract in server.go - kept.
+
+## 2026-11-26 — 16.1 CLI login / logout
+
+internal/cli/cmd/auth.go: login (--registry/-r; URL checked before the token is read; no-echo read on a terminal,
+one line from a pipe; GET /v1/user before storing; prints "Logged in to <name> as <username>"; 401 prints the API
+message, nothing stored) and logout (clears the stored token, no server call, points at /settings/tokens).
+internal/pack/user.go: CurrentUser, APIError{StatusCode, Message}, TokenURLAllowed (https, or http to loopback
+only), token client with CheckRedirect = ErrUseLastResponse (a redirect is never followed with the token).
+Config: Registry.Token; atomic Save (CreateTemp 0600 + Sync + Rename, so an existing 0644 file ends 0600);
+ResolveRegistry, SetToken, ClearToken, TokenFor (non-empty RAMBLE_TOKEN wins, then stored token); AddRegistry
+keeps the token only when the URL is unchanged. registry list shows LOGGED IN, never the token.
+docs/cli/auth.md (+ overview, registry). golang.org/x/term v0.48.0.
+Advisor review: MINOR. Orchestrator: server error messages have control characters stripped (pack.printable,
+used by errorMessage) + test row; login test proves the URL is refused before any token is read.
+Carry to 16.2: RAMBLE_TOKEN applies to every registry, so every token-bearing call must go through the
+TokenURLAllowed + no-redirect client, never a plain http.Client.
+Verified: local CI mirror green (database/handlers/apitoken re-run after testcontainers timeouts).
+
+## 2026-11-26 — 16.2 Generated client, publish and delete; Phase 16 collapsed
+
+internal/cli/apiclient: client.gen.go (oapi-codegen v2.9.0, types+client), doc.go (go:generate), new.go (New is
+the only constructor: empty token refused, pack.TokenURLAllowed, pack.TokenHTTPClient with no redirects, Bearer
+via request editor, response bodies capped at 1 MiB). github.com/oapi-codegen/runtime v1.9.1 direct dependency.
+Makefile: `apiclient` target; openapi-check regenerates spec + client and git-diffs both, and checks the doc.go
+generator version and go.mod runtime version against the pins (the temp-module build is gone).
+internal/pack exports TokenHTTPClient, Printable, ErrorMessageFromBody (one copy each).
+internal/cli/cmd/publish.go: pack|job publish (create on 404 and print webhook secret once; else add version;
+type mismatch error; namespace defaults to token org, else username, via GET /v1/user) and pack|job delete
+(NS/N validated, type checked, confirm on a terminal unless --yes, refuse on non-terminal stdin).
+runCLI resets cobra flags between runs (shared command tree keeps flag values). docs/cli/publish.md + pages.
+Advisor review: MINOR. Orchestrator: plain-http test used an unused counting server (vacuous) -> registry host
+.invalid, refusal asserted; job/pack name default drops .nomad.hcl/.nomad/.hcl (web.nomad.hcl -> web) +
+TestDefaultName + docs; delete of a missing resource says "<kind> NS/N not found".
+Verified: local CI mirror green (testcontainers timeouts re-run). Phase 16 collapsed.
+
+## 2026-11-26 — Phase 16 sweep (invariants + comments)
+
+15 line-targeted breaks via the overlay driver (scratchpad sweep16; CLI packages, no containers). 13 killed first
+time. 2 survived and were closed with tests: plain http to a non-loopback IP (TestTokenURLAllowed rows for
+10.0.0.1, 192.168.1.10, 2001:db8::1); CurrentUser's own URL refusal (the old test passed on the network error to
+example.com; now an .invalid host and the refusal text is asserted). Both re-run: killed.
+Killed: https-only, no-host, no redirects, empty-token refusal, client URL refusal, 1 MiB body cap, token kept
+only for the same URL, RAMBLE_TOKEN precedence, delete needs a terminal or --yes, y/yes only, pack/job kind check,
+control characters stripped, registry list never prints the token.
+Comments: no stale references; nothing over 10 lines outside swag/generated code.

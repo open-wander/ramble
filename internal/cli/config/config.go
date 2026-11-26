@@ -11,6 +11,7 @@ import (
 type Registry struct {
 	URL       string `json:"url"`
 	Namespace string `json:"namespace,omitempty"` // Optional: limit to specific namespace
+	Token     string `json:"token,omitempty"`     // API token stored by "ramble login"
 }
 
 // Config holds CLI configuration
@@ -77,19 +78,47 @@ func (c *Config) Save() error {
 		return fmt.Errorf("failed to serialize config: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0600); err != nil {
+	// Write a temp file in the same directory (created 0600) and rename it
+	// over the config. The rename replaces the inode, so a pre-existing file
+	// with wider permissions ends up 0600 too.
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".config-*.tmp")
+	if err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
-
+	tmpName := tmp.Name()
+	if err := writeAndClose(tmp, data); err != nil {
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("failed to write config: %w", err)
+	}
 	return nil
 }
 
-// AddRegistry adds or updates a registry
-func (c *Config) AddRegistry(name, url, namespace string) {
-	c.Registries[name] = Registry{
-		URL:       url,
-		Namespace: namespace,
+func writeAndClose(f *os.File, data []byte) error {
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
 	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
+}
+
+// AddRegistry adds or updates a registry
+//
+// Re-adding an existing registry keeps its stored token only when the URL is
+// unchanged; a token must never follow a registry to a different host.
+func (c *Config) AddRegistry(name, url, namespace string) {
+	reg := Registry{URL: url, Namespace: namespace}
+	if old, ok := c.Registries[name]; ok && old.URL == url {
+		reg.Token = old.Token
+	}
+	c.Registries[name] = reg
 }
 
 // RemoveRegistry removes a registry
@@ -117,18 +146,62 @@ func (c *Config) SetDefault(name string) error {
 
 // GetRegistry returns a registry by name, or the default
 func (c *Config) GetRegistry(name string) (*Registry, error) {
+	_, reg, err := c.ResolveRegistry(name)
+	return reg, err
+}
+
+// ResolveRegistry is GetRegistry that also returns the resolved name, which
+// differs from the argument when it is empty and the default is used.
+func (c *Config) ResolveRegistry(name string) (string, *Registry, error) {
 	if name == "" {
 		name = c.DefaultRegistry
 	}
 	if name == "" {
-		return nil, fmt.Errorf("no registry specified and no default set")
+		return "", nil, fmt.Errorf("no registry specified and no default set")
 	}
 
 	reg, ok := c.Registries[name]
 	if !ok {
-		return nil, fmt.Errorf("registry not found: %s", name)
+		return "", nil, fmt.Errorf("registry not found: %s", name)
 	}
-	return &reg, nil
+	return name, &reg, nil
+}
+
+// EnvToken is the environment variable that overrides stored tokens.
+const EnvToken = "RAMBLE_TOKEN"
+
+// TokenFor returns the API token to use for the named registry. Precedence:
+// a non-empty RAMBLE_TOKEN environment variable, then the token stored by
+// "ramble login", then "".
+func (c *Config) TokenFor(name string) string {
+	if t := os.Getenv(EnvToken); t != "" {
+		return t
+	}
+	return c.Registries[name].Token
+}
+
+// SetToken stores token for the named registry.
+func (c *Config) SetToken(name, token string) error {
+	reg, ok := c.Registries[name]
+	if !ok {
+		return fmt.Errorf("registry not found: %s", name)
+	}
+	reg.Token = token
+	c.Registries[name] = reg
+	return nil
+}
+
+// ClearToken removes the stored token for the named registry and reports
+// whether there was one.
+func (c *Config) ClearToken(name string) (bool, error) {
+	reg, ok := c.Registries[name]
+	if !ok {
+		return false, fmt.Errorf("registry not found: %s", name)
+	}
+	had := reg.Token != ""
+	reg.Token = ""
+	c.Registries[name] = reg
+	return had, nil
 }
 
 // GetDefaultURL returns the URL of the default registry

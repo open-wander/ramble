@@ -29,12 +29,7 @@ verification in [verification.md](verification.md). PRD: [done/prd-security-bugf
 
 ## Phase 15: Organisation API — 4 tasks completed 2026-11-26 (see [TASKS-archive.md](TASKS-archive.md))
 
-## Phase 16: CLI
-
-| # | Task | PRD | Status | Notes |
-|---|------|-----|--------|-------|
-| 16.1 | `ramble login` / `logout`, token stored 0600, `RAMBLE_TOKEN` override (US-012) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | needs: 13.3 |
-| 16.2 | Generated client in `internal/cli/apiclient`; `pack`/`job publish` and `delete`; docs/cli (US-013, FR-9) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | needs: 13.1, 14.5, 16.1 |
+## Phase 16: CLI — 2 tasks completed 2026-11-26 (see [TASKS-archive.md](TASKS-archive.md))
 
 ## Phase 17: Terraform provider and release
 

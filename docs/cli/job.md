@@ -119,3 +119,12 @@ job "example" {
 ```
 
 Jobs can use `.nomad` or `.nomad.hcl` file extensions.
+
+## publish and delete
+
+`ramble job publish` registers a job from a Git repository or adds a new version, and `ramble job delete NAMESPACE/NAME` removes it. Both need an API token (see [Authentication](/docs/cli/auth)). Details, flags and CI usage are in [Publish and Delete](/docs/cli/publish).
+
+```bash
+ramble job publish --repo https://github.com/alice/repo --version v1.0.0
+ramble job delete alice/name
+```

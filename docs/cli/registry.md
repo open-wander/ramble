@@ -13,15 +13,12 @@ ramble registry list
 **Example output:**
 
 ```
-Configured registries:
-
-  ramble (default)
-    URL: https://ramble.openwander.org
-
-  internal
-    URL: https://packs.internal.example.com
-    Namespace: myteam
+NAME      URL                                  NAMESPACE  DEFAULT  LOGGED IN
+ramble    https://ramble.openwander.org        (all)      *        yes
+internal  https://packs.internal.example.com   myteam
 ```
+
+`LOGGED IN` shows `yes` when a token is stored for the registry (see [Authentication](/docs/cli/auth)). The token itself is never printed.
 
 ## registry add
 
