@@ -1146,3 +1146,14 @@ Logged: no test sends an org-restricted token to an unknown org on the member ro
 loadOrgForToken is covered by the org route tests). Concurrent-demotion test proves zero owners is impossible, not
 that the actor check sits inside the lock.
 Verified: local CI mirror green. Phase 15 collapsed.
+
+## 2026-11-26 — Phase 15 sweep (invariants + comments)
+
+22 line-targeted breaks via the overlay driver (scratchpad sweep15; 4 first hit a testcontainers start failure
+and were re-run). 22 killed: name pattern, reserved names, username clash, case-insensitive org clash, owner-only
+(service role check, PATCH, DELETE, members PUT/DELETE, web RequireOrgOwner), strict API roles, last-owner rule
+(helper and both call sites), non-empty delete refusal, purge refusal while a live resource remains, live
+member_count, FOR SHARE re-check in resource create, org-restricted token (read/write and create), members-only
+listing, immutable name. No gaps.
+Comments: no stale task/requirement references in Phase 15 code; long blocks are swag annotations or the
+limiter contract in server.go - kept.
