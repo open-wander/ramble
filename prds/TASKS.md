@@ -32,7 +32,7 @@ verification in [verification.md](verification.md). PRD: [done/prd-security-bugf
 | # | Task | PRD | Status | Notes |
 |---|------|-----|--------|-------|
 | 15.1 | Move org create/update/member logic from `internal/handlers/org.go` into a shared service; web tests unchanged (FR-5) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | internal/services/org + internal/names; web handlers delegate |
-| 15.2 | `POST/GET/PATCH /v1/orgs` (US-010) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | needs: 12.2, 13.2, 15.1 |
+| 15.2 | `POST/GET/PATCH /v1/orgs` (US-010) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | api_orgs.go createOrg/getOrg/updateOrg; names.IsValid shared |
 | 15.3 | Owner deletion of empty orgs: `DELETE /v1/orgs/{name}` (409 when resources remain) plus matching button on org settings page (US-010) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | needs: 15.2 |
 | 15.4 | Members API: list, PUT role, DELETE, last-owner 409, strict role validation (US-011) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | needs: 15.2 |
 

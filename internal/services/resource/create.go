@@ -3,13 +3,13 @@ package resource
 import (
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 
 	"rmbl/internal/models"
+	"rmbl/internal/names"
 	"rmbl/internal/security"
 )
 
@@ -33,8 +33,6 @@ const (
 	pgUniqueViolationSQL = "23505"
 )
 
-var nameRegex = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$`)
-
 // FileFetcher downloads fileName from the repository at repoURL. It is
 // injected so the service does not depend on the SSRF-protected HTTP client.
 type FileFetcher func(repoURL, fileName string) (string, error)
@@ -48,7 +46,7 @@ func (s *ResourceService) WithFileFetcher(f FileFetcher) *ResourceService {
 }
 
 func validateCreateInput(input CreateInput) error {
-	if !nameRegex.MatchString(input.Name) {
+	if !names.IsValid(input.Name) {
 		return ErrInvalidName
 	}
 	if t := models.ResourceType(input.Type); t != models.ResourceTypePack && t != models.ResourceTypeJob {

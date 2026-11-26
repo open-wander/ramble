@@ -33,6 +33,8 @@ func PostCreateOrg(c *fiber.Ctx) error {
 	case err == nil:
 	case errors.Is(err, orgsvc.ErrNameRequired):
 		return c.Status(400).SendString("Organization name is required")
+	case errors.Is(err, orgsvc.ErrNameInvalid):
+		return c.Status(400).SendString("Organization name must be 1-64 characters: letters, digits, dot, dash or underscore, starting with a letter or digit")
 	case errors.Is(err, orgsvc.ErrNameReserved):
 		return c.Status(400).SendString("This name is reserved")
 	case errors.Is(err, orgsvc.ErrNameTakenByUser):
@@ -107,6 +109,8 @@ func PostUpdateOrg(c *fiber.Ctx) error {
 		logger.FromContext(c.UserContext()).Error("org.update_failed", logger.Err(err))
 		return c.Status(500).SendString("Failed to update organization")
 	}
+
+	AuditLog(c, "org.update", "organization", org.ID, org.Name, nil)
 
 	SetFlash(c, "success", "Organization settings updated.")
 	c.Set("HX-Redirect", "/"+org.Name+"/settings")

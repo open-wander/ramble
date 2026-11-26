@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"io"
 	"net/http/httptest"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
@@ -357,6 +358,11 @@ func TestPostUpdateOrg_Success(t *testing.T) {
 	var updated models.Organization
 	database.DB.First(&updated, org.ID)
 	assert.Equal(t, "Updated Description", updated.Description)
+
+	var audit models.AuditLog
+	assert.NoError(t, database.DB.Where("action = ? AND target_id = ?", "org.update", org.ID).First(&audit).Error)
+	assert.Equal(t, "organization", audit.TargetType)
+	assert.Equal(t, org.Name, audit.TargetName)
 }
 
 // GetOrgSettings Page Tests
@@ -620,4 +626,37 @@ func TestRequireOrgOwner_OrgNotFound(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, 404, resp.StatusCode)
+}
+
+func TestPostCreateOrg_InvalidName(t *testing.T) {
+	defer cleanupOrgTestData(t)
+
+	user := createTestUser(t, "invalidorgcreator")
+
+	app := fiber.New()
+	InitSession()
+	app.Use(func(c *fiber.Ctx) error {
+		sess, _ := Store.Get(c)
+		sess.Set("user_id", user.ID)
+		sess.Save()
+		c.Locals("UserID", user.ID)
+		c.Locals("User", user)
+		return c.Next()
+	})
+	app.Post("/orgs/new", PostCreateOrg)
+
+	for _, name := range []string{"-bad", "has+space", "testü"} {
+		payload := strings.NewReader("name=" + name + "&description=x")
+		req := httptest.NewRequest("POST", "/orgs/new", payload)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp, err := app.Test(req)
+		assert.NoError(t, err)
+		assert.Equal(t, 400, resp.StatusCode, name)
+		body, _ := io.ReadAll(resp.Body)
+		assert.Contains(t, string(body), "letters, digits, dot, dash or underscore")
+	}
+
+	var n int64
+	database.DB.Model(&models.Organization{}).Joins("JOIN memberships ON memberships.organization_id = organizations.id").Where("memberships.user_id = ?", user.ID).Count(&n)
+	assert.Zero(t, n)
 }

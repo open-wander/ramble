@@ -14,6 +14,17 @@ definitions:
       error:
         $ref: '#/definitions/handlers.APIErrorBody'
     type: object
+  handlers.CreateOrgRequest:
+    properties:
+      description:
+        example: Our packs and jobs
+        type: string
+      name:
+        example: myorg
+        type: string
+    required:
+    - name
+    type: object
   handlers.CreateResourceRequest:
     properties:
       description:
@@ -175,6 +186,26 @@ definitions:
       namespace:
         type: string
     type: object
+  handlers.OrgResponse:
+    properties:
+      created_at:
+        format: date-time
+        type: string
+      description:
+        example: Our packs and jobs
+        type: string
+      member_count:
+        example: 3
+        type: integer
+      name:
+        example: myorg
+        type: string
+    required:
+    - created_at
+    - description
+    - member_count
+    - name
+    type: object
   handlers.PackDetail:
     properties:
       description:
@@ -310,6 +341,12 @@ definitions:
     - fetch_error
     - fetch_status
     - version
+    type: object
+  handlers.UpdateOrgRequest:
+    properties:
+      description:
+        example: Our packs and jobs
+        type: string
     type: object
   handlers.UpdateResourceRequest:
     properties:
@@ -1011,6 +1048,165 @@ paths:
       summary: Get a resource by namespace and name
       tags:
       - resources
+  /v1/orgs:
+    post:
+      consumes:
+      - application/json
+      description: Create an organization; the caller becomes its owner. The name
+        is 1-64 characters of letters, digits, dot, dash or underscore, starts with
+        a letter or digit, is unique ignoring case and must not clash with a username
+        or a reserved name. A token restricted to one organization cannot create organizations.
+        Needs a write token.
+      operationId: createOrg
+      parameters:
+      - description: Organization
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateOrgRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/handlers.OrgResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "422":
+          description: invalid_name
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Create an organization
+      tags:
+      - orgs
+  /v1/orgs/{name}:
+    get:
+      description: Fetch an organization by name, ignoring case. Name, description
+        and member count are public, so any authenticated token may read any organization;
+        a token restricted to one organization may read only that one. Needs a read
+        token.
+      operationId: getOrg
+      parameters:
+      - description: Organization name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.OrgResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Get an organization
+      tags:
+      - orgs
+    patch:
+      consumes:
+      - application/json
+      description: Change the description of an organization. An omitted or null description
+        stays unchanged and an empty string clears it. The name cannot be changed
+        and is answered with 422 immutable_field. Only an owner may update; a change
+        is audited as org.update, an empty or all-null body writes nothing. Needs
+        a write token.
+      operationId: updateOrg
+      parameters:
+      - description: Organization name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Fields to change
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateOrgRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.OrgResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "422":
+          description: immutable_field
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Update an organization
+      tags:
+      - orgs
   /v1/packs:
     get:
       description: Fetch a list of all Nomad Packs available in the registry across

@@ -11,6 +11,7 @@ const (
 
 var (
 	ErrNameRequired    = errors.New("org: name is required")
+	ErrNameInvalid     = errors.New("org: name is invalid")
 	ErrNameReserved    = errors.New("org: name is reserved")
 	ErrNameTakenByUser = errors.New("org: name is taken by a user")
 	ErrNameTaken       = errors.New("org: name is taken")
@@ -28,7 +29,7 @@ var (
 // one because their status differs between web and API.
 func IsInputError(err error) bool {
 	for _, target := range []error{
-		ErrNameRequired, ErrNameReserved, ErrNameTakenByUser, ErrNameTaken,
+		ErrNameRequired, ErrNameInvalid, ErrNameReserved, ErrNameTakenByUser, ErrNameTaken,
 		ErrInvalidRole, ErrAlreadyMember,
 	} {
 		if errors.Is(err, target) {

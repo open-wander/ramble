@@ -1087,3 +1087,19 @@ Carry to 15.3: organizations.name unique index covers soft-deleted rows -> name 
 Carry to 15.4: role change must refuse demoting the last owner with the same lock + count (AddMember rejects live
 members, so a separate SetRole path). Service still needs MemberCount, ListMembers, DeleteOrg.
 Verified: local CI mirror all green.
+
+## 2026-11-26 — 15.2 POST/GET/PATCH /v1/orgs
+
+Orchestrator decision: new org names (web and API, via the shared CreateOrg) must match the resource name
+pattern; shared as internal/names.IsValid (resource service uses it too). Order: trim, required, pattern,
+reserved. Existing non-conforming orgs stay readable/editable (GetByName/UpdateDescription do not validate).
+Web PostCreateOrg maps ErrNameInvalid -> 400. Web PostUpdateOrg now audits org.update (API uses the same event).
+Service: ErrNameInvalid, MemberCount (live memberships).
+internal/handlers/api_orgs.go: CreateOrgAPI (restricted token refused before body decode -> 403; 422
+invalid_name; 409 conflict), GetOrgAPI (read scope; public like the /:orgname page; exactly name, description,
+created_at, member_count), UpdateOrgAPI (strict decode, name RawMessage -> 422 immutable_field, load, token
+check, RequireOwner -> 403, write + audit only when description != nil). loadOrgForToken (404 before 403,
+org.load_failed on 500) is for DELETE and members. Routes above the /v1/* guard with the shared limiter.
+docs/api.md Organizations section. Orchestrator: email_unverified rows on write tables; 409 wording generalised.
+Advisor review: MINOR (docs only, fixed). Verified: local CI mirror green (database/server/apitoken re-run after
+testcontainers start failures).

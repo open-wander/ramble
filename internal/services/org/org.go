@@ -24,6 +24,9 @@ func CreateOrg(db *gorm.DB, ownerID uint, name, description string) (models.Orga
 	if name == "" {
 		return models.Organization{}, ErrNameRequired
 	}
+	if !names.IsValid(name) {
+		return models.Organization{}, ErrNameInvalid
+	}
 	if names.IsReserved(name) {
 		return models.Organization{}, ErrNameReserved
 	}
@@ -59,6 +62,15 @@ func CreateOrg(db *gorm.DB, ownerID uint, name, description string) (models.Orga
 		return models.Organization{}, err
 	}
 	return org, nil
+}
+
+// MemberCount returns the number of live memberships of the organisation.
+func MemberCount(db *gorm.DB, orgID uint) (int64, error) {
+	var n int64
+	if err := db.Model(&models.Membership{}).Where("organization_id = ?", orgID).Count(&n).Error; err != nil {
+		return 0, fmt.Errorf("org: count members: %w", err)
+	}
+	return n, nil
 }
 
 // GetByName finds an organisation by name, ignoring case.

@@ -3,6 +3,7 @@ package org
 import (
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -225,7 +226,7 @@ func TestRemoveMember(t *testing.T) {
 }
 
 func TestIsInputError(t *testing.T) {
-	yes := []error{ErrNameRequired, ErrNameReserved, ErrNameTakenByUser, ErrNameTaken, ErrInvalidRole, ErrAlreadyMember}
+	yes := []error{ErrNameRequired, ErrNameInvalid, ErrNameReserved, ErrNameTakenByUser, ErrNameTaken, ErrInvalidRole, ErrAlreadyMember}
 	no := []error{ErrNotFound, ErrNotOwner, ErrNotMember, ErrUserNotFound, ErrLastOwner, errors.New("x"), nil}
 	for _, e := range yes {
 		assert.True(t, IsInputError(e), "%v", e)
@@ -233,4 +234,36 @@ func TestIsInputError(t *testing.T) {
 	for _, e := range no {
 		assert.False(t, IsInputError(e), "%v", e)
 	}
+}
+
+func TestCreateOrg_InvalidNames(t *testing.T) {
+	owner := mkUser(t, "inv-owner")
+	for _, in := range []string{"-x", "a b", strings.Repeat("x", 65), "ü", ".dot", "a/b"} {
+		t.Run(in, func(t *testing.T) {
+			_, err := CreateOrg(database.DB, owner.ID, in, "")
+			require.ErrorIs(t, err, ErrNameInvalid)
+			assert.True(t, IsInputError(err))
+			var n int64
+			require.NoError(t, database.DB.Model(&models.Organization{}).Where("name = ?", in).Count(&n).Error)
+			assert.Zero(t, n)
+		})
+	}
+}
+
+func TestMemberCount(t *testing.T) {
+	owner := mkUser(t, "mc-owner")
+	other := mkUser(t, "mc-other")
+	o := mkOrg(t, "mc-org", owner)
+
+	count := func() int64 {
+		n, err := MemberCount(database.DB, o.ID)
+		require.NoError(t, err)
+		return n
+	}
+	assert.EqualValues(t, 1, count())
+	_, err := AddMember(database.DB, o.ID, other.Username, RoleMember)
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, count())
+	require.NoError(t, RemoveMember(database.DB, o.ID, other.ID))
+	assert.EqualValues(t, 1, count())
 }
