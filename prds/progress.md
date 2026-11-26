@@ -1157,3 +1157,20 @@ member_count, FOR SHARE re-check in resource create, org-restricted token (read/
 listing, immutable name. No gaps.
 Comments: no stale task/requirement references in Phase 15 code; long blocks are swag annotations or the
 limiter contract in server.go - kept.
+
+## 2026-11-26 — 16.1 CLI login / logout
+
+internal/cli/cmd/auth.go: login (--registry/-r; URL checked before the token is read; no-echo read on a terminal,
+one line from a pipe; GET /v1/user before storing; prints "Logged in to <name> as <username>"; 401 prints the API
+message, nothing stored) and logout (clears the stored token, no server call, points at /settings/tokens).
+internal/pack/user.go: CurrentUser, APIError{StatusCode, Message}, TokenURLAllowed (https, or http to loopback
+only), token client with CheckRedirect = ErrUseLastResponse (a redirect is never followed with the token).
+Config: Registry.Token; atomic Save (CreateTemp 0600 + Sync + Rename, so an existing 0644 file ends 0600);
+ResolveRegistry, SetToken, ClearToken, TokenFor (non-empty RAMBLE_TOKEN wins, then stored token); AddRegistry
+keeps the token only when the URL is unchanged. registry list shows LOGGED IN, never the token.
+docs/cli/auth.md (+ overview, registry). golang.org/x/term v0.48.0.
+Advisor review: MINOR. Orchestrator: server error messages have control characters stripped (pack.printable,
+used by errorMessage) + test row; login test proves the URL is refused before any token is read.
+Carry to 16.2: RAMBLE_TOKEN applies to every registry, so every token-bearing call must go through the
+TokenURLAllowed + no-redirect client, never a plain http.Client.
+Verified: local CI mirror green (database/handlers/apitoken re-run after testcontainers timeouts).

@@ -448,6 +448,7 @@ func TestV1ErrorMessages(t *testing.T) {
 		{"old shape", 500, `{"error":"Database error"}`, "server error (500): Database error"},
 		{"text body", 502, "Bad Gateway", "unexpected status code: 502"},
 		{"empty body", 503, "", "unexpected status code: 503"},
+		{"control characters dropped", 500, `{"error":{"code":"internal_error","message":"bad\u001b[2Jthing\n"}}`, "server error (500): bad[2Jthing"},
 		{"object without message", 429, `{"error":{"code":"rate_limited"}}`, "unexpected status code: 429"},
 		// The CLI reads at most maxErrorBody bytes of an error body: a message
 		// that does not fit is dropped rather than read without bound.

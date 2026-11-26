@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -138,4 +139,72 @@ func TestGetDefaultURL(t *testing.T) {
 	// When no default is set
 	cfg2 := &Config{}
 	assert.Equal(t, "https://ramble.openwander.org", cfg2.GetDefaultURL())
+}
+
+func TestTokenFor(t *testing.T) {
+	cfg := &Config{Registries: map[string]Registry{
+		"a": {URL: "https://a.example", Token: "stored"},
+		"b": {URL: "https://b.example"},
+	}}
+	tests := []struct {
+		name, env, reg, want string
+	}{
+		{"stored", "", "a", "stored"},
+		{"env overrides stored", "fromenv", "a", "fromenv"},
+		{"env without stored", "fromenv", "b", "fromenv"},
+		{"none", "", "b", ""},
+		{"unknown registry", "", "zzz", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(EnvToken, tt.env)
+			assert.Equal(t, tt.want, cfg.TokenFor(tt.reg))
+		})
+	}
+}
+
+func TestSetAndClearToken(t *testing.T) {
+	cfg := &Config{Registries: map[string]Registry{"a": {URL: "https://a.example"}}}
+	require.NoError(t, cfg.SetToken("a", "tok"))
+	assert.Equal(t, "tok", cfg.Registries["a"].Token)
+	assert.Error(t, cfg.SetToken("nope", "tok"))
+
+	had, err := cfg.ClearToken("a")
+	require.NoError(t, err)
+	assert.True(t, had)
+	had, err = cfg.ClearToken("a")
+	require.NoError(t, err)
+	assert.False(t, had)
+	_, err = cfg.ClearToken("nope")
+	assert.Error(t, err)
+}
+
+func TestSaveTightensExistingMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX modes only")
+	}
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	path := filepath.Join(dir, "ramble", "config.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o750))
+	require.NoError(t, os.WriteFile(path, []byte("{}"), 0o644)) //nolint:gosec
+	require.NoError(t, os.Chmod(path, 0o644))                   //nolint:gosec
+
+	cfg := &Config{Registries: map[string]Registry{"a": {URL: "https://a.example", Token: "tok"}}}
+	require.NoError(t, cfg.Save())
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	entries, err := os.ReadDir(filepath.Dir(path))
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "no temp files left behind")
+}
+
+func TestAddRegistryToken(t *testing.T) {
+	cfg := &Config{Registries: map[string]Registry{"a": {URL: "https://a.example", Token: "tok"}}}
+	cfg.AddRegistry("a", "https://a.example", "ns")
+	assert.Equal(t, "tok", cfg.Registries["a"].Token, "same URL keeps token")
+	cfg.AddRegistry("a", "https://other.example", "ns")
+	assert.Empty(t, cfg.Registries["a"].Token, "changed URL drops token")
 }

@@ -33,7 +33,7 @@ verification in [verification.md](verification.md). PRD: [done/prd-security-bugf
 
 | # | Task | PRD | Status | Notes |
 |---|------|-----|--------|-------|
-| 16.1 | `ramble login` / `logout`, token stored 0600, `RAMBLE_TOKEN` override (US-012) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | needs: 13.3 |
+| 16.1 | `ramble login` / `logout`, token stored 0600, `RAMBLE_TOKEN` override (US-012) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | auth.go login/logout; pack.CurrentUser; Config.TokenFor |
 | 16.2 | Generated client in `internal/cli/apiclient`; `pack`/`job publish` and `delete`; docs/cli (US-013, FR-9) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | needs: 13.1, 14.5, 16.1 |
 
 ## Phase 17: Terraform provider and release

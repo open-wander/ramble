@@ -49,6 +49,7 @@ The CLI respects standard Nomad environment variables:
 | `NOMAD_CACERT` | Path to CA certificate |
 | `NOMAD_CLIENT_CERT` | Path to client certificate |
 | `NOMAD_CLIENT_KEY` | Path to client key |
+| `RAMBLE_TOKEN` | Ramble API token; overrides the token stored by `ramble login` (see [Authentication](/docs/cli/auth)) |
 
 ## Global Flags
 
@@ -62,4 +63,5 @@ The CLI respects standard Nomad environment variables:
 - [Pack Commands](/docs/cli/pack) - Discover, render, and run packs
 - [Job Commands](/docs/cli/job) - Run and validate job files
 - [Registry Commands](/docs/cli/registry) - Manage registries
+- [Authentication Commands](/docs/cli/auth) - Log in and out of a registry
 - [Cache Commands](/docs/cli/cache) - Manage local cache

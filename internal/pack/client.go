@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // PackSummary represents a pack in list responses
@@ -354,13 +355,24 @@ func errorMessage(resp *http.Response) string {
 	}
 	var legacy string
 	if json.Unmarshal(body.Error, &legacy) == nil {
-		return legacy
+		return printable(legacy)
 	}
 	var obj struct {
 		Message string `json:"message"`
 	}
 	if json.Unmarshal(body.Error, &obj) == nil {
-		return obj.Message
+		return printable(obj.Message)
 	}
 	return ""
+}
+
+// printable drops control characters from a server-supplied message, so a
+// registry cannot send terminal escape sequences to the user's terminal.
+func printable(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, s)
 }

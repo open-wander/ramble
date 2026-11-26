@@ -33,7 +33,8 @@ Examples:
   ramble pack list --search mysql     Search for packs
   ramble job list --search postgres   Search for jobs
   ramble registry browse --search go  Search namespaces
-  ramble pack run user/mysql          Run a pack`,
+  ramble pack run user/mysql          Run a pack
+  ramble login                        Store an API token`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		if wantsUpdateCheck(cmd) {
 			updateCheck = update.CheckForUpdateAsync(Version)
