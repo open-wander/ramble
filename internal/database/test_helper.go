@@ -61,6 +61,7 @@ func SetupTestDB() (*gorm.DB, func()) {
 		&models.PackRequest{},
 		&models.SiteSetting{},
 		&models.AuditLog{},
+		&models.APIToken{},
 	)
 	if err != nil {
 		log.Fatalf("Migration failed: %s", err)

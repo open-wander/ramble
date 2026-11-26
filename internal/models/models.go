@@ -167,3 +167,29 @@ type AuditLog struct {
 	RequestID  string `gorm:"index"` // Request ID for tracing
 	Checksum   string `gorm:"index"` // SHA-256 hash of all fields for integrity verification
 }
+
+// API token scopes.
+const (
+	ScopeRead  = "read"
+	ScopeWrite = "write"
+)
+
+// APIToken is a personal access token. Only the SHA-256 hash of the token is
+// stored; the plaintext is shown once at creation. Explicit fields instead of
+// gorm.Model: tokens are revoked, never soft deleted.
+type APIToken struct {
+	ID             uint      `gorm:"primaryKey"`
+	UserID         uint      `gorm:"not null;index"`
+	Name           string    `gorm:"size:64;not null"`
+	Prefix         string    `gorm:"size:12;not null;index"`
+	Hash           string    `gorm:"size:64;not null;uniqueIndex" json:"-"`
+	Scope          string    `gorm:"size:5;not null"`
+	OrganizationID *uint     `gorm:"index"`
+	ExpiresAt      time.Time `gorm:"not null"`
+	LastUsedAt     *time.Time
+	CreatedAt      time.Time
+	RevokedAt      *time.Time
+
+	User         User          `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
+	Organization *Organization `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
+}

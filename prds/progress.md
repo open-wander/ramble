@@ -771,3 +771,27 @@ internal/services/resource/service.go (AuthorizeResourceAction, CreateResource),
 internal/server/server.go (CSRF exemption fn ~l.563, /v1 routes ~l.401), Makefile `swagger` target (swag, Swagger 2.0).
 
 PATTERN: oss - Ramble is public: no contributor names in code comments, prds/ files or commits; use roles or issue numbers.
+
+## 2026-11-26 — 12.1 APIToken model and token service
+
+Files: internal/models/models.go (APIToken, ScopeRead/ScopeWrite; explicit fields, no soft delete),
+internal/database/{database,test_helper}.go (AutoMigrate), new internal/services/apitoken/
+{service.go, service_test.go, service_security_test.go}.
+API for 12.2/12.3: Generate, HashToken, New/Init/Svc, WithContext, Create(userID, name, scope, orgID,
+days) -> (plain, row, err), Authenticate(plain) -> AuthResult{Token, User} or only ErrInvalidToken,
+List -> []TokenView (no hash, Expired/Revoked flags), CountActive, Revoke(userID, id) -> row or
+ErrNotFound (idempotent), TouchLastUsed (single conditional UPDATE, once/minute).
+Sentinels: ErrInvalidName/Scope/Expiry, ErrNotOrgMember, ErrTooManyTokens, ErrInvalidToken, ErrNotFound.
+Create locks the user row FOR UPDATE so concurrent creates cannot pass the 25 cap; an unknown
+user is a wrapped (non-sentinel) error -> handlers map it to 500. Authenticate does not check
+IsAdmin/EmailVerified: 12.2 middleware owns those (distinct 403s). apitoken.Init is NOT called at
+startup yet; 12.2 wires it next to resource.Init.
+Advisor review: MINOR. Orchestrator fixed: cap test relied on Limit() in UPDATE (GORM/Postgres
+ignores it, expired all 24 tokens) -> now expires one token by ID and asserts the next create fails;
+added 64/65 multibyte name cases (mutation len() for RuneCountInString -> red); test helper
+Suffix -> suffix. Open nits: no t0+60s boundary test for TouchLastUsed; concurrent Revoke returns
+now instead of stored RevokedAt.
+Verified by orchestrator: go build, go vet, go test -tags=security ./... (18 ok, exit 0), make gosec exit 0.
+
+PATTERN: gorm - GORM on Postgres drops Limit() from UPDATE/DELETE; a test that limits an update touches every matching row.
+PATTERN: mutation - a mutation that makes the SQL or build error looks like a caught failure but proves nothing; check the failure is the assertion.
