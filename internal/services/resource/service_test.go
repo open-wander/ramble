@@ -82,9 +82,10 @@ func TestCreateResource_DuplicateName(t *testing.T) {
 
 	// Create first resource
 	input := CreateInput{
-		Name:    "duplicate",
-		Type:    "pack",
-		Version: "v1.0.0",
+		Name:          "duplicate",
+		Type:          "pack",
+		Version:       "v1.0.0",
+		RepositoryURL: "https://github.com/test/repo",
 	}
 	res1, err := service.CreateResource(input, user.ID, nil)
 	require.NoError(t, err)
@@ -94,7 +95,7 @@ func TestCreateResource_DuplicateName(t *testing.T) {
 	res2, err := service.CreateResource(input, user.ID, nil)
 
 	// Verify error
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrDuplicateName)
 	assert.Nil(t, res2)
 	assert.Contains(t, err.Error(), "already exists")
 }
@@ -107,17 +108,17 @@ func TestCreateResource_EmptyName(t *testing.T) {
 
 	// Empty name input
 	input := CreateInput{
-		Name:    "",
-		Type:    "pack",
-		Version: "v1.0.0",
+		Name:          "",
+		Type:          "pack",
+		Version:       "v1.0.0",
+		RepositoryURL: "https://github.com/test/repo",
 	}
 
 	res, err := service.CreateResource(input, user.ID, nil)
 
 	// Verify validation error
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidName)
 	assert.Nil(t, res)
-	assert.Contains(t, err.Error(), "required")
 }
 
 func TestDeleteResource_AsOwner(t *testing.T) {
@@ -128,9 +129,10 @@ func TestDeleteResource_AsOwner(t *testing.T) {
 
 	// Create resource
 	input := CreateInput{
-		Name:    "delete-test",
-		Type:    "pack",
-		Version: "v1.0.0",
+		Name:          "delete-test",
+		Type:          "pack",
+		Version:       "v1.0.0",
+		RepositoryURL: "https://github.com/test/repo",
 	}
 	resource, err := service.CreateResource(input, user.ID, nil)
 	require.NoError(t, err)
@@ -158,9 +160,10 @@ func TestDeleteResource_NotOwner(t *testing.T) {
 
 	// Create resource as owner
 	input := CreateInput{
-		Name:    "protected-resource",
-		Type:    "pack",
-		Version: "v1.0.0",
+		Name:          "protected-resource",
+		Type:          "pack",
+		Version:       "v1.0.0",
+		RepositoryURL: "https://github.com/test/repo",
 	}
 	resource, err := service.CreateResource(input, owner.ID, nil)
 	require.NoError(t, err)
@@ -182,9 +185,10 @@ func TestToggleStar_StarAndUnstar(t *testing.T) {
 
 	// Create resource
 	input := CreateInput{
-		Name:    "star-test",
-		Type:    "pack",
-		Version: "v1.0.0",
+		Name:          "star-test",
+		Type:          "pack",
+		Version:       "v1.0.0",
+		RepositoryURL: "https://github.com/test/repo",
 	}
 	resource, err := service.CreateResource(input, user.ID, nil)
 	require.NoError(t, err)
@@ -221,9 +225,10 @@ func TestProcessTagEvent_NewVersion(t *testing.T) {
 
 	// Create resource
 	input := CreateInput{
-		Name:    "tag-test",
-		Type:    "pack",
-		Version: "v1.0.0",
+		Name:          "tag-test",
+		Type:          "pack",
+		Version:       "v1.0.0",
+		RepositoryURL: "https://github.com/test/repo",
 	}
 	resource, err := service.CreateResource(input, user.ID, nil)
 	require.NoError(t, err)
@@ -250,9 +255,10 @@ func TestProcessTagEvent_ExistingVersion(t *testing.T) {
 
 	// Create resource with initial version
 	input := CreateInput{
-		Name:    "exist-test",
-		Type:    "pack",
-		Version: "v1.0.0",
+		Name:          "exist-test",
+		Type:          "pack",
+		Version:       "v1.0.0",
+		RepositoryURL: "https://github.com/test/repo",
 	}
 	resource, err := service.CreateResource(input, user.ID, nil)
 	require.NoError(t, err)
@@ -277,9 +283,10 @@ func TestRecordFetchFailed_SizeLimit(t *testing.T) {
 
 	// Create resource and a version that will simulate a failed oversized fetch.
 	input := CreateInput{
-		Name:    "size-limit-test",
-		Type:    "pack",
-		Version: "v1.0.0",
+		Name:          "size-limit-test",
+		Type:          "pack",
+		Version:       "v1.0.0",
+		RepositoryURL: "https://github.com/test/repo",
 	}
 	res, err := service.CreateResource(input, user.ID, nil)
 	require.NoError(t, err)
@@ -344,13 +351,18 @@ func TestAuthorizeResourceAction(t *testing.T) {
 	database.DB.Create(&models.Membership{UserID: member.ID, OrganizationID: org.ID, Role: RoleMember})
 
 	// org resource: created by creator (non-member) but owned by the org
-	orgInput := CreateInput{Name: "authzsvc-org-res", Type: "pack", Version: "v1.0.0"}
-	orgRes, err := svc.CreateResource(orgInput, creator.ID, &org.ID)
-	require.NoError(t, err)
+	orgRes := &models.NomadResource{
+		Name:           "authzsvc-org-res",
+		Type:           models.ResourceTypePack,
+		UserID:         creator.ID,
+		OrganizationID: &org.ID,
+		Versions:       []models.ResourceVersion{{Version: "v1.0.0"}},
+	}
+	require.NoError(t, database.DB.Create(orgRes).Error)
 	defer database.DB.Delete(orgRes)
 
 	// personal resource: owned by owner user, no org
-	personalInput := CreateInput{Name: "authzsvc-personal-res", Type: "pack", Version: "v1.0.0"}
+	personalInput := CreateInput{Name: "authzsvc-personal-res", Type: "pack", Version: "v1.0.0", RepositoryURL: "https://github.com/test/repo"}
 	personalRes, err := svc.CreateResource(personalInput, owner.ID, nil)
 	require.NoError(t, err)
 	defer database.DB.Delete(personalRes)
@@ -499,9 +511,10 @@ func TestRecordFetchFailed_ErrorTruncation(t *testing.T) {
 			defer database.DB.Delete(&user)
 
 			input := CreateInput{
-				Name:    fmt.Sprintf("trunc-test-%d", i),
-				Type:    "pack",
-				Version: "v1.0.0",
+				Name:          fmt.Sprintf("trunc-test-%d", i),
+				Type:          "pack",
+				Version:       "v1.0.0",
+				RepositoryURL: "https://github.com/test/repo",
 			}
 			res, err := service.CreateResource(input, user.ID, nil)
 			require.NoError(t, err)
@@ -546,9 +559,10 @@ func TestRecordFetchFailed_DoesNotOverwriteContent(t *testing.T) {
 	defer database.DB.Delete(&user)
 
 	input := CreateInput{
-		Name:    "no-overwrite-test",
-		Type:    "job",
-		Version: "v1.0.0",
+		Name:          "no-overwrite-test",
+		Type:          "job",
+		Version:       "v1.0.0",
+		RepositoryURL: "https://github.com/test/repo",
 	}
 	res, err := service.CreateResource(input, user.ID, nil)
 	require.NoError(t, err)

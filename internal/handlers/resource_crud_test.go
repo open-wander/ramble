@@ -292,7 +292,7 @@ func TestPostNewResource_DuplicateName(t *testing.T) {
 	app.Post("/new", PostNewResource)
 
 	// Try to create resource with same name
-	payload := strings.NewReader("name=existing-pack&type=pack&version=v1.0.0")
+	payload := strings.NewReader("name=existing-pack&type=pack&version=v1.0.0&repository_url=https://github.com/test/x&license=MIT")
 	req := httptest.NewRequest("POST", "/new", payload)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -320,7 +320,7 @@ func TestPostNewResource_JobType(t *testing.T) {
 
 	app.Post("/new", PostNewResource)
 
-	payload := strings.NewReader("name=my-new-job&type=job&version=v1.0.0&description=A+test+job")
+	payload := strings.NewReader("name=my-new-job&type=job&version=v1.0.0&description=A+test+job&repository_url=https://github.com/test/x&license=MIT")
 	req := httptest.NewRequest("POST", "/new", payload)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -354,7 +354,7 @@ func TestPostNewResource_WithTags(t *testing.T) {
 
 	app.Post("/new", PostNewResource)
 
-	payload := strings.NewReader("name=tagged-pack&type=pack&version=v1.0.0&tags=database,redis,cache")
+	payload := strings.NewReader("name=tagged-pack&type=pack&version=v1.0.0&tags=database,redis,cache&repository_url=https://github.com/test/x&license=MIT")
 	req := httptest.NewRequest("POST", "/new", payload)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -746,7 +746,7 @@ func TestPostNewResource_EmptyVersion(t *testing.T) {
 	app.Post("/new", PostNewResource)
 
 	// Empty version
-	payload := strings.NewReader("name=testres&type=pack&version=")
+	payload := strings.NewReader("name=testres&type=pack&version=&repository_url=https://github.com/test/x&license=MIT")
 	req := httptest.NewRequest("POST", "/new", payload)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -776,7 +776,7 @@ func TestPostNewResource_EmptyName(t *testing.T) {
 	app.Post("/new", PostNewResource)
 
 	// Empty name
-	payload := strings.NewReader("name=&type=pack&version=v1.0.0")
+	payload := strings.NewReader("name=&type=pack&version=v1.0.0&repository_url=https://github.com/test/x&license=MIT")
 	req := httptest.NewRequest("POST", "/new", payload)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -806,7 +806,7 @@ func TestPostNewResource_InvalidTags(t *testing.T) {
 	app.Post("/new", PostNewResource)
 
 	// Tags with invalid characters are silently ignored
-	payload := strings.NewReader("name=invalidtagsres&type=pack&version=v1.0.0&tags=x,valid-tag,ab@cd")
+	payload := strings.NewReader("name=invalidtagsres&type=pack&version=v1.0.0&tags=x,valid-tag,ab@cd&repository_url=https://github.com/test/x&license=MIT")
 	req := httptest.NewRequest("POST", "/new", payload)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 

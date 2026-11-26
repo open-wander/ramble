@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"rmbl/internal/models"
+	"rmbl/internal/services/logger"
 	"rmbl/internal/services/resource"
 	"strconv"
 	"strings"
@@ -10,6 +11,12 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
+
+// resourceService returns the resource service bound to the request context
+// and wired with the SSRF-protected file downloader.
+func resourceService(c *fiber.Ctx) *resource.ResourceService {
+	return resource.Service.WithContext(c.UserContext()).WithFileFetcher(downloadFile)
+}
 
 func GetNewResource(c *fiber.Ctx) error {
 	isLoggedIn := c.Locals("UserID") != nil
@@ -72,40 +79,6 @@ func PostNewResource(c *fiber.Ctx) error {
 		orgID = &val
 	}
 
-	// Authorization: when an org is specified, verify the org exists and that the
-	// authenticated user is a member (role 'member' or 'owner').
-	if orgID != nil {
-		var org models.Organization
-		if err := reqDB(c).First(&org, *orgID).Error; err != nil {
-			return fiber.NewError(fiber.StatusForbidden, "organization not found")
-		}
-		var membership models.Membership
-		if err := reqDB(c).Where(
-			"user_id = ? AND organization_id = ? AND role IN ('member','owner')",
-			userID, *orgID,
-		).First(&membership).Error; err != nil {
-			return fiber.NewError(fiber.StatusForbidden, "you must be a member of this organization to create resources in it")
-		}
-	}
-
-	// Download and detect license if not provided
-	license := input.License
-	if license == "" {
-		if licBody, err := downloadFile(input.RepositoryURL, "LICENSE"); err == nil && licBody != "" {
-			lines := strings.Split(licBody, "\n")
-			if len(lines) > 0 {
-				license = strings.TrimPrefix(strings.TrimSpace(lines[0]), "The ")
-				if len(license) > 25 {
-					license = license[:25] + "..."
-				}
-			}
-		}
-	}
-	if license == "" {
-		license = "Unknown"
-	}
-
-	// Create resource via service
 	serviceInput := resource.CreateInput{
 		Name:          input.Name,
 		Type:          input.Type,
@@ -114,28 +87,28 @@ func PostNewResource(c *fiber.Ctx) error {
 		RepositoryURL: input.RepositoryURL,
 		FilePath:      input.FilePath,
 		Version:       input.Version,
-		License:       license,
+		License:       input.License,
 		Tags:          input.Tags,
 	}
 
-	res, err := resource.Service.WithContext(c.UserContext()).CreateResource(serviceInput, userID, orgID)
+	res, err := resourceService(c).CreateResource(serviceInput, userID, orgID)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).SendString(err.Error())
+		switch {
+		case errors.Is(err, resource.ErrOrgNotFound), errors.Is(err, resource.ErrNotOrgMember):
+			return fiber.NewError(fiber.StatusForbidden, err.Error())
+		case resource.IsInputError(err):
+			return c.Status(fiber.StatusBadRequest).SendString(err.Error())
+		}
+		logger.FromContext(c.UserContext()).Error("resource.create_failed", logger.Err(err))
+		return c.Status(fiber.StatusInternalServerError).SendString("Internal Server Error")
 	}
 
 	// Spawn background fetch for version content
 	go fetchVersionContent(detachedLogCtx(c), res.ID, input.Version, input.RepositoryURL, string(res.Type), res.Name, res.FilePath)
 
-	// Build redirect path
-	redirectPath := "/"
-	var user models.User
-	reqDB(c).First(&user, userID)
-	if orgID != nil {
-		var org models.Organization
-		reqDB(c).First(&org, *orgID)
-		redirectPath = "/" + org.Name + "/" + res.Name
-	} else {
-		redirectPath = "/" + user.Username + "/" + res.Name
+	redirectPath := "/" + res.User.Username + "/" + res.Name
+	if res.OrganizationID != nil {
+		redirectPath = "/" + res.Organization.Name + "/" + res.Name
 	}
 
 	AuditLog(c, "resource.create", "resource", res.ID, res.Name, nil)

@@ -206,6 +206,7 @@ func TestRequestTriggeredFetch_LogsCarryRequestID(t *testing.T) {
 		request func(t *testing.T, app *fiber.App, user models.User) *http.Request
 	}{
 		{"PostNewResource", func(t *testing.T, app *fiber.App, user models.User) *http.Request {
+			t.Setenv("ALLOWED_GIT_HOSTS", "example.invalid")
 			app.Post("/new", PostNewResource)
 			form := "name=fetch-log-new&type=pack&version=v1.0.0&description=d&repository_url=" + failFastRepoURL
 			req := httptest.NewRequest("POST", "/new", strings.NewReader(form))

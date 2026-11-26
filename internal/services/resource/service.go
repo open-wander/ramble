@@ -70,7 +70,8 @@ type ResourceServicer interface {
 
 // ResourceService implements ResourceServicer
 type ResourceService struct {
-	db *gorm.DB
+	db        *gorm.DB
+	fetchFile FileFetcher
 }
 
 // NewResourceService creates a new resource service
@@ -81,7 +82,7 @@ func NewResourceService(db *gorm.DB) *ResourceService {
 // WithContext returns a service whose queries and transactions run on ctx, so
 // SQL log lines carry the request logger (and request_id) stored in it.
 func (s *ResourceService) WithContext(ctx context.Context) *ResourceService {
-	return &ResourceService{db: s.db.WithContext(ctx)}
+	return &ResourceService{db: s.db.WithContext(ctx), fetchFile: s.fetchFile}
 }
 
 // Package-level service variable for global access
@@ -115,73 +116,6 @@ type UpdateInput struct {
 	FilePath      string
 	License       string
 	Tags          string
-}
-
-// CreateResource creates a new resource with business validation
-func (s *ResourceService) CreateResource(input CreateInput, userID uint, orgID *uint) (*models.NomadResource, error) {
-	// Business validation
-	if input.Name == "" || input.Version == "" {
-		return nil, fmt.Errorf("name and version are required")
-	}
-
-	// Check for duplicate resource name in namespace
-	var existing models.NomadResource
-	dbQuery := s.db.Where("name = ?", input.Name)
-	if orgID != nil {
-		dbQuery = dbQuery.Where("organization_id = ?", *orgID)
-	} else {
-		dbQuery = dbQuery.Where("user_id = ? AND organization_id IS NULL", userID)
-	}
-	if err := dbQuery.First(&existing).Error; err == nil {
-		return nil, fmt.Errorf("a resource with this name already exists in this namespace")
-	}
-
-	// License is accepted as-is (handler's responsibility to set default "Unknown")
-	license := input.License
-	if license == "" {
-		license = "Unknown"
-	}
-
-	// Process and validate tags
-	var tags []models.Tag
-	if input.Tags != "" {
-		for tn := range strings.SplitSeq(input.Tags, ",") {
-			tn = strings.ToLower(strings.TrimSpace(tn))
-			if len(tn) < 2 || len(tn) > 20 || !tagRegex.MatchString(tn) {
-				continue
-			}
-			var tag models.Tag
-			s.db.Where(models.Tag{Name: tn}).FirstOrCreate(&tag)
-			tags = append(tags, tag)
-		}
-	}
-
-	// Generate webhook secret
-	secret, err := s.GenerateWebhookSecret()
-	if err != nil {
-		return nil, fmt.Errorf("could not generate webhook secret: %w", err)
-	}
-
-	// Create resource
-	resource := models.NomadResource{
-		Name:           input.Name,
-		Type:           models.ResourceType(input.Type),
-		Description:    input.Description,
-		License:        license,
-		RepositoryURL:  input.RepositoryURL,
-		FilePath:       input.FilePath,
-		WebhookSecret:  secret,
-		UserID:         userID,
-		OrganizationID: orgID,
-		Tags:           tags,
-		Versions:       []models.ResourceVersion{{Version: input.Version}},
-	}
-
-	if err := s.db.Create(&resource).Error; err != nil {
-		return nil, fmt.Errorf("could not create resource: %w", err)
-	}
-
-	return &resource, nil
 }
 
 // UpdateResource updates an existing resource with authorization checks
@@ -249,18 +183,7 @@ func (s *ResourceService) UpdateResource(id uint, input UpdateInput, userID uint
 	resource.License = input.License
 
 	// Update tags
-	var tags []models.Tag
-	if input.Tags != "" {
-		for tn := range strings.SplitSeq(input.Tags, ",") {
-			tn = strings.ToLower(strings.TrimSpace(tn))
-			if len(tn) < 2 || len(tn) > 20 || !tagRegex.MatchString(tn) {
-				continue
-			}
-			var tag models.Tag
-			s.db.Where(models.Tag{Name: tn}).FirstOrCreate(&tag)
-			tags = append(tags, tag)
-		}
-	}
+	tags := s.resolveTags(input.Tags)
 
 	if err := s.db.Model(&resource).Association("Tags").Replace(tags); err != nil {
 		return fmt.Errorf("failed to update tags: %w", err)

@@ -29,10 +29,10 @@ verification in [verification.md](verification.md). PRD: [done/prd-security-bugf
 
 | # | Task | PRD | Status | Notes |
 |---|------|-----|--------|-------|
-| 14.1 | Move resource-create business logic (license detection, org membership check) from `PostNewResource` into `internal/services/resource`; web tests unchanged (US-005, FR-5) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | |
+| 14.1 | Move resource-create business logic (license detection, org membership check) from `PostNewResource` into `internal/services/resource`; web tests unchanged (US-005, FR-5) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | resource.CreateResource with validation + sentinels + IsInputError, WithFileFetcher, security.ValidateRepositoryURL; web handler thin |
 | 14.2 | `POST /v1/resources` (US-005, FR-8) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | needs: 12.2, 13.2, 14.1 |
 | 14.3 | `GET /v1/resources/{id}` and `GET /v1/namespaces/{ns}/resources/{name}` (US-006) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | needs: 14.2 |
-| 14.4 | `PATCH` and `DELETE /v1/resources/{id}`; immutable fields; 404/403 as web UI (US-007, US-008) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | needs: 14.3 |
+| 14.4 | `PATCH` and `DELETE /v1/resources/{id}`; immutable fields; 404/403 as web UI (US-007, US-008) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | needs: 14.3. UpdateResource must apply the create validation (ValidateRepositoryURL, version) - it does not today |
 | 14.5 | Versions list/create, retry failed version, rotate webhook secret (US-009) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | needs: 14.3 |
 
 ## Phase 15: Organisation API

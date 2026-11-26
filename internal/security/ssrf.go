@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"syscall"
@@ -173,4 +174,35 @@ func isHostAllowed(host string, allowedHosts []string) bool {
 	}
 
 	return false
+}
+
+// ValidateRepositoryURL reports whether raw is an acceptable repository URL
+// for a new resource: https only, no userinfo, no port other than 443, a
+// non-IP hostname, and a host on the allowlist (DefaultAllowedHosts, which
+// includes ALLOWED_GIT_HOSTS).
+func ValidateRepositoryURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	if u.Scheme != "https" {
+		return fmt.Errorf("URL must use https")
+	}
+	if u.User != nil {
+		return fmt.Errorf("URL must not contain credentials")
+	}
+	if port := u.Port(); port != "" && port != "443" {
+		return fmt.Errorf("URL must not use a custom port")
+	}
+	host := u.Hostname()
+	if host == "" {
+		return fmt.Errorf("URL has no host")
+	}
+	if net.ParseIP(host) != nil {
+		return fmt.Errorf("URL host must not be an IP address")
+	}
+	if !isHostAllowed(host, DefaultAllowedHosts()) {
+		return fmt.Errorf("host %s is not in allowlist", host)
+	}
+	return nil
 }

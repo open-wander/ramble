@@ -935,3 +935,39 @@ GetCurrentUserAPI: org token without membership -> 500 (never token_org null), e
 "unexpected status code"). All six re-run: killed.
 Comments: no task ids; long blocks are swag annotations (codegen directives) - untouched.
 Verified: build, vet -tags=security, go test -tags=security ./... (20 ok), make gosec exit 0.
+
+## 2026-11-26 — CI fix on #67 / #68
+
+#67 CI failed on staticcheck (unused test helper uptr) and would have failed CI's `go fix -diff` check
+(range-over-int in tokens_test.go; errors.AsType in api_errors.go on the Phase 13 branch). My per-task
+verification had not run staticcheck or go fix. Fixed on feat/programmatic-management (ac558d3), merged into
+feat/api-contract (signed-off merge), go fix applied there. Local CI mirror script (scratchpad ci-local.sh):
+go mod verify, vet (both tags), make staticcheck, actionlint, check-pins, gofmt, go fix -diff (both tags),
+go test -tags=security, openapi-check/swagger drift, gosec. All green on both branches.
+
+PATTERN: verification - per-task checks must mirror the whole CI job (staticcheck and `go fix -diff` too),
+not just build/vet/test/gosec; workers' DONE reports do not cover them either.
+
+## 2026-11-26 — 14.1 Resource create logic in the service (branch feat/resource-api, stacked on #68)
+
+New internal/services/resource/create.go: CreateResource validates first (name ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$
+per user decision, type pack|job, security.ValidateRepositoryURL, version trimmed, required, <= 64), then org
+exists (ErrOrgNotFound) and membership role member|owner (ErrNotOrgMember) BEFORE the duplicate check (no name
+probing), duplicate check case-insensitive (LOWER(name) = LOWER(?), because URLs resolve case-insensitively;
+orchestrator fix), license via injected FileFetcher (WithFileFetcher; WithContext copies it; nil -> Unknown),
+resolveTags shared with UpdateResource, 23505 -> ErrDuplicateName. Returns the resource with User/Organization.
+Sentinels: ErrInvalidName/Type/RepositoryURL/Version, ErrDuplicateName, ErrOrgNotFound, ErrNotOrgMember;
+IsInputError(err) for validation + duplicate (orchestrator addition).
+security.ValidateRepositoryURL: https, no userinfo, port empty or 443, no IP literal, isHostAllowed
+(DefaultAllowedHosts, ALLOWED_GIT_HOSTS still honoured).
+handlers: resourceService(c) = Service.WithContext(ctx).WithFileFetcher(downloadFile). PostNewResource: 403 for
+org sentinels, 400 + message for IsInputError, otherwise 500 "Internal Server Error" + log (orchestrator fix:
+DB error text leaked as 400 before).
+Tests updated (inputs only, none deleted): repository_url + license added to web create tests;
+fetch_log_test uses t.Setenv ALLOWED_GIT_HOSTS. Orchestrator added: reverse-order namespace duplicate,
+case-insensitive duplicate, version trim, IsInputError table, TestPostNewResource_DBFailureIs500 (mutations red).
+Advisor review: MINOR. Follow-ups logged: idx_user_res_name (name, organization_id, user_id) does not enforce
+personal-namespace uniqueness (NULLs distinct) nor org uniqueness across users - schema follow-up; UpdateResource
+lacks create validation -> carried into 14.4 notes.
+Verified: local CI mirror all green (modverify, vet x2, staticcheck, actionlint, check-pins, gofmt, go fix x2,
+tests, openapi-check, gosec).
