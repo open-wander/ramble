@@ -14,6 +14,29 @@ components:
                 error:
                     $ref: '#/components/schemas/handlers.APIErrorBody'
             type: object
+        handlers.CurrentUserResponse:
+            properties:
+                token_expires_at:
+                    format: date-time
+                    type: string
+                token_org:
+                    example: acme
+                    nullable: true
+                    type: string
+                token_scope:
+                    enum:
+                        - read
+                        - write
+                    type: string
+                username:
+                    example: alice
+                    type: string
+            required:
+                - token_expires_at
+                - token_org
+                - token_scope
+                - username
+            type: object
         handlers.JobDetail:
             properties:
                 description:
@@ -434,5 +457,33 @@ paths:
             summary: Search registry namespaces
             tags:
                 - nomad-pack
+    /v1/user:
+        get:
+            description: Identify the user a Bearer token belongs to and describe the token. Use it to check credentials.
+            operationId: getCurrentUser
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.CurrentUserResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Unauthorized
+                "500":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Internal Server Error
+            security:
+                - bearerAuth: []
+            summary: Current user and token
+            tags:
+                - user
 servers:
     - url: https://ramble.openwander.org/

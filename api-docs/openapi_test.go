@@ -61,3 +61,32 @@ func TestOpenAPIBearerScheme(t *testing.T) {
 	assert.Equal(t, "http", ref.Value.Type)
 	assert.Equal(t, "bearer", ref.Value.Scheme)
 }
+
+func TestOpenAPICurrentUser(t *testing.T) {
+	doc := loadSpec(t)
+	item := doc.Paths.Find("/v1/user")
+	require.NotNil(t, item)
+	op := item.Get
+	require.NotNil(t, op)
+	assert.Equal(t, "getCurrentUser", op.OperationID)
+
+	require.NotNil(t, op.Security)
+	var found bool
+	for _, req := range *op.Security {
+		if _, ok := req["bearerAuth"]; ok {
+			found = true
+		}
+	}
+	assert.True(t, found, "bearerAuth security")
+
+	r401 := op.Responses.Value("401")
+	require.NotNil(t, r401)
+	assert.Equal(t, errorSchemaRef, r401.Value.Content.Get("application/json").Schema.Ref)
+
+	schema := doc.Components.Schemas["handlers.CurrentUserResponse"]
+	require.NotNil(t, schema)
+	org := schema.Value.Properties["token_org"]
+	require.NotNil(t, org)
+	assert.True(t, org.Value.Nullable, "token_org nullable")
+	assert.ElementsMatch(t, []string{"username", "token_scope", "token_org", "token_expires_at"}, schema.Value.Required)
+}

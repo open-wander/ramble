@@ -764,6 +764,44 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/user": {
+            "get": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Identify the user a Bearer token belongs to and describe the token. Use it to check credentials.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "user"
+                ],
+                "summary": "Current user and token",
+                "operationId": "getCurrentUser",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CurrentUserResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/webhooks/github/issues": {
             "post": {
                 "description": "Webhook endpoint for GitHub to send issue events. Used to sync community pack/job requests with GitHub issues. Requires valid X-Hub-Signature-256 header.",
@@ -1207,6 +1245,37 @@ const docTemplate = `{
             "properties": {
                 "error": {
                     "$ref": "#/definitions/handlers.APIErrorBody"
+                }
+            }
+        },
+        "handlers.CurrentUserResponse": {
+            "type": "object",
+            "required": [
+                "token_expires_at",
+                "token_org",
+                "token_scope",
+                "username"
+            ],
+            "properties": {
+                "token_expires_at": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "token_org": {
+                    "type": "string",
+                    "x-nullable": true,
+                    "example": "acme"
+                },
+                "token_scope": {
+                    "type": "string",
+                    "enum": [
+                        "read",
+                        "write"
+                    ]
+                },
+                "username": {
+                    "type": "string",
+                    "example": "alice"
                 }
             }
         },

@@ -14,6 +14,29 @@ definitions:
       error:
         $ref: '#/definitions/handlers.APIErrorBody'
     type: object
+  handlers.CurrentUserResponse:
+    properties:
+      token_expires_at:
+        format: date-time
+        type: string
+      token_org:
+        example: acme
+        type: string
+        x-nullable: true
+      token_scope:
+        enum:
+        - read
+        - write
+        type: string
+      username:
+        example: alice
+        type: string
+    required:
+    - token_expires_at
+    - token_org
+    - token_scope
+    - username
+    type: object
   handlers.JobDetail:
     properties:
       description:
@@ -853,6 +876,31 @@ paths:
       summary: Search registry namespaces
       tags:
       - nomad-pack
+  /v1/user:
+    get:
+      description: Identify the user a Bearer token belongs to and describe the token.
+        Use it to check credentials.
+      operationId: getCurrentUser
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.CurrentUserResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Current user and token
+      tags:
+      - user
   /webhooks/github/issues:
     post:
       consumes:

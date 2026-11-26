@@ -10,6 +10,36 @@ The `/v1` API is described by an OpenAPI 3.0 spec at `api-docs/openapi.yaml` in 
 
 The API uses content negotiation. Send `Accept: application/json` header to receive JSON responses.
 
+## Authentication
+
+Public read endpoints need no credentials. To call the API as a user, create an API token at `/settings/tokens` and send it as a Bearer token:
+
+```bash
+curl -H "Authorization: Bearer <your-token>" https://ramble.openwander.org/v1/user
+```
+
+- Scope: a `read` token can call read endpoints; a `write` token can also call write endpoints.
+- Organisation: a token can optionally be restricted to one organisation, and then only acts inside it.
+- Expiry: every token expires; the expiry is chosen at creation.
+- The token value is shown once when it is created. Store it safely; only a hash is kept.
+
+A missing, revoked or expired token returns `401` in the shape described under [Error Responses](#error-responses).
+
+### Current User
+
+`GET /v1/user` identifies the token's user and describes the token. It is meant for login checks and credential validation in tools such as the CLI and the Terraform provider.
+
+```json
+{
+  "username": "alice",
+  "token_scope": "read",
+  "token_org": "acme",
+  "token_expires_at": "2027-01-15T10:30:00Z"
+}
+```
+
+`token_scope` is `read` or `write`. `token_org` is the organisation name when the token is restricted to one, otherwise `null`. No other user fields are returned.
+
 ## Global Endpoints
 
 ### List All Packs

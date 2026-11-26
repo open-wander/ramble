@@ -912,3 +912,14 @@ Verified: build, vet -tags=security, go test -tags=security ./... (20 ok), make 
 make openapi deterministic, make openapi-check exit 0 (client compiles).
 
 PATTERN: openapi - operationIds are the generated client's public method names; choose them deliberately and keep them stable.
+
+## 2026-11-26 — 13.3 GET /v1/user; Phase 13 collapsed
+
+internal/handlers/api_user.go: GetCurrentUserAPI behind RequireAPIToken(read); CurrentUserResponse built field by
+field {username, token_scope, token_org (*string, nullable, from the narrowed membership; missing -> 500),
+token_expires_at (UTC)}. Route above the /v1/* 404 guard. Spec: getCurrentUser, bearerAuth, 401/500
+APIErrorResponse, token_org nullable (x-nullable -> nullable via openapi2conv; pinned by openapi_test.go).
+docs/api.md: Authentication section + Current User. Tests: api_user_security_test.go (exact 4 keys, no token/hash/
+email in body, read/write/org cases, 401 cases with wantUnauthorizedBody - security build tag), server route test.
+Advisor review: PASS. Verified: build, vet -tags=security, go test -tags=security ./... (20 ok), make gosec exit 0
+(Nosec 39: +2 justified G304/G306 in the dev-only cmd/openapi-convert), make openapi-check exit 0.

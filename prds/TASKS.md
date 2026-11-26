@@ -23,13 +23,7 @@ verification in [verification.md](verification.md). PRD: [done/prd-security-bugf
 
 ## Phase 12: API tokens — 3 tasks completed 2026-11-26 (see [TASKS-archive.md](TASKS-archive.md))
 
-## Phase 13: API contract
-
-| # | Task | PRD | Status | Notes |
-|---|------|-----|--------|-------|
-| 13.1 | OpenAPI 3 generation (`make openapi`), spec lint in CI, drift check, attach `openapi.yaml` to releases (US-004, FR-7) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | cmd/openapi-convert (kin-openapi), api-docs/openapi.yaml 3.0.3, make openapi / openapi-check (drift + oapi-codegen client compiles), goreleaser extra_files |
-| 13.2 | Common `/v1` JSON error shape; migrate existing read endpoints and their tests (US-004, FR-6) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | APIErrorResponse type, APIErrorHandler (JSON for /v1 only), app.All("/v1/*") 404 before catch-alls, CLI accepts both shapes |
-| 13.3 | `GET /v1/user` whoami endpoint (US-012 server side) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | TODO | needs: 12.2, 13.2 |
+## Phase 13: API contract — 3 tasks completed 2026-11-26 (see [TASKS-archive.md](TASKS-archive.md))
 
 ## Phase 14: Resource write API
 

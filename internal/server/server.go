@@ -412,6 +412,7 @@ func registerRoutes(app *fiber.App) {
 	}
 
 	// API Routes (must be before catch-all /:username routes)
+	app.Get("/v1/user", handlers.RequireAPIToken(models.ScopeRead), handlers.GetCurrentUserAPI)
 	app.Get("/v1/recent", handlers.ListRecentAPI)
 	app.Get("/v1/packs", handlers.ListAllPacksAPI)
 	app.Get("/v1/packs/search", searchLimiter, handlers.SearchPacksAPI)

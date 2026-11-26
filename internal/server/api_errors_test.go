@@ -92,3 +92,12 @@ func TestSearchLimiterShape(t *testing.T) {
 	assert.Equal(t, 429, resp.StatusCode)
 	assert.Equal(t, "Too many search requests. Please try again later.", string(body))
 }
+
+func TestV1UserRouteRegistered(t *testing.T) {
+	app := errorShapeApp(t)
+	resp, err := app.Test(httptest.NewRequest("GET", "/v1/user", nil))
+	require.NoError(t, err)
+	body, _ := io.ReadAll(resp.Body)
+	assert.Equal(t, 401, resp.StatusCode)
+	assert.Equal(t, `{"error":{"code":"unauthorized","message":"invalid or expired token"}}`, string(body))
+}
