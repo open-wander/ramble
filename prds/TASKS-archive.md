@@ -165,3 +165,12 @@ included) for one consistent format - no console/text handler.
 | 14.4 | `PATCH` and `DELETE /v1/resources/{id}`; immutable fields; 404/403 as web UI (US-007, US-008) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | UpdateResourceAPI/DeleteResourceAPI, service PatchResource (patch.go), immutable_field; web UpdateResource validates repository_url |
 | 14.5 | Versions list/create, retry failed version, rotate webhook secret (US-009) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | list/add versions, retry (conditional UPDATE), rotate webhook secret (single-column); service AddVersion/RetryVersion/ListVersions; web PostNewVersion uses AddVersion |
 | 14.6 | Resource API follow-ups (user decisions 2026-11-26): purge a soft-deleted resource holding the name in the namespace on re-create (same transaction; web + API) so Terraform replace works; API POST/PATCH reject non-canonical tags with 422 invalid_tags (lowercase 2-20 [a-z0-9-], no duplicates, no commas; web stays lenient); limiter test includes POST | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | purge-on-re-create in CreateResource tx (namespaceNameScope), ValidateCanonicalTags/ErrInvalidTags + 422 invalid_tags (API only), limiter test covers POST |
+
+## Phase 15: Organisation API
+
+| # | Task | PRD | Status | Notes |
+|---|------|-----|--------|-------|
+| 15.1 | Move org create/update/member logic from `internal/handlers/org.go` into a shared service; web tests unchanged (FR-5) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | internal/services/org + internal/names; web handlers delegate |
+| 15.2 | `POST/GET/PATCH /v1/orgs` (US-010) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | api_orgs.go createOrg/getOrg/updateOrg; names.IsValid shared |
+| 15.3 | Owner deletion of empty orgs: `DELETE /v1/orgs/{name}` (409 when resources remain) plus matching button on org settings page (US-010) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | DeleteOrg (409 org_not_empty), web Danger zone, name reuse purge |
+| 15.4 | Members API: list, PUT role, DELETE, last-owner 409, strict role validation (US-011) | [prd-programmatic-management.md](active/prd-programmatic-management.md) | DONE (2026-11-26) | listOrgMembers/putOrgMember/removeOrgMember; last_owner, invalid_role |

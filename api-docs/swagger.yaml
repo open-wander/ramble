@@ -14,6 +14,17 @@ definitions:
       error:
         $ref: '#/definitions/handlers.APIErrorBody'
     type: object
+  handlers.CreateOrgRequest:
+    properties:
+      description:
+        example: Our packs and jobs
+        type: string
+      name:
+        example: myorg
+        type: string
+    required:
+    - name
+    type: object
   handlers.CreateResourceRequest:
     properties:
       description:
@@ -175,6 +186,41 @@ definitions:
       namespace:
         type: string
     type: object
+  handlers.OrgMemberResponse:
+    properties:
+      role:
+        enum:
+        - owner
+        - member
+        example: owner
+        type: string
+      username:
+        example: alice
+        type: string
+    required:
+    - role
+    - username
+    type: object
+  handlers.OrgResponse:
+    properties:
+      created_at:
+        format: date-time
+        type: string
+      description:
+        example: Our packs and jobs
+        type: string
+      member_count:
+        example: 3
+        type: integer
+      name:
+        example: myorg
+        type: string
+    required:
+    - created_at
+    - description
+    - member_count
+    - name
+    type: object
   handlers.PackDetail:
     properties:
       description:
@@ -201,6 +247,17 @@ definitions:
         type: string
       version:
         type: string
+    type: object
+  handlers.PutOrgMemberRequest:
+    properties:
+      role:
+        enum:
+        - owner
+        - member
+        example: member
+        type: string
+    required:
+    - role
     type: object
   handlers.RecentResource:
     properties:
@@ -310,6 +367,12 @@ definitions:
     - fetch_error
     - fetch_status
     - version
+    type: object
+  handlers.UpdateOrgRequest:
+    properties:
+      description:
+        example: Our packs and jobs
+        type: string
     type: object
   handlers.UpdateResourceRequest:
     properties:
@@ -1011,6 +1074,377 @@ paths:
       summary: Get a resource by namespace and name
       tags:
       - resources
+  /v1/orgs:
+    post:
+      consumes:
+      - application/json
+      description: Create an organization; the caller becomes its owner. The name
+        is 1-64 characters of letters, digits, dot, dash or underscore, starts with
+        a letter or digit, is unique ignoring case and must not clash with a username
+        or a reserved name. A token restricted to one organization cannot create organizations.
+        Needs a write token.
+      operationId: createOrg
+      parameters:
+      - description: Organization
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateOrgRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/handlers.OrgResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "422":
+          description: invalid_name
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Create an organization
+      tags:
+      - orgs
+  /v1/orgs/{name}:
+    delete:
+      description: Delete an organization and its memberships. Only an owner may delete,
+        and only when the organization has no live resources; otherwise the answer
+        is 409 org_not_empty with the count in the message. The name becomes free
+        for reuse. Audited as org.delete. Needs a write token.
+      operationId: deleteOrg
+      parameters:
+      - description: Organization name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "409":
+          description: org_not_empty
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Delete an organization
+      tags:
+      - orgs
+    get:
+      description: Fetch an organization by name, ignoring case. Name, description
+        and member count are public, so any authenticated token may read any organization;
+        a token restricted to one organization may read only that one. Needs a read
+        token.
+      operationId: getOrg
+      parameters:
+      - description: Organization name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.OrgResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Get an organization
+      tags:
+      - orgs
+    patch:
+      consumes:
+      - application/json
+      description: Change the description of an organization. An omitted or null description
+        stays unchanged and an empty string clears it. The name cannot be changed
+        and is answered with 422 immutable_field. Only an owner may update; a change
+        is audited as org.update, an empty or all-null body writes nothing. Needs
+        a write token.
+      operationId: updateOrg
+      parameters:
+      - description: Organization name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Fields to change
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateOrgRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.OrgResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "422":
+          description: immutable_field
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Update an organization
+      tags:
+      - orgs
+  /v1/orgs/{name}/members:
+    get:
+      description: List the live members of an organization as a JSON array of username
+        and role, ordered by username ignoring case. Only a member of the organization
+        may list its members; anyone else gets 403. Needs a read token.
+      operationId: listOrgMembers
+      parameters:
+      - description: Organization name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.OrgMemberResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: List the members of an organization
+      tags:
+      - orgs
+  /v1/orgs/{name}/members/{username}:
+    delete:
+      description: Remove a member. Only an owner may call this. Removing the last
+        owner is answered with 409 last_owner. An unknown user, or a user who is not
+        a member, is 404 (the web form ignores that case). Audited as org.remove_member.
+        Needs a write token.
+      operationId: removeOrgMember
+      parameters:
+      - description: Organization name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Removed
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "409":
+          description: last_owner
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Remove a member from an organization
+      tags:
+      - orgs
+    put:
+      consumes:
+      - application/json
+      description: 'Set the role of a user in an organization: the user is added when
+        not a member (a removed membership is restored) and the role is changed when
+        already a member. The role must be owner or member, otherwise 422 invalid_role.
+        Only an owner may call this. Demoting the last owner is answered with 409
+        last_owner. An unknown username is 404. Setting the role a member already
+        has changes nothing. Audited as org.add_member or org.change_member_role.
+        Needs a write token.'
+      operationId: putOrgMember
+      parameters:
+      - description: Organization name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: Role
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.PutOrgMemberRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.OrgMemberResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "409":
+          description: last_owner
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "422":
+          description: invalid_role
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Add a member or change a member's role
+      tags:
+      - orgs
   /v1/packs:
     get:
       description: Fetch a list of all Nomad Packs available in the registry across

@@ -150,6 +150,7 @@ The response is `200` with the updated resource, in the same shape as `GET /v1/r
 | 400 | `bad_request` | Malformed JSON, unknown field or wrong field type |
 | 401 | `unauthorized` | Missing, invalid or expired token |
 | 403 | `insufficient_scope` | The token is a read token |
+| 403 | `email_unverified` | The account email is not verified |
 | 403 | `forbidden` | You are not a member of the owning organisation, do not own the personal resource, or the token is restricted to another organisation |
 | 404 | `not_found` | The ID does not exist, or the resource was deleted |
 | 422 | `immutable_field` | The body contains `name`, `type` or `namespace` |
@@ -174,6 +175,7 @@ A deleted name can be reused: creating a resource (here or in the web UI) with t
 |--------|------|-------|
 | 401 | `unauthorized` | Missing, invalid or expired token |
 | 403 | `insufficient_scope` | The token is a read token |
+| 403 | `email_unverified` | The account email is not verified |
 | 403 | `forbidden` | You are not an owner, or the token is restricted to another organisation |
 | 404 | `not_found` | The ID does not exist, or the resource was already deleted |
 | 429 | `rate_limited` | Write rate limit exceeded |
@@ -271,6 +273,170 @@ The new secret is returned only in this response; the old one stops working at o
 | 403 | `insufficient_scope` | The token is a `read` token |
 | 403 | `forbidden` | You are not a member of the owning organisation, do not own the personal resource, or the token is restricted to another organisation |
 | 404 | `not_found` | The ID does not exist, or the resource was deleted |
+| 429 | `rate_limited` | Write rate limit exceeded |
+
+## Organizations
+
+### Create an Organization
+
+`POST /v1/orgs` creates an organization and makes the caller its owner. It needs a `write` token and a verified email address, and counts against the write rate limit. A token restricted to one organization cannot create organizations.
+
+```bash
+curl -X POST https://ramble.openwander.org/v1/orgs \
+  -H "Authorization: Bearer <your-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "myorg", "description": "Our packs and jobs"}'
+```
+
+`name` is required: 1-64 characters of letters, digits, dot, dash or underscore, starting with a letter or digit. It must be unique ignoring case, must not match a username and must not be a reserved name. `description` is optional. Unknown fields and malformed JSON are `400 bad_request`.
+
+The response is `201` with the organization:
+
+```json
+{
+  "name": "myorg",
+  "description": "Our packs and jobs",
+  "created_at": "2026-11-26T20:00:00Z",
+  "member_count": 1
+}
+```
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 400 | `bad_request` | Malformed JSON or unknown field |
+| 401 | `unauthorized` | Missing, invalid or expired token |
+| 403 | `insufficient_scope` | The token is a read token |
+| 403 | `email_unverified` | The account email is not verified |
+| 403 | `forbidden` | The token is restricted to an organization |
+| 409 | `conflict` | The name is taken by an organization or a user |
+| 422 | `invalid_name` | The name is empty, malformed or reserved |
+| 429 | `rate_limited` | Write rate limit exceeded |
+
+### Get an Organization
+
+`GET /v1/orgs/{name}` returns an organization, looked up ignoring case. It needs a `read` token. Name, description and member count are public on the web, so any token may read any organization; a token restricted to one organization may read only that one. `member_count` counts current members.
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 401 | `unauthorized` | Missing, invalid or expired token |
+| 403 | `forbidden` | The token is restricted to another organization |
+| 404 | `not_found` | The organization does not exist |
+
+### Update an Organization
+
+`PATCH /v1/orgs/{name}` changes the description. It needs a `write` token and counts against the write rate limit. Only an owner of the organization may update it.
+
+```bash
+curl -X PATCH https://ramble.openwander.org/v1/orgs/myorg \
+  -H "Authorization: Bearer <your-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"description": "New description"}'
+```
+
+An omitted or `null` `description` is left unchanged; an empty string clears it. `{}` is accepted and changes nothing. `name` cannot be changed; sending it is rejected with `422 immutable_field`. The response is `200` with the organization, in the same shape as `GET /v1/orgs/{name}`.
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 400 | `bad_request` | Malformed JSON, unknown field or wrong field type |
+| 401 | `unauthorized` | Missing, invalid or expired token |
+| 403 | `insufficient_scope` | The token is a read token |
+| 403 | `email_unverified` | The account email is not verified |
+| 403 | `forbidden` | You are not an owner of the organization, or the token is restricted to another organization |
+| 404 | `not_found` | The organization does not exist |
+| 422 | `immutable_field` | The body contains `name` |
+| 429 | `rate_limited` | Write rate limit exceeded |
+
+### Delete an Organization
+
+`DELETE /v1/orgs/{name}` deletes an organization and its memberships. It needs a `write` token and counts against the write rate limit. Only an owner of the organization may delete it, and only when it has no live resources: delete or move them first. The response is `204` with no body.
+
+```bash
+curl -X DELETE https://ramble.openwander.org/v1/orgs/myorg \
+  -H "Authorization: Bearer <your-token>"
+```
+
+A deleted name can be reused: creating an organization with the same name, compared case-insensitively, permanently removes the deleted organization with its memberships and deleted resources. The one exception is an organization an administrator deleted while it still owned live resources; its name stays taken.
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 401 | `unauthorized` | Missing, invalid or expired token |
+| 403 | `insufficient_scope` | The token is a read token |
+| 403 | `email_unverified` | The account email is not verified |
+| 403 | `forbidden` | You are not an owner of the organization, or the token is restricted to another organization |
+| 404 | `not_found` | The organization does not exist or is already deleted |
+| 409 | `org_not_empty` | The organization still has resources; the message gives the count, for example `organization still has 3 resources` |
+| 429 | `rate_limited` | Write rate limit exceeded |
+
+### List Organization Members
+
+`GET /v1/orgs/{name}/members` lists the live members of an organization. It needs a `read` token. Only a member of the organization may list its members; anyone else gets `403`. The response is a bare JSON array ordered by username, ignoring case.
+
+```bash
+curl https://ramble.openwander.org/v1/orgs/myorg/members \
+  -H "Authorization: Bearer <your-token>"
+```
+
+```json
+[
+  {"username": "alice", "role": "owner"},
+  {"username": "bob", "role": "member"}
+]
+```
+
+`role` is `owner` or `member`.
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 401 | `unauthorized` | Missing, invalid or expired token |
+| 403 | `forbidden` | You are not a member of the organization, or the token is restricted to another organization |
+| 404 | `not_found` | The organization does not exist |
+
+### Add a Member or Change a Role
+
+`PUT /v1/orgs/{name}/members/{username}` sets the role of a user in an organization. It needs a `write` token and counts against the write rate limit. Only an owner may call it. The user is added when not yet a member (a removed membership is restored), and the role is changed when already a member. Setting the role a member already has returns `200` and changes nothing. The username is matched ignoring case and the response carries the stored spelling.
+
+```bash
+curl -X PUT https://ramble.openwander.org/v1/orgs/myorg/members/bob \
+  -H "Authorization: Bearer <your-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"role": "owner"}'
+```
+
+```json
+{"username": "bob", "role": "owner"}
+```
+
+The role must be exactly `owner` or `member`. Adding is audited as `org.add_member` and a role change as `org.change_member_role`.
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 400 | `bad_request` | The body is empty, malformed or has unknown fields |
+| 401 | `unauthorized` | Missing, invalid or expired token |
+| 403 | `insufficient_scope` | The token is a read token |
+| 403 | `email_unverified` | The account email is not verified |
+| 403 | `forbidden` | You are not an owner of the organization, or the token is restricted to another organization |
+| 404 | `not_found` | The organization or the user does not exist |
+| 409 | `last_owner` | The change would demote the only owner |
+| 422 | `invalid_role` | `role` is missing or not `owner` or `member` |
+| 429 | `rate_limited` | Write rate limit exceeded |
+
+### Remove a Member
+
+`DELETE /v1/orgs/{name}/members/{username}` removes a member. It needs a `write` token and counts against the write rate limit. Only an owner may call it. The response is `204` with no body. Unlike the web form, which ignores it, a user who is not a member is answered with `404`. Removal is audited as `org.remove_member`.
+
+```bash
+curl -X DELETE https://ramble.openwander.org/v1/orgs/myorg/members/bob \
+  -H "Authorization: Bearer <your-token>"
+```
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 401 | `unauthorized` | Missing, invalid or expired token |
+| 403 | `insufficient_scope` | The token is a read token |
+| 403 | `email_unverified` | The account email is not verified |
+| 403 | `forbidden` | You are not an owner of the organization, or the token is restricted to another organization |
+| 404 | `not_found` | The organization or the user does not exist, or the user is not a member |
+| 409 | `last_owner` | The user is the only owner |
 | 429 | `rate_limited` | Write rate limit exceeded |
 
 ## Global Endpoints
@@ -470,8 +636,9 @@ and may change. Unknown `/v1` paths return `404 not_found` in the same shape.
 | 403 | `forbidden` | The request is not allowed |
 | 404 | `not_found` | Namespace, pack, job or path does not exist |
 | 405 | `method_not_allowed` | Method not supported on this path |
-| 409 | `conflict` | The resource already exists |
-| 422 | `invalid_name`, `invalid_type`, `invalid_repository_url`, `invalid_version`, `invalid_tags` | A field failed validation (see the endpoint) |
+| 409 | `conflict` | The name or version is already taken |
+| 409 | `last_owner` | The change would leave the organization without an owner |
+| 422 | `invalid_name`, `invalid_type`, `invalid_repository_url`, `invalid_version`, `invalid_tags`, `immutable_field`, `invalid_role` | A field failed validation or cannot be changed (see the endpoint); `invalid_name` and `immutable_field` apply to resources and organizations, `invalid_role` to organization members |
 | 429 | `rate_limited` | Too many requests |
 | 500 | `internal_error` | Unexpected server or database error |
 

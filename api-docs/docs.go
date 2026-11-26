@@ -621,6 +621,537 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/orgs": {
+            "post": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Create an organization; the caller becomes its owner. The name is 1-64 characters of letters, digits, dot, dash or underscore, starts with a letter or digit, is unique ignoring case and must not clash with a username or a reserved name. A token restricted to one organization cannot create organizations. Needs a write token.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "orgs"
+                ],
+                "summary": "Create an organization",
+                "operationId": "createOrg",
+                "parameters": [
+                    {
+                        "description": "Organization",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CreateOrgRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.OrgResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "invalid_name",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/orgs/{name}": {
+            "get": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Fetch an organization by name, ignoring case. Name, description and member count are public, so any authenticated token may read any organization; a token restricted to one organization may read only that one. Needs a read token.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "orgs"
+                ],
+                "summary": "Get an organization",
+                "operationId": "getOrg",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Organization name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.OrgResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Delete an organization and its memberships. Only an owner may delete, and only when the organization has no live resources; otherwise the answer is 409 org_not_empty with the count in the message. The name becomes free for reuse. Audited as org.delete. Needs a write token.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "orgs"
+                ],
+                "summary": "Delete an organization",
+                "operationId": "deleteOrg",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Organization name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Deleted"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "org_not_empty",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Change the description of an organization. An omitted or null description stays unchanged and an empty string clears it. The name cannot be changed and is answered with 422 immutable_field. Only an owner may update; a change is audited as org.update, an empty or all-null body writes nothing. Needs a write token.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "orgs"
+                ],
+                "summary": "Update an organization",
+                "operationId": "updateOrg",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Organization name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to change",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.UpdateOrgRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.OrgResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "immutable_field",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/orgs/{name}/members": {
+            "get": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "List the live members of an organization as a JSON array of username and role, ordered by username ignoring case. Only a member of the organization may list its members; anyone else gets 403. Needs a read token.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "orgs"
+                ],
+                "summary": "List the members of an organization",
+                "operationId": "listOrgMembers",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Organization name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handlers.OrgMemberResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/orgs/{name}/members/{username}": {
+            "put": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Set the role of a user in an organization: the user is added when not a member (a removed membership is restored) and the role is changed when already a member. The role must be owner or member, otherwise 422 invalid_role. Only an owner may call this. Demoting the last owner is answered with 409 last_owner. An unknown username is 404. Setting the role a member already has changes nothing. Audited as org.add_member or org.change_member_role. Needs a write token.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "orgs"
+                ],
+                "summary": "Add a member or change a member's role",
+                "operationId": "putOrgMember",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Organization name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Username",
+                        "name": "username",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Role",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.PutOrgMemberRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.OrgMemberResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "last_owner",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "invalid_role",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Remove a member. Only an owner may call this. Removing the last owner is answered with 409 last_owner. An unknown user, or a user who is not a member, is 404 (the web form ignores that case). Audited as org.remove_member. Needs a write token.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "orgs"
+                ],
+                "summary": "Remove a member from an organization",
+                "operationId": "removeOrgMember",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Organization name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Username",
+                        "name": "username",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Removed"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "last_owner",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/packs": {
             "get": {
                 "description": "Fetch a list of all Nomad Packs available in the registry across all namespaces.",
@@ -1903,6 +2434,22 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.CreateOrgRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "example": "Our packs and jobs"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "myorg"
+                }
+            }
+        },
         "handlers.CreateResourceRequest": {
             "type": "object",
             "required": [
@@ -2122,6 +2669,54 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.OrgMemberResponse": {
+            "type": "object",
+            "required": [
+                "role",
+                "username"
+            ],
+            "properties": {
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "owner",
+                        "member"
+                    ],
+                    "example": "owner"
+                },
+                "username": {
+                    "type": "string",
+                    "example": "alice"
+                }
+            }
+        },
+        "handlers.OrgResponse": {
+            "type": "object",
+            "required": [
+                "created_at",
+                "description",
+                "member_count",
+                "name"
+            ],
+            "properties": {
+                "created_at": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "description": {
+                    "type": "string",
+                    "example": "Our packs and jobs"
+                },
+                "member_count": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "name": {
+                    "type": "string",
+                    "example": "myorg"
+                }
+            }
+        },
         "handlers.PackDetail": {
             "type": "object",
             "properties": {
@@ -2161,6 +2756,22 @@ const docTemplate = `{
                 },
                 "version": {
                     "type": "string"
+                }
+            }
+        },
+        "handlers.PutOrgMemberRequest": {
+            "type": "object",
+            "required": [
+                "role"
+            ],
+            "properties": {
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "owner",
+                        "member"
+                    ],
+                    "example": "member"
                 }
             }
         },
@@ -2309,6 +2920,15 @@ const docTemplate = `{
                 "version": {
                     "type": "string",
                     "example": "v1.1.0"
+                }
+            }
+        },
+        "handlers.UpdateOrgRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "example": "Our packs and jobs"
                 }
             }
         },

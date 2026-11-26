@@ -1068,3 +1068,92 @@ check in the same transaction returns 409 before the purge, so it only ever sees
 Comments: stripped stale FR-4 (US-002) citations in services/resource/service_test.go (old security-bugfix PRD);
 AuthorizeResourceAction doc block is the authorisation contract - kept; swag blocks untouched.
 Verified: local CI mirror all green.
+
+## 2026-11-26 — 15.1 Organisation service extraction
+
+New internal/services/org (plain functions taking db first; never reads database.DB, failingDB tests depend on
+it): CreateOrg (trim, required, reserved, case-insensitive user/org clash, org + owner membership in ONE
+transaction, 23505 -> ErrNameTaken), GetByName, GetByID, MemberRole, RequireOwner, UpdateDescription (single
+column, not Save), ParseRole (strict owner|member), AddMember (strict role, restores soft-deleted row), RemoveMember
+(org row FOR UPDATE, ErrLastOwner when target is an owner and live owners <= 1). Sentinels + IsInputError.
+Reserved list moved to leaf package internal/names; handlers.IsReservedName is a wrapper.
+Web handlers delegate; existing org tests unmodified and green. Web behaviour changes (for the PR): membership
+failure on create now rolls back (500 org.create_failed, was silent success); remove-member delete error now 500;
+remove audit only after a real delete; 23505 on org name -> 400 not 500; PostUpdateOrg writes one column.
+Web keeps lenient role mapping (unknown -> member) before calling AddMember.
+Advisor review: MINOR. Orchestrator fixed: AddMember doc comment; PostRemoveMember no longer audits a
+not-member removal and maps ErrNotFound -> 404.
+Carry to 15.3: organizations.name unique index covers soft-deleted rows -> name reuse after delete needs a decision.
+Carry to 15.4: role change must refuse demoting the last owner with the same lock + count (AddMember rejects live
+members, so a separate SetRole path). Service still needs MemberCount, ListMembers, DeleteOrg.
+Verified: local CI mirror all green.
+
+## 2026-11-26 — 15.2 POST/GET/PATCH /v1/orgs
+
+Orchestrator decision: new org names (web and API, via the shared CreateOrg) must match the resource name
+pattern; shared as internal/names.IsValid (resource service uses it too). Order: trim, required, pattern,
+reserved. Existing non-conforming orgs stay readable/editable (GetByName/UpdateDescription do not validate).
+Web PostCreateOrg maps ErrNameInvalid -> 400. Web PostUpdateOrg now audits org.update (API uses the same event).
+Service: ErrNameInvalid, MemberCount (live memberships).
+internal/handlers/api_orgs.go: CreateOrgAPI (restricted token refused before body decode -> 403; 422
+invalid_name; 409 conflict), GetOrgAPI (read scope; public like the /:orgname page; exactly name, description,
+created_at, member_count), UpdateOrgAPI (strict decode, name RawMessage -> 422 immutable_field, load, token
+check, RequireOwner -> 403, write + audit only when description != nil). loadOrgForToken (404 before 403,
+org.load_failed on 500) is for DELETE and members. Routes above the /v1/* guard with the shared limiter.
+docs/api.md Organizations section. Orchestrator: email_unverified rows on write tables; 409 wording generalised.
+Advisor review: MINOR (docs only, fixed). Verified: local CI mirror green (database/server/apitoken re-run after
+testcontainers start failures).
+
+## 2026-11-26 — 15.3 Owner deletion of empty organisations
+
+orgsvc.DeleteOrg: one transaction, org row FOR UPDATE, RequireOwner re-checked inside, live resource count ->
+*NotEmptyError{Count}, then soft-delete memberships and org. API DeleteOrgAPI (deleteOrg): 204 / 403 / 404 /
+409 org_not_empty (count pluralised) / audit org.delete. Web POST /orgs/:orgname/delete (Danger zone,
+hx-confirm, flash + HX-Redirect /), same service and audit.
+Orchestrator decision (by analogy with the resource purge the user chose): CreateOrg purges soft-deleted orgs
+with the same name (case-insensitive) with their memberships and soft-deleted resources
+(resource.PurgeDeletedInOrgs; resources first because nomad_resources.organization_id is ON DELETE SET NULL),
+but keeps the name taken (ErrNameTaken) while a LIVE resource references the deleted org (admin delete case).
+api_tokens restricted to a purged org cascade away (already unusable).
+CreateResource re-reads the org FOR SHARE inside its transaction, so a create racing a delete gets
+ErrOrgNotFound.
+Advisor review: MINOR. Orchestrator: replaced the CSRF test (passed even with the route removed: global CSRF 403s
+any POST) with TestCSRF_OrgDeleteNeedsToken: real owner session through the stack, no token -> 403 and org
+survives; with token -> 200 and deleted (overlay mutation removing the route -> red).
+Follow-ups: web PostDeleteOrg ErrNotOwner/ErrNotFound mappings untested (middleware answers first; service and API
+cover the in-transaction owner re-check). Residual races: UpdateResource transfer into an org and AddMember run
+outside a transaction against a concurrent DeleteOrg; a transfer after the count leaves a live resource in a
+deleted org (name then stays taken).
+Verified: local CI mirror green.
+
+## 2026-11-26 — 15.4 Organisation members API
+
+Service: FindUser (case-insensitive, AddMember uses it), ListMembers (live memberships of live users, explicit
+join with users.deleted_at IS NULL, ordered LOWER(username), id), SetMemberRole (one transaction: org FOR UPDATE,
+actor owner check inside the lock, strict ParseRole, FindUser, create / restore / no-op / role update; demoting the
+last owner -> ErrLastOwner; returns the stored username and old role).
+Handlers api_org_members.go: listOrgMembers (read; members only, 403 otherwise; bare JSON array of
+{username, role}), putOrgMember (200; 422 invalid_role; 404 user; 409 last_owner; audit org.add_member on
+create/restore, org.change_member_role {member, old_role, new_role} on change, nothing on no-op), removeOrgMember
+(204; 409 last_owner; 404 user/not member; audit org.remove_member {member_id, member}). New codes invalid_role,
+last_owner.
+Advisor review: REJECT (docs rows added to unrelated tables, unused fixture, ListMembers test could not see the
+users join) -> fixed -> MINOR.
+Orchestrator: owner count now ignores owners whose user account is soft-deleted (keepsAnOwner helper used by
+RemoveMember and SetMemberRole: another live-user owner must remain); TestLastOwner_IgnoresDeletedUsers (overlay
+mutation dropping the users filter -> red). Renamed the shadowed role variable.
+Logged: no test sends an org-restricted token to an unknown org on the member routes (404 before 403; shared
+loadOrgForToken is covered by the org route tests). Concurrent-demotion test proves zero owners is impossible, not
+that the actor check sits inside the lock.
+Verified: local CI mirror green. Phase 15 collapsed.
+
+## 2026-11-26 — Phase 15 sweep (invariants + comments)
+
+22 line-targeted breaks via the overlay driver (scratchpad sweep15; 4 first hit a testcontainers start failure
+and were re-run). 22 killed: name pattern, reserved names, username clash, case-insensitive org clash, owner-only
+(service role check, PATCH, DELETE, members PUT/DELETE, web RequireOrgOwner), strict API roles, last-owner rule
+(helper and both call sites), non-empty delete refusal, purge refusal while a live resource remains, live
+member_count, FOR SHARE re-check in resource create, org-restricted token (read/write and create), members-only
+listing, immutable name. No gaps.
+Comments: no stale task/requirement references in Phase 15 code; long blocks are swag annotations or the
+limiter contract in server.go - kept.

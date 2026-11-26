@@ -323,3 +323,66 @@ func TestOpenAPIVersionAndWebhookOperations(t *testing.T) {
 	require.NotNil(t, v)
 	assert.ElementsMatch(t, []string{"version", "fetch_status", "fetch_error", "created_at"}, propNames(v.Value))
 }
+
+func TestOpenAPIOrgOperations(t *testing.T) {
+	doc := loadSpec(t)
+	const orgSchema = "#/components/schemas/handlers.OrgResponse"
+	tests := []struct {
+		path, method, id, okCode string
+		params                   []string
+		body                     string
+		errCodes                 []string
+	}{
+		{"/v1/orgs", "POST", "createOrg", "201", nil, "#/components/schemas/handlers.CreateOrgRequest", []string{"400", "401", "403", "409", "422", "429", "500"}},
+		{"/v1/orgs/{name}", "GET", "getOrg", "200", []string{"name"}, "", []string{"401", "403", "404", "500"}},
+		{"/v1/orgs/{name}", "PATCH", "updateOrg", "200", []string{"name"}, "#/components/schemas/handlers.UpdateOrgRequest", []string{"400", "401", "403", "404", "422", "429", "500"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.id, func(t *testing.T) {
+			item := doc.Paths.Find(tt.path)
+			require.NotNil(t, item)
+			op := item.GetOperation(tt.method)
+			require.NotNil(t, op)
+			assert.Equal(t, tt.id, op.OperationID)
+			assert.True(t, hasBearer(op), "bearerAuth security")
+
+			var params []string
+			for _, p := range op.Parameters {
+				assert.Equal(t, "path", p.Value.In)
+				params = append(params, p.Value.Name)
+			}
+			assert.Equal(t, tt.params, params)
+
+			if tt.body == "" {
+				assert.Nil(t, op.RequestBody)
+			} else {
+				require.NotNil(t, op.RequestBody)
+				assert.Equal(t, tt.body, op.RequestBody.Value.Content.Get("application/json").Schema.Ref)
+			}
+			ok := op.Responses.Value(tt.okCode)
+			require.NotNil(t, ok)
+			assert.Equal(t, orgSchema, ok.Value.Content.Get("application/json").Schema.Ref)
+			for _, code := range tt.errCodes {
+				r := op.Responses.Value(code)
+				if assert.NotNil(t, r, code) {
+					assert.Equal(t, errorSchemaRef, r.Value.Content.Get("application/json").Schema.Ref, code)
+				}
+			}
+		})
+	}
+
+	resp := doc.Components.Schemas["handlers.OrgResponse"]
+	require.NotNil(t, resp)
+	assert.ElementsMatch(t, []string{"name", "description", "created_at", "member_count"}, propNames(resp.Value))
+	assert.ElementsMatch(t, []string{"name", "description", "created_at", "member_count"}, resp.Value.Required)
+
+	create := doc.Components.Schemas["handlers.CreateOrgRequest"]
+	require.NotNil(t, create)
+	assert.ElementsMatch(t, []string{"name", "description"}, propNames(create.Value))
+	assert.ElementsMatch(t, []string{"name"}, create.Value.Required)
+
+	upd := doc.Components.Schemas["handlers.UpdateOrgRequest"]
+	require.NotNil(t, upd)
+	assert.ElementsMatch(t, []string{"description"}, propNames(upd.Value), "name must not be advertised")
+	assert.Empty(t, upd.Value.Required)
+}

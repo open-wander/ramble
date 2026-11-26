@@ -3,13 +3,14 @@ package resource
 import (
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"rmbl/internal/models"
+	"rmbl/internal/names"
 	"rmbl/internal/security"
 )
 
@@ -33,8 +34,6 @@ const (
 	pgUniqueViolationSQL = "23505"
 )
 
-var nameRegex = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$`)
-
 // FileFetcher downloads fileName from the repository at repoURL. It is
 // injected so the service does not depend on the SSRF-protected HTTP client.
 type FileFetcher func(repoURL, fileName string) (string, error)
@@ -48,7 +47,7 @@ func (s *ResourceService) WithFileFetcher(f FileFetcher) *ResourceService {
 }
 
 func validateCreateInput(input CreateInput) error {
-	if !nameRegex.MatchString(input.Name) {
+	if !names.IsValid(input.Name) {
 		return ErrInvalidName
 	}
 	if t := models.ResourceType(input.Type); t != models.ResourceTypePack && t != models.ResourceTypeJob {
@@ -123,6 +122,26 @@ func purgeDeletedName(tx *gorm.DB, name string, userID uint, orgID *uint) error 
 	if err := q.Pluck("id", &ids).Error; err != nil {
 		return fmt.Errorf("could not find deleted resources: %w", err)
 	}
+	return purgeIDs(tx, ids)
+}
+
+// PurgeDeletedInOrgs permanently removes the soft-deleted resources of the
+// organisations, with their versions, tag links and stars. Live resources are
+// never touched.
+func PurgeDeletedInOrgs(tx *gorm.DB, orgIDs []uint) error {
+	if len(orgIDs) == 0 {
+		return nil
+	}
+	var ids []uint
+	if err := tx.Unscoped().Model(&models.NomadResource{}).
+		Where("organization_id IN ? AND deleted_at IS NOT NULL", orgIDs).
+		Pluck("id", &ids).Error; err != nil {
+		return fmt.Errorf("could not find deleted resources: %w", err)
+	}
+	return purgeIDs(tx, ids)
+}
+
+func purgeIDs(tx *gorm.DB, ids []uint) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -216,6 +235,17 @@ func (s *ResourceService) CreateResource(input CreateInput, userID uint, orgID *
 	// only covers part of the namespace rules (NULL organization_id values are
 	// distinct), so the live check is the main guard.
 	err = s.db.Transaction(func(tx *gorm.DB) error {
+		if orgID != nil {
+			// Share lock: conflicts with the row lock of DeleteOrg, so the
+			// organisation cannot be deleted under this insert.
+			var o models.Organization
+			if err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Limit(1).Find(&o, *orgID).Error; err != nil {
+				return fmt.Errorf("could not lock organization: %w", err)
+			}
+			if o.ID == 0 {
+				return ErrOrgNotFound
+			}
+		}
 		var dups int64
 		if err := namespaceNameScope(tx.Model(&models.NomadResource{}), input.Name, userID, orgID).Count(&dups).Error; err != nil {
 			return fmt.Errorf("could not check for duplicates: %w", err)

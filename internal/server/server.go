@@ -352,6 +352,7 @@ func registerRoutes(app *fiber.App) {
 	app.Delete("/settings/tokens/:id<int>", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.DeleteToken)
 	app.Get("/orgs/:orgname/settings", handlers.RequireAuth, handlers.RequireOrgOwner, handlers.GetOrgSettings)
 	app.Post("/orgs/:orgname/update", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.RequireOrgOwner, handlers.PostUpdateOrg)
+	app.Post("/orgs/:orgname/delete", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.RequireOrgOwner, handlers.PostDeleteOrg)
 	app.Post("/orgs/:orgname/members/add", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.RequireOrgOwner, handlers.PostAddMember)
 	app.Post("/orgs/:orgname/members/:member_id<int>/remove", handlers.RequireAuth, handlers.RequireVerifiedEmail, handlers.RequireOrgOwner, handlers.PostRemoveMember)
 
@@ -430,6 +431,13 @@ func registerRoutes(app *fiber.App) {
 	app.Post("/v1/resources/:id<int>/versions", handlers.RequireAPIToken(models.ScopeWrite), apiWriteLimiter, handlers.CreateResourceVersionAPI)
 	app.Post("/v1/resources/:id<int>/versions/:version/retry", handlers.RequireAPIToken(models.ScopeWrite), apiWriteLimiter, handlers.RetryResourceVersionAPI)
 	app.Post("/v1/resources/:id<int>/webhook-secret", handlers.RequireAPIToken(models.ScopeWrite), apiWriteLimiter, handlers.RotateWebhookSecretAPI)
+	app.Post("/v1/orgs", handlers.RequireAPIToken(models.ScopeWrite), apiWriteLimiter, handlers.CreateOrgAPI)
+	app.Get("/v1/orgs/:name", handlers.RequireAPIToken(models.ScopeRead), handlers.GetOrgAPI)
+	app.Patch("/v1/orgs/:name", handlers.RequireAPIToken(models.ScopeWrite), apiWriteLimiter, handlers.UpdateOrgAPI)
+	app.Delete("/v1/orgs/:name", handlers.RequireAPIToken(models.ScopeWrite), apiWriteLimiter, handlers.DeleteOrgAPI)
+	app.Get("/v1/orgs/:name/members", handlers.RequireAPIToken(models.ScopeRead), handlers.ListOrgMembersAPI)
+	app.Put("/v1/orgs/:name/members/:username", handlers.RequireAPIToken(models.ScopeWrite), apiWriteLimiter, handlers.PutOrgMemberAPI)
+	app.Delete("/v1/orgs/:name/members/:username", handlers.RequireAPIToken(models.ScopeWrite), apiWriteLimiter, handlers.RemoveOrgMemberAPI)
 	app.Get("/v1/namespaces/:namespace/resources/:name", handlers.RequireAPIToken(models.ScopeRead), handlers.GetResourceByNameAPI)
 	// Unmatched /v1 paths answer with the JSON 404 instead of falling into the
 	// /:username catch-alls below. Register every future /v1 route above this.

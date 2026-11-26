@@ -14,6 +14,9 @@
                 <a href="#members" class="text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white group flex items-center px-3 py-2 text-sm font-medium rounded-md">
                     Members
                 </a>
+                <a href="#danger" class="text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-800 group flex items-center px-3 py-2 text-sm font-medium rounded-md">
+                    Danger zone
+                </a>
             </nav>
         </aside>
 
@@ -90,6 +93,17 @@
                         {{end}}
                     </ul>
                 </div>
+            </section>
+
+            <!-- Danger Zone -->
+            <section id="danger" class="bg-white dark:bg-gray-800 shadow rounded-lg p-6 border border-red-200 dark:border-red-900">
+                <h2 class="text-lg font-bold text-red-600 dark:text-red-400 mb-2">Danger zone</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Deleting an organization removes its memberships and frees its name. It only works when the organization has no resources.</p>
+                <div id="delete-error" class="text-red-600 text-sm mb-4"></div>
+                <button hx-post="/orgs/{{.Organization.Name}}/delete"
+                        hx-confirm="Delete organization {{.Organization.Name}}? This cannot be undone."
+                        hx-target="#delete-error" hx-swap="innerHTML"
+                        class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium">Delete organization</button>
             </section>
         </div>
     </div>

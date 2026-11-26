@@ -4,7 +4,7 @@ import (
 	"errors"
 	"rmbl/internal/models"
 	"rmbl/internal/services/logger"
-	"strings"
+	orgsvc "rmbl/internal/services/org"
 
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
@@ -28,43 +28,23 @@ func PostCreateOrg(c *fiber.Ctx) error {
 		return c.Status(400).SendString("Invalid input")
 	}
 
-	orgName := strings.TrimSpace(input.Name)
-	if orgName == "" {
+	org, err := orgsvc.CreateOrg(reqDB(c), userID, input.Name, input.Description)
+	switch {
+	case err == nil:
+	case errors.Is(err, orgsvc.ErrNameRequired):
 		return c.Status(400).SendString("Organization name is required")
-	}
-
-	if IsReservedName(orgName) {
+	case errors.Is(err, orgsvc.ErrNameInvalid):
+		return c.Status(400).SendString("Organization name must be 1-64 characters: letters, digits, dot, dash or underscore, starting with a letter or digit")
+	case errors.Is(err, orgsvc.ErrNameReserved):
 		return c.Status(400).SendString("This name is reserved")
-	}
-
-	// Check if name is taken by a User or another Org
-	var count int64
-	reqDB(c).Model(&models.User{}).Where(iEq("username"), orgName).Count(&count)
-	if count > 0 {
+	case errors.Is(err, orgsvc.ErrNameTakenByUser):
 		return c.Status(400).SendString("This name is already taken by a user")
-	}
-	reqDB(c).Model(&models.Organization{}).Where(iEq("name"), orgName).Count(&count)
-	if count > 0 {
+	case errors.Is(err, orgsvc.ErrNameTaken):
 		return c.Status(400).SendString("This organization name is already taken")
-	}
-
-	// Create Organization
-	org := models.Organization{
-		Name:        orgName,
-		Description: input.Description,
-	}
-
-	if err := reqDB(c).Create(&org).Error; err != nil {
+	default:
+		logger.FromContext(c.UserContext()).Error("org.create_failed", logger.Err(err))
 		return c.Status(500).SendString("Could not create organization")
 	}
-
-	// Create Membership as Owner
-	membership := models.Membership{
-		UserID:         userID,
-		OrganizationID: org.ID,
-		Role:           "owner",
-	}
-	reqDB(c).Create(&membership)
 
 	AuditLog(c, "org.create", "organization", org.ID, org.Name, nil)
 
@@ -79,14 +59,13 @@ func RequireOrgOwner(c *fiber.Ctx) error {
 	sess, _ := Store.Get(c)
 	userID := sess.Get("user_id").(uint)
 
-	var org models.Organization
-	if err := reqDB(c).Where(iEq("name"), orgName).First(&org).Error; err != nil {
+	org, err := orgsvc.GetByName(reqDB(c), orgName)
+	if err != nil {
 		return orgLoadError(c, err)
 	}
 
-	var membership models.Membership
-	if err := reqDB(c).Where("user_id = ? AND organization_id = ? AND role = 'owner'", userID, org.ID).First(&membership).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	if err := orgsvc.RequireOwner(reqDB(c), org.ID, userID); err != nil {
+		if errors.Is(err, orgsvc.ErrNotOwner) {
 			return c.Status(403).SendString("You must be an owner of this organization")
 		}
 		logger.FromContext(c.UserContext()).Error("org.membership_load_failed", logger.Err(err))
@@ -100,7 +79,7 @@ func RequireOrgOwner(c *fiber.Ctx) error {
 // orgLoadError answers a failed organisation lookup: 404 when the row is
 // absent, otherwise 500 with an org.load_failed ERROR line.
 func orgLoadError(c *fiber.Ctx, err error) error {
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	if errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, orgsvc.ErrNotFound) {
 		return c.Status(404).SendString("Organization not found")
 	}
 	logger.FromContext(c.UserContext()).Error("org.load_failed", logger.Err(err))
@@ -121,18 +100,52 @@ func GetOrgSettings(c *fiber.Ctx) error {
 
 func PostUpdateOrg(c *fiber.Ctx) error {
 	orgID := c.Locals("OrgID").(uint)
-	var org models.Organization
-	if err := reqDB(c).First(&org, orgID).Error; err != nil {
+	org, err := orgsvc.GetByID(reqDB(c), orgID)
+	if err != nil {
 		return orgLoadError(c, err)
 	}
 
-	org.Description = c.FormValue("description")
-	if err := reqDB(c).Save(&org).Error; err != nil {
+	if err := orgsvc.UpdateDescription(reqDB(c), &org, c.FormValue("description")); err != nil {
+		logger.FromContext(c.UserContext()).Error("org.update_failed", logger.Err(err))
 		return c.Status(500).SendString("Failed to update organization")
 	}
 
+	AuditLog(c, "org.update", "organization", org.ID, org.Name, nil)
+
 	SetFlash(c, "success", "Organization settings updated.")
 	c.Set("HX-Redirect", "/"+org.Name+"/settings")
+	return c.SendStatus(200)
+}
+
+// PostDeleteOrg deletes an empty organization through the same service as
+// DELETE /v1/orgs/{name}.
+func PostDeleteOrg(c *fiber.Ctx) error {
+	orgID := c.Locals("OrgID").(uint)
+	sess, _ := Store.Get(c)
+	userID := sess.Get("user_id").(uint)
+	org, err := orgsvc.GetByID(reqDB(c), orgID)
+	if err != nil {
+		return orgLoadError(c, err)
+	}
+
+	if err := orgsvc.DeleteOrg(reqDB(c), orgID, userID); err != nil {
+		if ne, ok := errors.AsType[*orgsvc.NotEmptyError](err); ok {
+			return c.Status(409).SendString("This organization still has " + resourceCount(ne.Count) + ". Delete or move them first.")
+		}
+		switch {
+		case errors.Is(err, orgsvc.ErrNotFound):
+			return c.Status(404).SendString("Organization not found")
+		case errors.Is(err, orgsvc.ErrNotOwner):
+			return c.Status(403).SendString("You must be an owner of this organization")
+		}
+		logger.FromContext(c.UserContext()).Error("org.delete_failed", logger.Err(err))
+		return c.Status(500).SendString("Failed to delete organization")
+	}
+
+	AuditLog(c, "org.delete", "organization", org.ID, org.Name, nil)
+
+	SetFlash(c, "success", "Organization '"+org.Name+"' deleted.")
+	c.Set("HX-Redirect", "/")
 	return c.SendStatus(200)
 }
 
@@ -144,38 +157,18 @@ func PostAddMember(c *fiber.Ctx) error {
 		role = "member" // only two roles exist; same rule as the admin handlers
 	}
 
-	var org models.Organization
-	if err := reqDB(c).First(&org, orgID).Error; err != nil {
+	org, err := orgsvc.GetByID(reqDB(c), orgID)
+	if err != nil {
 		return orgLoadError(c, err)
 	}
 
-	var user models.User
-	if err := reqDB(c).Where(iEq("username"), username).First(&user).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	if _, err := orgsvc.AddMember(reqDB(c), orgID, username, role); err != nil {
+		switch {
+		case errors.Is(err, orgsvc.ErrUserNotFound):
 			return c.Status(404).SendString("User not found")
+		case errors.Is(err, orgsvc.ErrAlreadyMember):
+			return c.Status(400).SendString("User is already a member")
 		}
-		logger.FromContext(c.UserContext()).Error("org.member_lookup_failed", logger.Err(err))
-		return c.Status(500).SendString("Internal server error")
-	}
-
-	// Unscoped: idx_user_org covers soft-deleted rows, so a removed member
-	// is restored rather than inserted again.
-	var existing models.Membership
-	err := reqDB(c).Unscoped().Where("user_id = ? AND organization_id = ?", user.ID, orgID).First(&existing).Error
-	switch {
-	case err == nil && !existing.DeletedAt.Valid:
-		return c.Status(400).SendString("User is already a member")
-	case err == nil:
-		err = reqDB(c).Unscoped().Model(&existing).Updates(map[string]any{"deleted_at": nil, "role": role}).Error
-	case errors.Is(err, gorm.ErrRecordNotFound):
-		membership := models.Membership{
-			UserID:         user.ID,
-			OrganizationID: orgID,
-			Role:           role,
-		}
-		err = reqDB(c).Create(&membership).Error
-	}
-	if err != nil {
 		logger.FromContext(c.UserContext()).Error("org.member_add_failed", logger.Err(err))
 		return c.Status(500).SendString("Failed to add member")
 	}
@@ -197,27 +190,27 @@ func PostRemoveMember(c *fiber.Ctx) error {
 		return c.Status(404).SendString("Member not found")
 	}
 
-	var org models.Organization
-	if err := reqDB(c).First(&org, orgID).Error; err != nil {
+	org, err := orgsvc.GetByID(reqDB(c), orgID)
+	if err != nil {
 		return orgLoadError(c, err)
 	}
 
-	// Don't allow removing yourself if you're the only owner
-	sess, _ := Store.Get(c)
-	currentUserID := sess.Get("user_id").(uint)
-	if memberID == currentUserID {
-		var ownerCount int64
-		reqDB(c).Model(&models.Membership{}).Where("organization_id = ? AND role = 'owner'", orgID).Count(&ownerCount)
-		if ownerCount <= 1 {
-			return c.Status(400).SendString("You cannot remove yourself as you are the only owner")
-		}
+	// An already-missing membership counts as removed, but is not audited.
+	err = orgsvc.RemoveMember(reqDB(c), orgID, memberID)
+	switch {
+	case err == nil:
+		AuditLog(c, "org.remove_member", "organization", org.ID, org.Name, map[string]any{
+			"member_id": memberID,
+		})
+	case errors.Is(err, orgsvc.ErrNotMember):
+	case errors.Is(err, orgsvc.ErrLastOwner):
+		return c.Status(400).SendString("You cannot remove yourself as you are the only owner")
+	case errors.Is(err, orgsvc.ErrNotFound):
+		return c.Status(404).SendString("Organization not found")
+	default:
+		logger.FromContext(c.UserContext()).Error("org.member_remove_failed", logger.Err(err))
+		return c.Status(500).SendString("Internal server error")
 	}
-
-	AuditLog(c, "org.remove_member", "organization", org.ID, org.Name, map[string]any{
-		"member_id": memberID,
-	})
-
-	reqDB(c).Where("user_id = ? AND organization_id = ?", memberID, orgID).Delete(&models.Membership{})
 
 	SetFlash(c, "success", "Member removed.")
 	c.Set("HX-Refresh", "true")
