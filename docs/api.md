@@ -40,6 +40,69 @@ A missing, revoked or expired token returns `401` in the shape described under [
 
 `token_scope` is `read` or `write`. `token_org` is the organisation name when the token is restricted to one, otherwise `null`. No other user fields are returned.
 
+### Create a Resource
+
+`POST /v1/resources` creates a pack or job. It needs a `write` token and a verified email address, and counts against the write rate limit of 120 requests per minute per token.
+
+```bash
+curl -X POST https://ramble.openwander.org/v1/resources \
+  -H "Authorization: Bearer <your-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "mysql",
+    "type": "pack",
+    "namespace": "alice",
+    "description": "MySQL on Nomad",
+    "repository_url": "https://github.com/alice/packs",
+    "file_path": "packs/mysql",
+    "version": "v1.0.0",
+    "license": "MIT",
+    "tags": ["database"]
+  }'
+```
+
+`name`, `type` (`pack` or `job`), `namespace`, `repository_url` and `version` are required. `namespace` is your own username or the name of an organisation you belong to (case-insensitive). Unknown fields and malformed JSON are rejected with `400 bad_request`. If `license` is empty it is detected from the repository's `LICENSE` file.
+
+The response is `201` with the new resource:
+
+```json
+{
+  "id": 42,
+  "name": "mysql",
+  "type": "pack",
+  "namespace": "alice",
+  "description": "MySQL on Nomad",
+  "repository_url": "https://github.com/alice/packs",
+  "file_path": "packs/mysql",
+  "license": "MIT",
+  "tags": ["database"],
+  "webhook_url": "https://ramble.openwander.org/resource/42/webhook",
+  "webhook_secret": "<secret>",
+  "created_at": "2027-01-15T10:30:00Z",
+  "updated_at": "2027-01-15T10:30:00Z",
+  "latest_version": "v1.0.0"
+}
+```
+
+`webhook_secret` is returned only in this response. Store it safely; it is not shown again. The content of the version is fetched in the background after the response.
+
+`tags` in the response are the stored tags: they are lower-cased, a tag containing a comma is split in two, and invalid tags are dropped. Compare against the response, not the request.
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 400 | `bad_request` | Malformed JSON, unknown field or trailing data |
+| 401 | `unauthorized` | Missing, invalid or expired token |
+| 403 | `insufficient_scope` | The token is a `read` token |
+| 403 | `email_unverified` | The account email is not verified |
+| 403 | `forbidden` | The token is restricted to another organisation, or you are not a member of the organisation |
+| 404 | `not_found` | `namespace` is not your username or an existing organisation (another user's name looks the same) |
+| 409 | `conflict` | A resource with this name already exists in the namespace |
+| 422 | `invalid_name` | Name is not 1-64 characters of letters, digits, dot, dash or underscore |
+| 422 | `invalid_type` | `type` is not `pack` or `job` |
+| 422 | `invalid_repository_url` | The URL is not an https URL on an allowed git host |
+| 422 | `invalid_version` | `version` is empty or longer than 64 characters |
+| 429 | `rate_limited` | Too many requests |
+
 ## Global Endpoints
 
 ### List All Packs
@@ -230,12 +293,15 @@ and may change. Unknown `/v1` paths return `404 not_found` in the same shape.
 
 | Status | Code | Meaning |
 |--------|------|---------|
+| 400 | `bad_request` | The request body could not be parsed |
 | 401 | `unauthorized` | Missing, invalid or expired API token |
 | 403 | `insufficient_scope` | The token lacks the required scope |
-| 403 | `forbidden` | The request is not allowed |
 | 403 | `email_unverified` | The account email is not verified |
+| 403 | `forbidden` | The request is not allowed |
 | 404 | `not_found` | Namespace, pack, job or path does not exist |
 | 405 | `method_not_allowed` | Method not supported on this path |
+| 409 | `conflict` | The resource already exists |
+| 422 | `invalid_name`, `invalid_type`, `invalid_repository_url`, `invalid_version` | A field failed validation (see the endpoint) |
 | 429 | `rate_limited` | Too many requests |
 | 500 | `internal_error` | Unexpected server or database error |
 

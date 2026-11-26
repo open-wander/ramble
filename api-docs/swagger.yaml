@@ -14,6 +14,115 @@ definitions:
       error:
         $ref: '#/definitions/handlers.APIErrorBody'
     type: object
+  handlers.CreateResourceRequest:
+    properties:
+      description:
+        example: MySQL on Nomad
+        type: string
+      file_path:
+        example: packs/mysql
+        type: string
+      license:
+        example: MIT
+        type: string
+      name:
+        example: mysql
+        type: string
+      namespace:
+        example: alice
+        type: string
+      repository_url:
+        example: https://github.com/alice/packs
+        type: string
+      tags:
+        example:
+        - database
+        - sql
+        items:
+          type: string
+        type: array
+      type:
+        enum:
+        - pack
+        - job
+        example: pack
+        type: string
+      version:
+        example: v1.0.0
+        type: string
+    required:
+    - name
+    - namespace
+    - repository_url
+    - type
+    - version
+    type: object
+  handlers.CreateResourceResponse:
+    properties:
+      created_at:
+        format: date-time
+        type: string
+      description:
+        example: MySQL on Nomad
+        type: string
+      file_path:
+        example: packs/mysql
+        type: string
+      id:
+        example: 42
+        type: integer
+      latest_version:
+        example: v1.0.0
+        type: string
+      license:
+        example: MIT
+        type: string
+      name:
+        example: mysql
+        type: string
+      namespace:
+        example: alice
+        type: string
+      repository_url:
+        example: https://github.com/alice/packs
+        type: string
+      tags:
+        example:
+        - database
+        - sql
+        items:
+          type: string
+        type: array
+      type:
+        enum:
+        - pack
+        - job
+        example: pack
+        type: string
+      updated_at:
+        format: date-time
+        type: string
+      webhook_secret:
+        type: string
+      webhook_url:
+        example: https://ramble.openwander.org/resource/42/webhook
+        type: string
+    required:
+    - created_at
+    - description
+    - file_path
+    - id
+    - latest_version
+    - license
+    - name
+    - namespace
+    - repository_url
+    - tags
+    - type
+    - updated_at
+    - webhook_secret
+    - webhook_url
+    type: object
   handlers.CurrentUserResponse:
     properties:
       token_expires_at:
@@ -876,6 +985,65 @@ paths:
       summary: Search registry namespaces
       tags:
       - nomad-pack
+  /v1/resources:
+    post:
+      consumes:
+      - application/json
+      description: Create a pack or job in the caller's personal namespace or in an
+        organization the caller belongs to. Needs a write token. The response is the
+        only one that includes webhook_secret.
+      operationId: createResource
+      parameters:
+      - description: Resource
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateResourceRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/handlers.CreateResourceResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Create a resource
+      tags:
+      - resources
   /v1/user:
     get:
       description: Identify the user a Bearer token belongs to and describe the token.

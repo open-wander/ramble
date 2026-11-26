@@ -88,8 +88,15 @@ func TestCSRF_BearerExemptionThroughStack(t *testing.T) {
 	status, _ = send(t, app, "POST", "/other", map[string]string{"Authorization": bearer})
 	assert.Equal(t, 403, status)
 
-	// No bearer header on /v1: CSRF applies.
-	status, _ = send(t, app, "POST", "/v1/_test", nil)
+	// No credentials at all on /v1: CSRF is skipped (no cookie to protect) and
+	// the token middleware answers with its 401.
+	status, body := send(t, app, "POST", "/v1/_test", nil)
+	assert.Equal(t, 401, status)
+	assert.Contains(t, body, `"code":"unauthorized"`)
+
+	// A session cookie without a Bearer header on /v1 keeps CSRF.
+	status, _ = send(t, app, "POST", "/v1/_test", map[string]string{
+		"Cookie": handlers.SessionCookieName + "=anything"})
 	assert.Equal(t, 403, status)
 }
 

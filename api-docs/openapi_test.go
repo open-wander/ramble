@@ -90,3 +90,47 @@ func TestOpenAPICurrentUser(t *testing.T) {
 	assert.True(t, org.Value.Nullable, "token_org nullable")
 	assert.ElementsMatch(t, []string{"username", "token_scope", "token_org", "token_expires_at"}, schema.Value.Required)
 }
+
+func TestOpenAPICreateResource(t *testing.T) {
+	doc := loadSpec(t)
+	item := doc.Paths.Find("/v1/resources")
+	require.NotNil(t, item)
+	op := item.Post
+	require.NotNil(t, op)
+	assert.Equal(t, "createResource", op.OperationID)
+
+	require.NotNil(t, op.Security)
+	var found bool
+	for _, req := range *op.Security {
+		if _, ok := req["bearerAuth"]; ok {
+			found = true
+		}
+	}
+	assert.True(t, found, "bearerAuth security")
+
+	require.NotNil(t, op.RequestBody)
+	body := op.RequestBody.Value.Content.Get("application/json")
+	require.NotNil(t, body)
+	assert.Equal(t, "#/components/schemas/handlers.CreateResourceRequest", body.Schema.Ref)
+
+	created := op.Responses.Value("201")
+	require.NotNil(t, created)
+	assert.Equal(t, "#/components/schemas/handlers.CreateResourceResponse",
+		created.Value.Content.Get("application/json").Schema.Ref)
+	for _, code := range []string{"400", "401", "403", "404", "409", "422", "429", "500"} {
+		r := op.Responses.Value(code)
+		if assert.NotNil(t, r, code) {
+			assert.Equal(t, errorSchemaRef, r.Value.Content.Get("application/json").Schema.Ref, code)
+		}
+	}
+
+	req := doc.Components.Schemas["handlers.CreateResourceRequest"]
+	require.NotNil(t, req)
+	assert.ElementsMatch(t, []string{"name", "type", "namespace", "repository_url", "version"}, req.Value.Required)
+
+	resp := doc.Components.Schemas["handlers.CreateResourceResponse"]
+	require.NotNil(t, resp)
+	assert.Contains(t, resp.Value.Required, "webhook_secret")
+	assert.Contains(t, resp.Value.Properties, "latest_version")
+	assert.Empty(t, resp.Value.AllOf, "embedded ResourceResponse must be flattened")
+}

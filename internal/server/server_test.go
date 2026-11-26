@@ -303,7 +303,7 @@ func TestIsWebhookRequest(t *testing.T) {
 	}
 }
 
-func TestIsTokenAPIRequest(t *testing.T) {
+func TestIsCookielessAPIRequest(t *testing.T) {
 	tests := []struct {
 		name   string
 		path   string
@@ -314,8 +314,9 @@ func TestIsTokenAPIRequest(t *testing.T) {
 		{"v1 bearer no cookie", "/v1/resources", "Bearer rmbl_x", "", true},
 		{"v1 bearer lowercase scheme", "/v1/resources", "bearer rmbl_x", "", true},
 		{"v1 bearer with session cookie", "/v1/resources", "Bearer rmbl_x", "session_id=abc", false},
-		{"v1 no bearer", "/v1/resources", "", "", false},
-		{"v1 basic scheme", "/v1/resources", "Basic abc", "", false},
+		{"v1 no auth header, no cookie", "/v1/resources", "", "", true},
+		{"v1 basic scheme, no cookie", "/v1/resources", "Basic abc", "", true},
+		{"v1 no auth header with session cookie", "/v1/resources", "", "session_id=abc", false},
 		{"v1x prefix", "/v1x/resources", "Bearer rmbl_x", "", false},
 		{"v1 no trailing path", "/v1", "Bearer rmbl_x", "", false},
 		{"uppercase V1", "/V1/resources", "Bearer rmbl_x", "", false},
@@ -326,7 +327,7 @@ func TestIsTokenAPIRequest(t *testing.T) {
 			app := fiber.New()
 			var got bool
 			app.Post("/*", func(c *fiber.Ctx) error {
-				got = isTokenAPIRequest(c)
+				got = isCookielessAPIRequest(c)
 				return nil
 			})
 			req := httptest.NewRequest("POST", tt.path, nil)
@@ -340,7 +341,7 @@ func TestIsTokenAPIRequest(t *testing.T) {
 				t.Fatal(err)
 			}
 			if got != tt.want {
-				t.Errorf("isTokenAPIRequest = %v, want %v", got, tt.want)
+				t.Errorf("isCookielessAPIRequest = %v, want %v", got, tt.want)
 			}
 		})
 	}

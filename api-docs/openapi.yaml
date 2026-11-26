@@ -14,6 +14,115 @@ components:
                 error:
                     $ref: '#/components/schemas/handlers.APIErrorBody'
             type: object
+        handlers.CreateResourceRequest:
+            properties:
+                description:
+                    example: MySQL on Nomad
+                    type: string
+                file_path:
+                    example: packs/mysql
+                    type: string
+                license:
+                    example: MIT
+                    type: string
+                name:
+                    example: mysql
+                    type: string
+                namespace:
+                    example: alice
+                    type: string
+                repository_url:
+                    example: https://github.com/alice/packs
+                    type: string
+                tags:
+                    example:
+                        - database
+                        - sql
+                    items:
+                        type: string
+                    type: array
+                type:
+                    enum:
+                        - pack
+                        - job
+                    example: pack
+                    type: string
+                version:
+                    example: v1.0.0
+                    type: string
+            required:
+                - name
+                - namespace
+                - repository_url
+                - type
+                - version
+            type: object
+        handlers.CreateResourceResponse:
+            properties:
+                created_at:
+                    format: date-time
+                    type: string
+                description:
+                    example: MySQL on Nomad
+                    type: string
+                file_path:
+                    example: packs/mysql
+                    type: string
+                id:
+                    example: 42
+                    type: integer
+                latest_version:
+                    example: v1.0.0
+                    type: string
+                license:
+                    example: MIT
+                    type: string
+                name:
+                    example: mysql
+                    type: string
+                namespace:
+                    example: alice
+                    type: string
+                repository_url:
+                    example: https://github.com/alice/packs
+                    type: string
+                tags:
+                    example:
+                        - database
+                        - sql
+                    items:
+                        type: string
+                    type: array
+                type:
+                    enum:
+                        - pack
+                        - job
+                    example: pack
+                    type: string
+                updated_at:
+                    format: date-time
+                    type: string
+                webhook_secret:
+                    type: string
+                webhook_url:
+                    example: https://ramble.openwander.org/resource/42/webhook
+                    type: string
+            required:
+                - created_at
+                - description
+                - file_path
+                - id
+                - latest_version
+                - license
+                - name
+                - namespace
+                - repository_url
+                - tags
+                - type
+                - updated_at
+                - webhook_secret
+                - webhook_url
+            type: object
         handlers.CurrentUserResponse:
             properties:
                 token_expires_at:
@@ -457,6 +566,78 @@ paths:
             summary: Search registry namespaces
             tags:
                 - nomad-pack
+    /v1/resources:
+        post:
+            description: Create a pack or job in the caller's personal namespace or in an organization the caller belongs to. Needs a write token. The response is the only one that includes webhook_secret.
+            operationId: createResource
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/handlers.CreateResourceRequest'
+                description: Resource
+                required: true
+                x-originalParamName: body
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.CreateResourceResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Forbidden
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Conflict
+                "422":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Unprocessable Entity
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Too Many Requests
+                "500":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/handlers.APIErrorResponse'
+                    description: Internal Server Error
+            security:
+                - bearerAuth: []
+            summary: Create a resource
+            tags:
+                - resources
     /v1/user:
         get:
             description: Identify the user a Bearer token belongs to and describe the token. Use it to check credentials.

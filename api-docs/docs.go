@@ -764,6 +764,94 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/resources": {
+            "post": {
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "description": "Create a pack or job in the caller's personal namespace or in an organization the caller belongs to. Needs a write token. The response is the only one that includes webhook_secret.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "resources"
+                ],
+                "summary": "Create a resource",
+                "operationId": "createResource",
+                "parameters": [
+                    {
+                        "description": "Resource",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CreateResourceRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CreateResourceResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.APIErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/user": {
             "get": {
                 "security": [
@@ -1245,6 +1333,150 @@ const docTemplate = `{
             "properties": {
                 "error": {
                     "$ref": "#/definitions/handlers.APIErrorBody"
+                }
+            }
+        },
+        "handlers.CreateResourceRequest": {
+            "type": "object",
+            "required": [
+                "name",
+                "namespace",
+                "repository_url",
+                "type",
+                "version"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "example": "MySQL on Nomad"
+                },
+                "file_path": {
+                    "type": "string",
+                    "example": "packs/mysql"
+                },
+                "license": {
+                    "type": "string",
+                    "example": "MIT"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "mysql"
+                },
+                "namespace": {
+                    "type": "string",
+                    "example": "alice"
+                },
+                "repository_url": {
+                    "type": "string",
+                    "example": "https://github.com/alice/packs"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "database",
+                        "sql"
+                    ]
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "pack",
+                        "job"
+                    ],
+                    "example": "pack"
+                },
+                "version": {
+                    "type": "string",
+                    "example": "v1.0.0"
+                }
+            }
+        },
+        "handlers.CreateResourceResponse": {
+            "type": "object",
+            "required": [
+                "created_at",
+                "description",
+                "file_path",
+                "id",
+                "latest_version",
+                "license",
+                "name",
+                "namespace",
+                "repository_url",
+                "tags",
+                "type",
+                "updated_at",
+                "webhook_secret",
+                "webhook_url"
+            ],
+            "properties": {
+                "created_at": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "description": {
+                    "type": "string",
+                    "example": "MySQL on Nomad"
+                },
+                "file_path": {
+                    "type": "string",
+                    "example": "packs/mysql"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 42
+                },
+                "latest_version": {
+                    "type": "string",
+                    "example": "v1.0.0"
+                },
+                "license": {
+                    "type": "string",
+                    "example": "MIT"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "mysql"
+                },
+                "namespace": {
+                    "type": "string",
+                    "example": "alice"
+                },
+                "repository_url": {
+                    "type": "string",
+                    "example": "https://github.com/alice/packs"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "database",
+                        "sql"
+                    ]
+                },
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "pack",
+                        "job"
+                    ],
+                    "example": "pack"
+                },
+                "updated_at": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "webhook_secret": {
+                    "type": "string"
+                },
+                "webhook_url": {
+                    "type": "string",
+                    "example": "https://ramble.openwander.org/resource/42/webhook"
                 }
             }
         },

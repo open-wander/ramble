@@ -17,6 +17,13 @@ const (
 	codeRateLimited       = "rate_limited"
 	codeNotFound          = "not_found"
 	codeMethodNotAllowed  = "method_not_allowed"
+	codeBadRequest        = "bad_request"
+	codeConflict          = "conflict"
+
+	codeInvalidName          = "invalid_name"
+	codeInvalidType          = "invalid_type"
+	codeInvalidRepositoryURL = "invalid_repository_url"
+	codeInvalidVersion       = "invalid_version"
 
 	codeInternal = "internal_error"
 
@@ -41,7 +48,7 @@ func APIError(c *fiber.Ctx, status int, code, message string) error {
 
 // IsAPIPath reports whether p is under /v1. It is case-insensitive because
 // Fiber routing is, and only selects the error format; it is not a security
-// check (see isTokenAPIRequest for the CSRF rule).
+// check (see isCookielessAPIRequest for the CSRF rule).
 func IsAPIPath(p string) bool {
 	p = strings.ToLower(p)
 	return p == "/v1" || strings.HasPrefix(p, "/v1/")
@@ -68,7 +75,7 @@ func APIErrorHandler(c *fiber.Ctx, err error) error {
 	if fe, ok := errors.AsType[*fiber.Error](err); ok {
 		switch fe.Code {
 		case fiber.StatusBadRequest:
-			status, code, msg = fe.Code, "bad_request", "bad request"
+			status, code, msg = fe.Code, codeBadRequest, "bad request"
 		case fiber.StatusForbidden:
 			status, code, msg = fe.Code, codeForbidden, "forbidden"
 		case fiber.StatusNotFound:

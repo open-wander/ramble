@@ -268,6 +268,8 @@ func registerRoutes(app *fiber.App) {
 	// would run too early. Share the one instance so the 120/min budget spans
 	// endpoints.
 
+	apiWriteLimiter := handlers.NewAPIWriteLimiter()
+
 	// Static files
 	app.Static("/public", "./public")
 	app.Static("/favicon.ico", "./public/favicon.ico")
@@ -420,6 +422,7 @@ func registerRoutes(app *fiber.App) {
 	app.Get("/v1/registries/search", searchLimiter, handlers.SearchRegistriesAPI)
 	app.Get("/v1/jobs", handlers.ListAllJobsAPI)
 	app.Get("/v1/jobs/search", searchLimiter, handlers.SearchJobsAPI)
+	app.Post("/v1/resources", handlers.RequireAPIToken(models.ScopeWrite), apiWriteLimiter, handlers.CreateResourceAPI)
 	// Unmatched /v1 paths answer with the JSON 404 instead of falling into the
 	// /:username catch-alls below. Register every future /v1 route above this.
 	app.All("/v1/*", handlers.APINotFound)
@@ -594,17 +597,18 @@ func trustedProxies(env string) []string {
 
 // isCSRFExempt reports whether CSRF is skipped for the request.
 func isCSRFExempt(c *fiber.Ctx) bool {
-	return isWebhookRequest(c) || isTokenAPIRequest(c)
+	return isWebhookRequest(c) || isCookielessAPIRequest(c)
 }
 
-// isTokenAPIRequest reports whether the request is a /v1 call authenticated
-// only by a Bearer header. With a session cookie present the request is
-// cookie-authenticated and keeps CSRF. The prefix check is exact and
+// isCookielessAPIRequest reports whether the request is a /v1 call without a
+// session cookie. Such a request carries no ambient credential for CSRF to
+// protect: it authenticates by Bearer token or not at all, and an
+// unauthenticated one must reach RequireAPIToken for its 401. With a session
+// cookie present the request keeps CSRF. The prefix check is exact and
 // case-sensitive so odd spellings fail closed.
-func isTokenAPIRequest(c *fiber.Ctx) bool {
+func isCookielessAPIRequest(c *fiber.Ctx) bool {
 	return strings.HasPrefix(c.Path(), "/v1/") &&
-		c.Cookies(handlers.SessionCookieName) == "" &&
-		handlers.HasBearerAuth(c)
+		c.Cookies(handlers.SessionCookieName) == ""
 }
 
 // resourceWebhookPath matches exactly /resource/<digits>/webhook; the digit

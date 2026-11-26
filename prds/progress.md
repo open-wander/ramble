@@ -971,3 +971,23 @@ personal-namespace uniqueness (NULLs distinct) nor org uniqueness across users -
 lacks create validation -> carried into 14.4 notes.
 Verified: local CI mirror all green (modverify, vet x2, staticcheck, actionlint, check-pins, gofmt, go fix x2,
 tests, openapi-check, gosec).
+
+## 2026-11-26 — 14.2 POST /v1/resources
+
+internal/handlers/api_resources.go: CreateResourceAPI (strict JSON: DisallowUnknownFields, trailing data -> 400),
+namespace resolver (own username -> personal, org name case-insensitive -> org; anything else 404 not_found,
+undistinguished), TokenAllowsOrg before the service, sentinel -> status/code map (422 invalid_*, 409 conflict,
+403 forbidden, else 500 logged), background fetch with the service-trimmed version, AuditLog resource.create.
+Types: CreateResourceRequest, ResourceResponse (tags always [], UTC times, webhook_url from GetBaseURL),
+CreateResourceResponse embeds ResourceResponse + webhook_secret (swag flattens; secret only on create).
+newResourceResponse(c, r) reused by later endpoints (callers preload Versions newest first). Codes added:
+bad_request, conflict, invalid_name/type/repository_url/version. server.go: apiWriteLimiter created ONCE in
+registerRoutes; POST /v1/resources = RequireAPIToken(write), apiWriteLimiter, CreateResourceAPI.
+USER DECISION: CSRF exemption widened from "cookie-less /v1 + Bearer" to "cookie-less /v1" (isCookielessAPIRequest)
+so a request with no credentials gets RequireAPIToken's 401 instead of a CSRF 403. Cookie-carrying /v1 requests
+keep CSRF (tested with and without Bearer; mutations of the cookie and prefix checks red). HasBearerAuth removed
+(unused).
+Advisor review: MINOR. Orchestrator fixed: CSRF/401 (above); dead CreateInput.Owner assignment removed; docs
+error table in status order. Logged, not fixed: no test pins that fetchVersionContent receives the trimmed
+version (async goroutine; mutation to req.Version survives).
+Verified: local CI mirror all green.
