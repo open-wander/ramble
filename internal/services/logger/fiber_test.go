@@ -158,3 +158,29 @@ func TestLevelForStatus(t *testing.T) {
 		}
 	}
 }
+
+func TestRequestLoggerTokenPrefix(t *testing.T) {
+	app, buf := newLoggedApp(t)
+	app.Get("/tok", func(c *fiber.Ctx) error {
+		c.Locals(LocalTokenPrefix, "rmbl_abcdefg")
+		return c.SendString("ok")
+	})
+	for _, tt := range []struct {
+		path string
+		want bool
+	}{{"/tok", true}, {"/ok", false}} {
+		buf.Reset()
+		_, err := app.Test(httptest.NewRequest("GET", tt.path, nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		line := logtest.Find(t, buf, "http.request")
+		if line == nil {
+			t.Fatalf("%s: no http.request line", tt.path)
+		}
+		got, has := line["token_prefix"]
+		if has != tt.want || (tt.want && got != "rmbl_abcdefg") {
+			t.Errorf("%s: token_prefix = %v (present %v), want present %v", tt.path, got, has, tt.want)
+		}
+	}
+}

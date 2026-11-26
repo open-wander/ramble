@@ -50,6 +50,7 @@ func validatePassword(password string) error {
 
 func InitSession() {
 	Store = session.New(session.Config{
+		KeyLookup:      "cookie:" + SessionCookieName,
 		Expiration:     24 * time.Hour,
 		CookieSecure:   os.Getenv("ENV") == "production", // Only send over HTTPS in production
 		CookieHTTPOnly: true,                             // Prevent XSS access to cookies

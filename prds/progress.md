@@ -795,3 +795,35 @@ Verified by orchestrator: go build, go vet, go test -tags=security ./... (18 ok,
 
 PATTERN: gorm - GORM on Postgres drops Limit() from UPDATE/DELETE; a test that limits an update touches every matching row.
 PATTERN: mutation - a mutation that makes the SQL or build error looks like a caught failure but proves nothing; check the failure is the assertion.
+
+## 2026-11-26 — 12.2 Bearer middleware
+
+New: internal/handlers/api_auth.go (RequireAPIToken(scope) panics on bad scope; bearerToken/HasBearerAuth;
+TokenAllowsOrg(c, *uint) + APIOrgForbidden(c); NewAPIWriteLimiter 120/min keyed by token ID, skips
+GET/HEAD/OPTIONS; LocalAPIToken, APITokenFromCtx), internal/handlers/api_errors.go (APIError, codes
+unauthorized/insufficient_scope/forbidden/email_unverified/rate_limited/internal_error).
+server.go: apitoken.Init next to resourcesvc.Init; useSecurityMiddleware/useSessionMiddleware extracted
+from Run() (same order) so tests use production wiring; isCSRFExempt = webhook || isTokenAPIRequest
+(/v1/ prefix exact, no session_id cookie, Bearer header). handlers.SessionCookieName exported, session
+KeyLookup pinned to it. logger.LocalTokenPrefix -> token_prefix on http.request. AuditLog adds via=token
+and token_id AFTER redactDetails (token_id matches the redaction filter).
+Middleware sets UserID (uint), User (models.User, IsAdmin forced false), APIToken; overwrites session
+locals when both cookie and token are present; calls TouchLastUsed (failure logged, not fatal).
+Advisor review: MINOR. Orchestrator fixed: #nosec G101 on msgInvalidToken -> renamed msgUnauthenticated
+(learning: rename, don't nosec); memberships load DB error now 500 internal_error, not 401; org-restricted
+tokens only load that org's membership (new test TestRequireAPIToken_OrgRestrictedTokenNarrowsMemberships;
+mutation dropping the filter -> red). Verified: build, vet -tags=security, go test -tags=security ./...
+(18 ok, exit 0), make gosec exit 0, Nosec count unchanged (37).
+
+RULES FOR 13.x/14.x/15.x handlers (from advisor risks):
+- Mount NewAPIWriteLimiter once per registerRoutes, chained AFTER RequireAPIToken (a group-level limiter
+  runs before auth and sees no token). Per-process memory store: limit is per replica.
+- Never mount RequireAPIToken via app.Use or on a group that covers /admin.
+- API handlers must never use an IsAdmin bypass or re-read IsAdmin from the DB (PostRetryFetch
+  resource_crud.go:361 and requests.go:506 do; do not reuse those paths as-is). FR-3.
+- Every handler that acts on an org-owned or personal target calls
+  `if !TokenAllowsOrg(c, target) { return APIOrgForbidden(c) }` (nil target = personal).
+- Adding CORS with credentials later would undo the CSRF exemption's safety; needs review.
+
+PATTERN: fiber - a helper that writes a response and returns c.JSON's nil error cannot signal refusal; use a bool check plus a separate responder.
+PATTERN: audit - keys containing "token" are redacted by redactDetails; add trusted fields after redaction.

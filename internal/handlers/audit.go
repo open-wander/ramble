@@ -156,6 +156,14 @@ func AuditLog(c *fiber.Ctx, action string, targetType string, targetID uint, tar
 	}
 
 	details = redactDetails(details)
+	// Added after redaction: "token_id" matches the sensitive-key filter.
+	if tok, ok := APITokenFromCtx(c); ok {
+		if details == nil {
+			details = map[string]any{}
+		}
+		details["via"] = "token"
+		details["token_id"] = tok.ID
+	}
 	detailsJSON := ""
 	if details != nil {
 		if b, err := json.Marshal(details); err == nil {
