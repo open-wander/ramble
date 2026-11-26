@@ -1060,3 +1060,36 @@ func TestDeleteResource_ResourceNotFound(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 404, resp.StatusCode)
 }
+
+func TestPostNewVersion_DuplicateIsRejected(t *testing.T) {
+	defer cleanupTestData(t)
+
+	user := createTestUser(t, "versiondup")
+	res := models.NomadResource{Name: "version-dup-pack", Type: models.ResourceTypePack, UserID: user.ID, RepositoryURL: failFastRepoURL}
+	require.NoError(t, database.DB.Create(&res).Error)
+	require.NoError(t, database.DB.Create(&models.ResourceVersion{ResourceID: res.ID, Version: "v1.0.0", FetchStatus: models.FetchStatusCompleted}).Error)
+
+	app := setupTestApp()
+	app.Use(func(c *fiber.Ctx) error {
+		sess, _ := Store.Get(c)
+		sess.Set("user_id", user.ID)
+		sess.Save()
+		c.Locals("UserID", user.ID)
+		c.Locals("User", user)
+		return c.Next()
+	})
+	app.Post("/resource/:id/version", PostNewVersion)
+
+	req := httptest.NewRequest("POST", "/resource/"+toString(res.ID)+"/version", strings.NewReader("version=v1.0.0"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	body, _ := io.ReadAll(resp.Body)
+	assert.Equal(t, 400, resp.StatusCode)
+	assert.Contains(t, string(body), "already exists")
+	assert.Len(t, versionRowsOf(t, res.ID, "v1.0.0"), 1)
+
+	var audits int64
+	require.NoError(t, database.DB.Model(&models.AuditLog{}).Where("action = ? AND target_id = ?", "resource.version_create", res.ID).Count(&audits).Error)
+	assert.Zero(t, audits)
+}

@@ -1040,3 +1040,19 @@ invalid_tags. Not in IsInputError (web unchanged). Two older API tests updated t
 Part 3: shared-limiter test cycles POST, PATCH, DELETE; 121st -> 429.
 Advisor review: MINOR (cosmetic message - fixed). Verified: local CI mirror all green.
 NOTE for 17.2: provider tags attribute = list/set of canonical lowercase strings; the API never normalises.
+
+## 2026-11-26 — 14.5 Versions, retry, webhook secret; Phase 14 collapsed
+
+Service fetch.go: AddVersion (trim + shared validateVersion, AuthorizeResourceAction member, tx with FOR UPDATE on
+the resource row before the duplicate check - resource_versions has NO unique index on (resource_id, version)),
+RetryVersion (one conditional UPDATE WHERE fetch_status = failed; RowsAffected 0 -> ErrVersionNotFound or
+ErrVersionNotFailed), ListVersions (no content columns). CreateVersion removed. ResetWebhookSecret returns the
+secret and updates only webhook_secret. Sentinels ErrDuplicateVersion, ErrVersionNotFound, ErrVersionNotFailed.
+Handlers api_resource_versions.go: list (read), add 202, retry 202/409/404 (url.PathUnescape on the segment),
+rotate 200 {webhook_secret}. Web PostNewVersion uses AddVersion (duplicate -> 400, audit resource.version_create).
+Advisor review: MINOR. Orchestrator: loadResourceForWrite renamed loadResourceForToken (also used by reads).
+Logged for the sweep: TestResetWebhookSecret_ChangesOnlySecret cannot tell a single-column update from First+Save
+(needs a concurrent write between read and write); RetryVersion reload picks the newest duplicate row if
+duplicates pre-exist. Schema follow-up candidates: unique index on resource_versions (resource_id, version);
+idx_user_res_name personal-namespace NULL gap.
+Verified: local CI mirror all green. Phase 14 collapsed.

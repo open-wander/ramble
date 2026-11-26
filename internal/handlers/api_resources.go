@@ -302,10 +302,10 @@ func renderResourceAPI(c *fiber.Ctx, load func(*resource.ResourceService) (*mode
 	return c.JSON(newResourceResponse(c, *r))
 }
 
-// loadResourceForWrite loads the target of a write by the :id parameter and
+// loadResourceForToken loads the target resource by the :id parameter and
 // applies the token's organisation restriction, answering 404 before 403 as
 // the read endpoints do. ok=false means the response has been written.
-func loadResourceForWrite(c *fiber.Ctx) (r *models.NomadResource, ok bool, err error) {
+func loadResourceForToken(c *fiber.Ctx) (r *models.NomadResource, ok bool, err error) {
 	id, perr := paramID(c, "id")
 	if perr != nil {
 		return nil, false, APIError(c, fiber.StatusNotFound, codeNotFound, "resource not found")
@@ -367,7 +367,7 @@ func UpdateResourceAPI(c *fiber.Ctx) error {
 		}
 	}
 
-	r, ok, err := loadResourceForWrite(c)
+	r, ok, err := loadResourceForToken(c)
 	if !ok {
 		return err
 	}
@@ -422,7 +422,7 @@ func DeleteResourceAPI(c *fiber.Ctx) error {
 	if !uok || !tokOK {
 		return APIError(c, fiber.StatusInternalServerError, codeInternal, "internal error")
 	}
-	r, ok, err := loadResourceForWrite(c)
+	r, ok, err := loadResourceForToken(c)
 	if !ok {
 		return err
 	}

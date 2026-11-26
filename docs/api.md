@@ -178,6 +178,101 @@ A deleted name can be reused: creating a resource (here or in the web UI) with t
 | 404 | `not_found` | The ID does not exist, or the resource was already deleted |
 | 429 | `rate_limited` | Write rate limit exceeded |
 
+### List Versions of a Resource
+
+`GET /v1/resources/{id}/versions` lists the versions of a resource, newest first. It needs a `read` token.
+
+```bash
+curl https://ramble.openwander.org/v1/resources/42/versions \
+  -H "Authorization: Bearer <your-token>"
+```
+
+```json
+[
+  {
+    "version": "v1.1.0",
+    "fetch_status": "completed",
+    "fetch_error": "",
+    "created_at": "2027-01-20T09:00:00Z"
+  }
+]
+```
+
+`fetch_status` is `pending`, `fetching`, `completed` or `failed`; `fetch_error` explains a failed fetch and is empty otherwise.
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 401 | `unauthorized` | Missing, invalid or expired token |
+| 403 | `forbidden` | The token is restricted to another organisation |
+| 404 | `not_found` | The ID does not exist, or the resource was deleted |
+
+### Add a Version
+
+`POST /v1/resources/{id}/versions` adds a version. It needs a `write` token and counts against the write rate limit. Any member of the owning organisation may add versions; a personal resource can only be changed by its owner.
+
+```bash
+curl -X POST https://ramble.openwander.org/v1/resources/42/versions \
+  -H "Authorization: Bearer <your-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"version": "v1.1.0"}'
+```
+
+`version` is required and at most 64 characters (surrounding whitespace is trimmed). The response is `202` with the new version in the shape of the list above, with `fetch_status` `pending`; the content is fetched from the repository in the background. Poll the list to see the result.
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 400 | `bad_request` | Malformed JSON, unknown field or trailing data |
+| 401 | `unauthorized` | Missing, invalid or expired token |
+| 403 | `insufficient_scope` | The token is a `read` token |
+| 403 | `forbidden` | You are not a member of the owning organisation, do not own the personal resource, or the token is restricted to another organisation |
+| 404 | `not_found` | The ID does not exist, or the resource was deleted |
+| 409 | `conflict` | The version already exists |
+| 422 | `invalid_version` | `version` is empty or longer than 64 characters |
+| 429 | `rate_limited` | Write rate limit exceeded |
+
+### Retry a Version Fetch
+
+`POST /v1/resources/{id}/versions/{version}/retry` fetches the content of a failed version again. It needs a `write` token and counts against the write rate limit. `{version}` is URL-encoded: write `v1.0.0+build` as `v1.0.0%2Bbuild`.
+
+```bash
+curl -X POST https://ramble.openwander.org/v1/resources/42/versions/v1.1.0/retry \
+  -H "Authorization: Bearer <your-token>"
+```
+
+The version is reset to `pending` and fetched in the background; the response is `202` with the version. Only a `failed` version can be retried. Of two concurrent retries, one is accepted and the other gets `409`.
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 401 | `unauthorized` | Missing, invalid or expired token |
+| 403 | `insufficient_scope` | The token is a `read` token |
+| 403 | `forbidden` | You are not a member of the owning organisation, do not own the personal resource, or the token is restricted to another organisation |
+| 404 | `not_found` | The resource or the version does not exist |
+| 409 | `conflict` | The version is not in the `failed` state |
+| 429 | `rate_limited` | Write rate limit exceeded |
+
+### Rotate the Webhook Secret
+
+`POST /v1/resources/{id}/webhook-secret` replaces the webhook secret. It needs a `write` token and counts against the write rate limit.
+
+```bash
+curl -X POST https://ramble.openwander.org/v1/resources/42/webhook-secret \
+  -H "Authorization: Bearer <your-token>"
+```
+
+```json
+{"webhook_secret": "<secret>"}
+```
+
+The new secret is returned only in this response; the old one stops working at once. Update the secret in your repository's webhook settings.
+
+| Status | Code | Cause |
+|--------|------|-------|
+| 401 | `unauthorized` | Missing, invalid or expired token |
+| 403 | `insufficient_scope` | The token is a `read` token |
+| 403 | `forbidden` | You are not a member of the owning organisation, do not own the personal resource, or the token is restricted to another organisation |
+| 404 | `not_found` | The ID does not exist, or the resource was deleted |
+| 429 | `rate_limited` | Write rate limit exceeded |
+
 ## Global Endpoints
 
 ### List All Packs

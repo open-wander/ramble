@@ -123,6 +123,14 @@ definitions:
     - webhook_secret
     - webhook_url
     type: object
+  handlers.CreateVersionRequest:
+    properties:
+      version:
+        example: v1.1.0
+        type: string
+    required:
+    - version
+    type: object
   handlers.CurrentUserResponse:
     properties:
       token_expires_at:
@@ -280,6 +288,29 @@ definitions:
     - updated_at
     - webhook_url
     type: object
+  handlers.ResourceVersionResponse:
+    properties:
+      created_at:
+        format: date-time
+        type: string
+      fetch_error:
+        type: string
+      fetch_status:
+        enum:
+        - pending
+        - fetching
+        - completed
+        - failed
+        type: string
+      version:
+        example: v1.1.0
+        type: string
+    required:
+    - created_at
+    - fetch_error
+    - fetch_status
+    - version
+    type: object
   handlers.UpdateResourceRequest:
     properties:
       description:
@@ -301,6 +332,13 @@ definitions:
         items:
           type: string
         type: array
+    type: object
+  handlers.WebhookSecretResponse:
+    properties:
+      webhook_secret:
+        type: string
+    required:
+    - webhook_secret
     type: object
 host: ramble.openwander.org
 info:
@@ -1314,6 +1352,208 @@ paths:
       security:
       - bearerAuth: []
       summary: Update a resource
+      tags:
+      - resources
+  /v1/resources/{id}/versions:
+    get:
+      description: List the versions of a pack or job, newest first, with the state
+        of each background content fetch. Needs a read token.
+      operationId: listResourceVersions
+      parameters:
+      - description: Resource ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handlers.ResourceVersionResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: List the versions of a resource
+      tags:
+      - resources
+    post:
+      consumes:
+      - application/json
+      description: Add a version to a pack or job. The version is created with fetch_status
+        pending and its content is fetched from the repository in the background.
+        Version must be 1-64 characters. Organization members may add versions. Needs
+        a write token.
+      operationId: createResourceVersion
+      parameters:
+      - description: Resource ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Version
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateVersionRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/handlers.ResourceVersionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "422":
+          description: invalid_version
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Add a version to a resource
+      tags:
+      - resources
+  /v1/resources/{id}/versions/{version}/retry:
+    post:
+      description: Fetch the content of a failed version again. The version is reset
+        to pending and fetched in the background. A version that is not failed answers
+        409. Organization members may retry. Needs a write token.
+      operationId: retryResourceVersion
+      parameters:
+      - description: Resource ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Version, URL-encoded
+        in: path
+        name: version
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/handlers.ResourceVersionResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Retry the fetch of a version
+      tags:
+      - resources
+  /v1/resources/{id}/webhook-secret:
+    post:
+      description: Replace the webhook secret of a pack or job. The new secret is
+        returned in this response only; the old one stops working at once. Organization
+        members may rotate. Needs a write token.
+      operationId: rotateWebhookSecret
+      parameters:
+      - description: Resource ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.WebhookSecretResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handlers.APIErrorResponse'
+      security:
+      - bearerAuth: []
+      summary: Rotate the webhook secret
       tags:
       - resources
   /v1/user:

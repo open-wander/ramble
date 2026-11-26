@@ -38,6 +38,10 @@ func resourceAPIApp(t *testing.T) (*fiber.App, *lockedBuffer) {
 	app.Patch("/v1/resources/:id<int>", RequireAPIToken(models.ScopeWrite), UpdateResourceAPI)
 	app.Delete("/v1/resources/:id<int>", RequireAPIToken(models.ScopeWrite), DeleteResourceAPI)
 	app.Get("/v1/namespaces/:namespace/resources/:name", RequireAPIToken(models.ScopeRead), GetResourceByNameAPI)
+	app.Get("/v1/resources/:id<int>/versions", RequireAPIToken(models.ScopeRead), ListResourceVersionsAPI)
+	app.Post("/v1/resources/:id<int>/versions", RequireAPIToken(models.ScopeWrite), CreateResourceVersionAPI)
+	app.Post("/v1/resources/:id<int>/versions/:version/retry", RequireAPIToken(models.ScopeWrite), RetryResourceVersionAPI)
+	app.Post("/v1/resources/:id<int>/webhook-secret", RequireAPIToken(models.ScopeWrite), RotateWebhookSecretAPI)
 	return app, buf
 }
 

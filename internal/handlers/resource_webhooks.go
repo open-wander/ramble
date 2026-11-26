@@ -341,7 +341,7 @@ func PostResetWebhookSecret(c *fiber.Ctx) error {
 	currentUserID := sess.Get("user_id").(uint)
 
 	// Reset webhook secret via service
-	if err := resource.Service.WithContext(c.UserContext()).ResetWebhookSecret(resourceID, currentUserID); err != nil {
+	if _, err := resource.Service.WithContext(c.UserContext()).ResetWebhookSecret(resourceID, currentUserID); err != nil {
 		if errors.Is(err, resource.ErrUnauthorized) {
 			return c.Status(403).SendString("Unauthorized")
 		}

@@ -57,7 +57,12 @@ func validateCreateInput(input CreateInput) error {
 	if err := security.ValidateRepositoryURL(input.RepositoryURL); err != nil {
 		return ErrInvalidRepositoryURL
 	}
-	if v := strings.TrimSpace(input.Version); v == "" || len(input.Version) > maxVersionLen {
+	return validateVersion(input.Version)
+}
+
+// validateVersion checks a version string that has already been trimmed.
+func validateVersion(v string) error {
+	if strings.TrimSpace(v) == "" || len(v) > maxVersionLen {
 		return ErrInvalidVersion
 	}
 	return nil

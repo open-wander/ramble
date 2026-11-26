@@ -167,3 +167,48 @@ func TestWriteResourceRoutes_SharedWriteLimiter(t *testing.T) {
 	assert.Equal(t, 429, status, body)
 	assert.Contains(t, body, `"code":"rate_limited"`)
 }
+
+func TestVersionAndWebhookRoutes_Middleware(t *testing.T) {
+	apitoken.Init(database.DB)
+	resource.Init(database.DB)
+	u, readTok, _ := mkUserTok(t, "alice", models.ScopeRead, false)
+	_, writeTok, _ := mkUserTok(t, "bob", models.ScopeWrite, false)
+	app := stackApp(t, true)
+	r := models.NomadResource{Name: "route-version-res", Type: models.ResourceType("pack"), UserID: u.ID, WebhookSecret: "keep-secret"}
+	require.NoError(t, database.DB.Create(&r).Error)
+	require.NoError(t, database.DB.Create(&models.ResourceVersion{ResourceID: r.ID, Version: "v1.0.0", FetchStatus: models.FetchStatusFailed}).Error)
+	base := "/v1/resources/" + strconv.FormatUint(uint64(r.ID), 10)
+
+	tests := []struct {
+		name, method, path, token, body string
+		status                          int
+		code                            string
+	}{
+		{"list no token", "GET", base + "/versions", "", "", 401, "unauthorized"},
+		{"create no token", "POST", base + "/versions", "", `{"version":"v2"}`, 401, "unauthorized"},
+		{"create read token", "POST", base + "/versions", readTok, `{"version":"v2"}`, 403, "insufficient_scope"},
+		{"create foreign user", "POST", base + "/versions", writeTok, `{"version":"v2"}`, 403, "forbidden"},
+		{"retry no token", "POST", base + "/versions/v1.0.0/retry", "", "", 401, "unauthorized"},
+		{"retry read token", "POST", base + "/versions/v1.0.0/retry", readTok, "", 403, "insufficient_scope"},
+		{"retry foreign user", "POST", base + "/versions/v1.0.0/retry", writeTok, "", 403, "forbidden"},
+		{"secret no token", "POST", base + "/webhook-secret", "", "", 401, "unauthorized"},
+		{"secret read token", "POST", base + "/webhook-secret", readTok, "", 403, "insufficient_scope"},
+		{"secret foreign user", "POST", base + "/webhook-secret", writeTok, "", 403, "forbidden"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			status, resp := sendBody(t, app, tt.method, tt.path, tt.token, tt.body)
+			assert.Equal(t, tt.status, status, resp)
+			assert.Contains(t, resp, `"code":"`+tt.code+`"`)
+		})
+	}
+	var got models.NomadResource
+	require.NoError(t, database.DB.First(&got, r.ID).Error)
+	assert.Equal(t, "keep-secret", got.WebhookSecret)
+	var n int64
+	require.NoError(t, database.DB.Model(&models.ResourceVersion{}).Where("resource_id = ?", r.ID).Count(&n).Error)
+	assert.EqualValues(t, 1, n)
+	var v models.ResourceVersion
+	require.NoError(t, database.DB.Where("resource_id = ?", r.ID).First(&v).Error)
+	assert.Equal(t, models.FetchStatusFailed, v.FetchStatus)
+}

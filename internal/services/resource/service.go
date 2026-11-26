@@ -97,7 +97,10 @@ type ResourceServicer interface {
 	ValidateOwnership(resourceID, userID uint) (bool, error)
 	ValidateOrgMembership(userID, orgID uint) (bool, error)
 	GenerateWebhookSecret() (string, error)
-	ResetWebhookSecret(resourceID, userID uint) error
+	ResetWebhookSecret(resourceID, userID uint) (string, error)
+	ListVersions(resourceID uint) ([]models.ResourceVersion, error)
+	AddVersion(resourceID, userID uint, version string) (*models.ResourceVersion, error)
+	RetryVersion(resourceID, userID uint, version string) (*models.ResourceVersion, error)
 	// AuthorizeResourceAction checks whether userID may perform an action on the
 	// given resource. Pass requireOwner=true for destructive actions (delete).
 	// Returns ErrResourceNotFound or ErrUnauthorized as appropriate.
@@ -404,29 +407,26 @@ func (s *ResourceService) RecordFetchFailed(resourceID uint, version, errMsg str
 	return nil
 }
 
-// ResetWebhookSecret resets the webhook secret for a resource.
-// Org members (not just owners) may reset the secret; personal resources
-// require the owning user.
-func (s *ResourceService) ResetWebhookSecret(resourceID, userID uint) error {
+// ResetWebhookSecret replaces the webhook secret of a resource and returns the
+// new value, which is shown to the caller once. Org members (not just owners)
+// may reset the secret; personal resources require the owning user. Only the
+// webhook_secret column (and updated_at) is written.
+func (s *ResourceService) ResetWebhookSecret(resourceID, userID uint) (string, error) {
 	if err := s.AuthorizeResourceAction(resourceID, userID, false); err != nil {
-		return err
+		return "", err
 	}
 
-	var resource models.NomadResource
-	if err := s.db.First(&resource, resourceID).Error; err != nil {
-		return ErrResourceNotFound
-	}
-
-	// Generate new secret
 	secret, err := s.GenerateWebhookSecret()
 	if err != nil {
-		return fmt.Errorf("could not generate webhook secret: %w", err)
+		return "", fmt.Errorf("could not generate webhook secret: %w", err)
 	}
 
-	resource.WebhookSecret = secret
-	if err := s.db.Save(&resource).Error; err != nil {
-		return fmt.Errorf("failed to save resource: %w", err)
+	res := s.db.Model(&models.NomadResource{}).Where("id = ?", resourceID).Update("webhook_secret", secret)
+	if res.Error != nil {
+		return "", fmt.Errorf("failed to save webhook secret: %w", res.Error)
 	}
-
-	return nil
+	if res.RowsAffected == 0 {
+		return "", ErrResourceNotFound
+	}
+	return secret, nil
 }

@@ -145,22 +145,28 @@ func PostNewVersion(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).SendString("Unauthorized")
 	}
 
-	if authErr := resource.Service.WithContext(c.UserContext()).AuthorizeResourceAction(id, currentUserID, false); authErr != nil {
-		if errors.Is(authErr, resource.ErrResourceNotFound) {
+	svc := resource.Service.WithContext(c.UserContext())
+	version, err := svc.AddVersion(id, currentUserID, versionStr)
+	if err != nil {
+		switch {
+		case errors.Is(err, resource.ErrResourceNotFound):
 			return c.Status(404).SendString("Resource not found")
+		case errors.Is(err, resource.ErrUnauthorized):
+			return c.Status(403).SendString("You don't have permission to add versions to this resource")
+		case errors.Is(err, resource.ErrInvalidVersion):
+			return c.Status(400).SendString("Version is required and must be at most 64 characters")
+		case errors.Is(err, resource.ErrDuplicateVersion):
+			return c.Status(400).SendString("Version " + strings.TrimSpace(versionStr) + " already exists")
 		}
-		return c.Status(403).SendString("You don't have permission to add versions to this resource")
+		return c.Status(500).SendString("Could not add version")
 	}
 
 	var res models.NomadResource
 	if err := reqDB(c).First(&res, id).Error; err != nil {
 		return c.Status(404).SendString("Resource not found")
 	}
-	version := models.ResourceVersion{ResourceID: id, Version: versionStr}
-	if err := reqDB(c).Create(&version).Error; err != nil {
-		return c.Status(500).SendString("Could not add version")
-	}
-	go fetchVersionContent(detachedLogCtx(c), res.ID, versionStr, res.RepositoryURL, string(res.Type), res.Name, res.FilePath)
+	AuditLog(c, "resource.version_create", "resource", res.ID, res.Name, map[string]any{"version": version.Version})
+	go fetchVersionContent(detachedLogCtx(c), res.ID, version.Version, res.RepositoryURL, string(res.Type), res.Name, res.FilePath)
 	SetFlash(c, "success", "Version "+version.Version+" added!")
 	c.Set("HX-Refresh", "true")
 	return c.SendStatus(200)
