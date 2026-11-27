@@ -249,6 +249,32 @@ func TestProcessTagEvent_NewVersion(t *testing.T) {
 	assert.Equal(t, "v2.0.0", version.Version)
 }
 
+func TestProcessTagEvent_InvalidVersion(t *testing.T) {
+	service := NewResourceService(database.DB)
+
+	user := createTestUser(t, "badtaguser")
+	defer database.DB.Delete(&user)
+
+	input := CreateInput{
+		Name:          "badtag-test",
+		Type:          "pack",
+		Version:       "v1.0.0",
+		RepositoryURL: "https://github.com/test/repo",
+	}
+	resource, err := service.CreateResource(input, user.ID, nil)
+	require.NoError(t, err)
+	defer database.DB.Delete(&resource)
+
+	for _, tag := range []string{"v1.tar.gz#/../../..", "../x", "release/v1", "a b", "v1\x00"} {
+		created, err := service.ProcessTagEvent(resource.ID, tag)
+		require.ErrorIs(t, err, ErrInvalidVersion, tag)
+		assert.False(t, created)
+	}
+	var n int64
+	require.NoError(t, database.DB.Model(&models.ResourceVersion{}).Where("resource_id = ?", resource.ID).Count(&n).Error)
+	assert.EqualValues(t, 1, n)
+}
+
 func TestProcessTagEvent_ExistingVersion(t *testing.T) {
 	service := NewResourceService(database.DB)
 

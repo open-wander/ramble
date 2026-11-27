@@ -154,7 +154,7 @@ func PostNewVersion(c *fiber.Ctx) error {
 		case errors.Is(err, resource.ErrUnauthorized):
 			return c.Status(403).SendString("You don't have permission to add versions to this resource")
 		case errors.Is(err, resource.ErrInvalidVersion):
-			return c.Status(400).SendString("Version is required and must be at most 64 characters")
+			return c.Status(400).SendString("Version is required, at most 64 characters, and may contain only letters, digits, dots, dashes, underscores and plus signs")
 		case errors.Is(err, resource.ErrDuplicateVersion):
 			return c.Status(400).SendString("Version " + strings.TrimSpace(versionStr) + " already exists")
 		}

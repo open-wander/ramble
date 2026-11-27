@@ -20,7 +20,7 @@ var (
 	ErrInvalidName          = errors.New("name must be 1-64 characters: letters, digits, dot, dash or underscore, starting with a letter or digit")
 	ErrInvalidType          = errors.New("type must be pack or job")
 	ErrInvalidRepositoryURL = errors.New("repository URL must be an https URL on an allowed git host")
-	ErrInvalidVersion       = errors.New("version is required and must be at most 64 characters")
+	ErrInvalidVersion       = errors.New("version is required, at most 64 characters, and may contain only letters, digits, dots, dashes, underscores and plus signs")
 	ErrDuplicateName        = errors.New("a resource with this name already exists in this namespace")
 	ErrOrgNotFound          = errors.New("organization not found")
 	ErrNotOrgMember         = errors.New("you must be a member of this organization to create resources in it")
@@ -61,7 +61,7 @@ func validateCreateInput(input CreateInput) error {
 
 // validateVersion checks a version string that has already been trimmed.
 func validateVersion(v string) error {
-	if strings.TrimSpace(v) == "" || len(v) > maxVersionLen {
+	if strings.TrimSpace(v) == "" || len(v) > maxVersionLen || !names.IsValidVersion(v) {
 		return ErrInvalidVersion
 	}
 	return nil

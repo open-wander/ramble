@@ -97,12 +97,21 @@ func runPackRun(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("no versions available for pack: %s/%s", namespace, name)
 			}
 			version = detail.Versions[0].Version
-			fmt.Printf("Using latest version: %s\n", version)
+			fmt.Printf("Using latest version: %s\n", pack.Printable(version))
+		}
+
+		// Validate every component before any cache path or lookup uses it.
+		if _, err := cache.PackPath(registryURL, namespace, name, version); err != nil {
+			return err
 		}
 
 		// Check cache
 		if cache.IsCached(registryURL, namespace, name, version) {
-			packPath, _ = cache.Load(registryURL, namespace, name, version)
+			var err error
+			packPath, err = cache.Load(registryURL, namespace, name, version)
+			if err != nil {
+				return err
+			}
 			fmt.Printf("Using cached pack: %s\n", packPath)
 		} else {
 			// Get pack detail for download URL
@@ -120,10 +129,10 @@ func runPackRun(cmd *cobra.Command, args []string) error {
 				}
 			}
 			if downloadURL == "" {
-				return fmt.Errorf("version not found: %s", version)
+				return fmt.Errorf("version not found: %s", pack.Printable(version))
 			}
 
-			fmt.Printf("Downloading pack %s/%s@%s...\n", namespace, name, version)
+			fmt.Printf("Downloading pack %s/%s@%s...\n", pack.Printable(namespace), pack.Printable(name), pack.Printable(version))
 			packPath, err = cache.Store(registryURL, namespace, name, version, downloadURL)
 			if err != nil {
 				return fmt.Errorf("failed to download pack: %w", err)

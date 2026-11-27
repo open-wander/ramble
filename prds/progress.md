@@ -1247,3 +1247,9 @@ PATTERN: provider - tfplugindocs needs a real terraform binary (an OpenTofu shim
 - PATTERN: [web] - An edit form `<select>` with no `selected` option silently submits its first option. Every select bound to an existing value must mark the current one, and the server must treat a missing value as "unchanged".
 - PATTERN: [ci] - Repository-level secrets reach every branch a Write collaborator pushes. Put deploy, signing and App keys in an environment with required reviewers, and protect release tags with a tag ruleset.
 - PATTERN: [auth] - Credentials derived from a session (API tokens) must be revoked by account recovery (password reset or change).
+
+## 2026-11-27 - 18.1: version path traversal (CLI cache)
+
+- Shared rule names.IsValidVersion on every server write path, including the webhook, which used to insert tags directly and now goes through ProcessTagEvent. Tags with `/` are rejected. CLI validates every registry-supplied path component and writes through os.OpenRoot.
+- Review MINOR: the reproduce-first test was written against the new signature, so it never ran red on the old code. The security review skeptic had reproduced the escape with a scratch test, and the reviewer confirmed by mutation that the regression tests guard the fix. A rejected webhook tag left LastWebhookStatus=success; fixed with a test that a mutation turns red.
+- PATTERN: [security] - os.OpenRoot (Go 1.24+) confines every write under a root, including through symlinks; use it for any client cache built from server-supplied names.

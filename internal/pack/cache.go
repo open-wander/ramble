@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"rmbl/internal/names"
 	"rmbl/internal/security"
 )
 
@@ -37,22 +38,86 @@ func getCacheDir() string {
 	return filepath.Join(home, ".cache", "ramble", "packs")
 }
 
-// PackPath returns the path where a pack would be cached
-func (c *Cache) PackPath(registry, namespace, name, version string) string {
-	host := urlToHost(registry)
-	return filepath.Join(c.Dir, host, namespace, name, version)
+// maxSegmentLen caps a namespace, name or host used as a cache path segment.
+const maxSegmentLen = 253
+
+// validateSegment checks that a registry-supplied value is safe to use as a
+// single directory name. The field name is used in the error.
+func validateSegment(field, v string) error {
+	bad := v == "" || len(v) > maxSegmentLen || v == "." || v == ".." ||
+		!filepath.IsLocal(v) || strings.ContainsAny(v, "/\\:")
+	if !bad {
+		for _, r := range v {
+			if r < 0x20 || r == 0x7f {
+				bad = true
+				break
+			}
+		}
+	}
+	if bad {
+		return fmt.Errorf("invalid %s %q from registry", field, Printable(v))
+	}
+	return nil
 }
 
-// IsCached checks if a pack is already cached
+// validatePackRef checks every registry-supplied component of a pack
+// reference before any path or URL is built from it.
+func validatePackRef(host, namespace, name, version string) error {
+	if err := validateSegment("registry host", host); err != nil {
+		return err
+	}
+	if err := validateSegment("namespace", namespace); err != nil {
+		return err
+	}
+	if err := validateSegment("name", name); err != nil {
+		return err
+	}
+	if !names.IsValidVersion(version) {
+		return fmt.Errorf("invalid version %q from registry", Printable(version))
+	}
+	return nil
+}
+
+// packRel validates the reference and returns its cache-relative path.
+func packRel(registry, namespace, name, version string) (string, error) {
+	host := strings.ReplaceAll(urlToHost(registry), ":", "_")
+	if err := validatePackRef(host, namespace, name, version); err != nil {
+		return "", err
+	}
+	rel := filepath.Join(host, namespace, name, version)
+	if !filepath.IsLocal(rel) {
+		return "", fmt.Errorf("invalid pack reference %q", Printable(rel))
+	}
+	return rel, nil
+}
+
+// PackPath returns the path where a pack would be cached. It fails when any
+// component could place the path outside the cache directory.
+func (c *Cache) PackPath(registry, namespace, name, version string) (string, error) {
+	rel, err := packRel(registry, namespace, name, version)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(c.Dir, rel), nil
+}
+
+// IsCached checks if a pack is already cached. An invalid reference is never
+// cached.
 func (c *Cache) IsCached(registry, namespace, name, version string) bool {
-	path := c.PackPath(registry, namespace, name, version)
-	_, err := os.Stat(filepath.Join(path, "metadata.hcl"))
+	path, err := c.PackPath(registry, namespace, name, version)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(filepath.Join(path, "metadata.hcl"))
 	return err == nil
 }
 
 // Load loads a cached pack
 func (c *Cache) Load(registry, namespace, name, version string) (string, error) {
-	path := c.PackPath(registry, namespace, name, version)
+	path, err := c.PackPath(registry, namespace, name, version)
+	if err != nil {
+		return "", err
+	}
 	if !c.IsCached(registry, namespace, name, version) {
 		return "", fmt.Errorf("pack not cached")
 	}
@@ -61,14 +126,12 @@ func (c *Cache) Load(registry, namespace, name, version string) (string, error) 
 
 // Store downloads and caches a pack from a tarball URL
 func (c *Cache) Store(registry, namespace, name, version, tarballURL string) (string, error) {
-	packPath := c.PackPath(registry, namespace, name, version)
-
-	// Create cache directory
-	if err := os.MkdirAll(packPath, 0750); err != nil {
-		return "", fmt.Errorf("failed to create cache directory: %w", err)
+	// Validate everything before touching the filesystem.
+	rel, err := packRel(registry, namespace, name, version)
+	if err != nil {
+		return "", err
 	}
 
-	// Validate and parse URL before making request
 	parsedURL, err := url.Parse(tarballURL)
 	if err != nil {
 		return "", fmt.Errorf("invalid tarball URL: %w", err)
@@ -98,14 +161,26 @@ func (c *Cache) Store(registry, namespace, name, version, tarballURL string) (st
 		return "", fmt.Errorf("failed to download pack: status %d", resp.StatusCode)
 	}
 
-	// Extract tarball
-	if err := extractTarGz(resp.Body, packPath); err != nil {
+	if err := os.MkdirAll(c.Dir, 0750); err != nil {
+		return "", fmt.Errorf("failed to create cache directory: %w", err)
+	}
+	root, err := os.OpenRoot(c.Dir)
+	if err != nil {
+		return "", fmt.Errorf("failed to open cache directory: %w", err)
+	}
+	defer root.Close()
+
+	if err := root.MkdirAll(rel, 0750); err != nil {
+		return "", fmt.Errorf("failed to create cache directory: %w", err)
+	}
+
+	if err := extractTarGz(resp.Body, root, rel); err != nil {
 		// Clean up on failure - best effort, ignore error
-		_ = os.RemoveAll(packPath)
+		_ = root.RemoveAll(rel)
 		return "", fmt.Errorf("failed to extract pack: %w", err)
 	}
 
-	return packPath, nil
+	return filepath.Join(c.Dir, rel), nil
 }
 
 // Clear removes all cached packs
@@ -171,8 +246,11 @@ func safeFileMode(mode int64) os.FileMode {
 	return os.FileMode(mode)
 }
 
-// extractTarGz extracts a tar.gz archive to a directory
-func extractTarGz(r io.Reader, destDir string) error {
+// extractTarGz extracts a tar.gz archive into destRel inside root. All writes
+// go through root, so nothing can land outside it. Entry names that are
+// absolute or contain ".." fail the extraction; symlink, hardlink and other
+// special entries are skipped.
+func extractTarGz(r io.Reader, root *os.Root, destRel string) error {
 	gzr, err := gzip.NewReader(r)
 	if err != nil {
 		return fmt.Errorf("failed to create gzip reader: %w", err)
@@ -193,7 +271,6 @@ func extractTarGz(r io.Reader, destDir string) error {
 			return fmt.Errorf("failed to read tar: %w", err)
 		}
 
-		// Get the path relative to root
 		name := header.Name
 
 		// First entry usually contains the root directory
@@ -204,33 +281,33 @@ func extractTarGz(r io.Reader, destDir string) error {
 			}
 		}
 
-		// Strip root directory
+		// Reject absolute and parent-relative names before stripping the
+		// root directory, so "root/../x" and "/abs" cannot slip through.
+		if strings.HasPrefix(name, "/") || !filepath.IsLocal(filepath.FromSlash(name)) {
+			return fmt.Errorf("unsafe path in archive: %q", Printable(name))
+		}
+
 		name = strings.TrimPrefix(name, rootDir)
-
-		if name == "" {
+		if name == "" || name == "." {
 			continue
 		}
-
-		target := filepath.Join(destDir, filepath.Clean(name))
-
-		// Security check: ensure target is within destDir
-		if !strings.HasPrefix(target, filepath.Clean(destDir)+string(os.PathSeparator)) {
-			continue
+		if !filepath.IsLocal(filepath.FromSlash(name)) {
+			return fmt.Errorf("unsafe path in archive: %q", Printable(name))
 		}
+
+		target := filepath.Join(destRel, filepath.FromSlash(name))
 
 		switch header.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0750); err != nil {
+			if err := root.MkdirAll(target, 0750); err != nil {
 				return fmt.Errorf("failed to create directory: %w", err)
 			}
 		case tar.TypeReg:
-			// Ensure parent directory exists
-			if err := os.MkdirAll(filepath.Dir(target), 0750); err != nil {
+			if err := root.MkdirAll(filepath.Dir(target), 0750); err != nil {
 				return fmt.Errorf("failed to create parent directory: %w", err)
 			}
 
-			// G304: target path is validated above (lines 194-199) to be within destDir
-			f, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, safeFileMode(header.Mode)) //#nosec G304 -- path validated to be within destDir
+			f, err := root.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, safeFileMode(header.Mode))
 			if err != nil {
 				return fmt.Errorf("failed to create file: %w", err)
 			}
@@ -245,11 +322,13 @@ func extractTarGz(r io.Reader, destDir string) error {
 			}
 			if n > maxFileSize {
 				_ = f.Close() // Close file on size limit, ignore close error
-				return fmt.Errorf("file %s exceeds maximum size of %d bytes", name, maxFileSize)
+				return fmt.Errorf("file %s exceeds maximum size of %d bytes", Printable(name), maxFileSize)
 			}
 			if err := f.Close(); err != nil {
 				return fmt.Errorf("failed to close file: %w", err)
 			}
+		default:
+			// Symlinks, hardlinks and special files are not extracted.
 		}
 	}
 

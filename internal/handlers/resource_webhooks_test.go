@@ -162,6 +162,49 @@ func TestHandleWebhook_GitHubTagEvent(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 }
 
+func TestHandleWebhook_TagEventRejectsUnsafeVersion(t *testing.T) {
+	defer cleanupTestData(t)
+
+	user := createTestUser(t, "webhookbadtag")
+	resource := models.NomadResource{
+		Name:          "webhook-badtag",
+		Type:          models.ResourceTypePack,
+		UserID:        user.ID,
+		WebhookSecret: "github-secret",
+		RepositoryURL: "https://github.com/test/webhook-badtag",
+	}
+	database.DB.Create(&resource)
+	database.DB.Create(&models.ResourceVersion{ResourceID: resource.ID, Version: "v1.0.0"})
+
+	app := setupTestApp()
+	app.Post("/webhook/:id", HandleWebhook)
+
+	for _, tag := range []string{"v1.tar.gz#/../../../..", "../x", "release/v1"} {
+		body := []byte(`{"ref": "` + tag + `", "ref_type": "tag"}`)
+		timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+		signature := computeTestSignature(body, timestamp, "github-secret")
+
+		req := httptest.NewRequest("POST", "/webhook/"+toString(resource.ID), strings.NewReader(string(body)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-GitHub-Event", "create")
+		req.Header.Set("X-Hub-Signature-256", signature)
+		req.Header.Set("X-Webhook-Timestamp", timestamp)
+
+		resp, err := app.Test(req)
+		assert.NoError(t, err)
+		assert.Equal(t, 422, resp.StatusCode, tag)
+	}
+
+	var n int64
+	database.DB.Model(&models.ResourceVersion{}).Where("resource_id = ?", resource.ID).Count(&n)
+	assert.EqualValues(t, 1, n, "no version row may be created for a rejected tag")
+
+	var stored models.NomadResource
+	database.DB.First(&stored, resource.ID)
+	assert.Equal(t, "failure", stored.LastWebhookStatus, "a rejected tag must not show as a successful delivery")
+	assert.Equal(t, "Tag name is not a valid version", stored.LastWebhookError)
+}
+
 func TestHandleWebhook_TimestampReplayProtection(t *testing.T) {
 	defer cleanupTestData(t)
 
