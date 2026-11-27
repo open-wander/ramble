@@ -247,6 +247,8 @@ func TestCreateResourceAPI_ValidationErrors(t *testing.T) {
 		{"disallowed host", map[string]any{"repository_url": "https://evil.example.com/x/y"}, "invalid_repository_url"},
 		{"empty version", map[string]any{"version": ""}, "invalid_version"},
 		{"blank version", map[string]any{"version": "   "}, "invalid_version"},
+		{"traversal version", map[string]any{"version": "v1.tar.gz#/../../.."}, "invalid_version"},
+		{"slash version", map[string]any{"version": "a/b"}, "invalid_version"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

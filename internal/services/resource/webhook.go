@@ -2,17 +2,26 @@ package resource
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"rmbl/internal/models"
 )
 
 // ProcessTagEvent checks if a version exists and creates it if new
-// Returns true if a new version was created, false if it already existed
+// Returns true if a new version was created, false if it already existed.
+// A tag name that fails the shared version rule returns ErrInvalidVersion.
 func (s *ResourceService) ProcessTagEvent(resourceID uint, newVersion string) (created bool, err error) {
+	newVersion = strings.TrimSpace(newVersion)
+	if err := validateVersion(newVersion); err != nil {
+		return false, err
+	}
+
 	// Check if version already exists
 	var exists int64
-	s.db.Model(&models.ResourceVersion{}).Where("resource_id = ? AND version = ?", resourceID, newVersion).Count(&exists)
+	if err := s.db.Model(&models.ResourceVersion{}).Where("resource_id = ? AND version = ?", resourceID, newVersion).Count(&exists).Error; err != nil {
+		return false, fmt.Errorf("could not check version: %w", err)
+	}
 
 	if exists > 0 {
 		return false, nil

@@ -8,7 +8,7 @@ import (
 	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"rmbl/internal/services/logger"
-	"rmbl/internal/services/resource"
+	resourcesvc "rmbl/internal/services/resource"
 	"strings"
 	"time"
 
@@ -277,18 +277,20 @@ func HandleWebhook(c *fiber.Ctx) error {
 		isTagEvent = true
 	}
 
+	newVersion = strings.TrimSpace(newVersion)
 	if isTagEvent && newVersion != "" {
-		// Check if version already exists
-		var exists int64
-		reqDB(c).Model(&models.ResourceVersion{}).Where("resource_id = ? AND version = ?", resource.ID, newVersion).Count(&exists)
-		if exists == 0 {
-			// Create new version
-			version := models.ResourceVersion{
-				ResourceID: resource.ID,
-				Version:    newVersion,
-			}
-			reqDB(c).Create(&version)
-
+		created, err := resourcesvc.Service.WithContext(c.UserContext()).ProcessTagEvent(resource.ID, newVersion)
+		switch {
+		case errors.Is(err, resourcesvc.ErrInvalidVersion):
+			webhookLog.Warn("webhook.version_rejected", slog.String("version", newVersion))
+			resource.LastWebhookStatus = "failure"
+			resource.LastWebhookError = "Tag name is not a valid version"
+			reqDB(c).Save(&resource)
+			return c.Status(fiber.StatusUnprocessableEntity).SendString("Tag name is not a valid version")
+		case err != nil:
+			webhookLog.Error("webhook.version_create_failed", logger.Err(err))
+			return c.Status(fiber.StatusInternalServerError).SendString("Could not record version")
+		case created:
 			webhookLog.Info("webhook.version_received", slog.String("version", newVersion))
 
 			// Background Fetch for the NEW version with error propagation to webhook status
@@ -341,11 +343,11 @@ func PostResetWebhookSecret(c *fiber.Ctx) error {
 	currentUserID := sess.Get("user_id").(uint)
 
 	// Reset webhook secret via service
-	if _, err := resource.Service.WithContext(c.UserContext()).ResetWebhookSecret(resourceID, currentUserID); err != nil {
-		if errors.Is(err, resource.ErrUnauthorized) {
+	if _, err := resourcesvc.Service.WithContext(c.UserContext()).ResetWebhookSecret(resourceID, currentUserID); err != nil {
+		if errors.Is(err, resourcesvc.ErrUnauthorized) {
 			return c.Status(403).SendString("Unauthorized")
 		}
-		if errors.Is(err, resource.ErrResourceNotFound) {
+		if errors.Is(err, resourcesvc.ErrResourceNotFound) {
 			return c.Status(404).SendString("Resource not found")
 		}
 		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())

@@ -181,7 +181,7 @@ func TestCreateResourceVersionAPI(t *testing.T) {
 		assert.Equal(t, "conflict", apiErrCode(t, body))
 		assert.Len(t, versionRowsOf(t, r.ID, "v1.1.0"), 1)
 	})
-	for name, ver := range map[string]string{"empty": "", "too long": strings.Repeat("v", 65)} {
+	for name, ver := range map[string]string{"empty": "", "too long": strings.Repeat("v", 65), "traversal": "v1.tar.gz#/../../..", "slash": "a/b", "dotdot": "../x"} {
 		t.Run("invalid "+name, func(t *testing.T) {
 			b, _ := json.Marshal(map[string]string{"version": ver})
 			status, body := apiDo(t, app, "POST", vpath(r, "/versions"), plain, string(b))

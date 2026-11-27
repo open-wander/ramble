@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"rmbl/internal/models"
 	"strings"
 	"time"
@@ -467,6 +468,8 @@ func GetJobAPI(c *fiber.Ctx) error {
 func getDownloadURL(repoURL string, version string) string {
 	repoURL = strings.TrimSuffix(repoURL, ".git")
 	repoURL = strings.TrimSuffix(repoURL, "/")
+
+	version = url.PathEscape(version)
 
 	if strings.Contains(repoURL, "github.com") {
 		// https://github.com/owner/repo/archive/refs/tags/v1.0.0.tar.gz

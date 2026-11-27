@@ -3,6 +3,7 @@ package handlers
 import (
 	"io"
 	"net/http/httptest"
+	"net/url"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
 	"strings"
@@ -895,6 +896,40 @@ func TestPostNewVersion_EmptyVersion(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, 400, resp.StatusCode)
+}
+
+func TestPostNewVersion_UnsafeVersion(t *testing.T) {
+	defer cleanupTestData(t)
+
+	user := createTestUser(t, "unsafeversionuser")
+	resource := models.NomadResource{Name: "unsafeversionres", Type: models.ResourceTypePack, UserID: user.ID}
+	database.DB.Create(&resource)
+
+	app := fiber.New()
+	InitSession()
+	app.Use(func(c *fiber.Ctx) error {
+		sess, _ := Store.Get(c)
+		sess.Set("user_id", user.ID)
+		sess.Save()
+		c.Locals("UserID", user.ID)
+		c.Locals("User", user)
+		return c.Next()
+	})
+	app.Post("/resource/:id/versions", PostNewVersion)
+
+	for _, v := range []string{"v1.tar.gz#/../../..", "../x", "a/b", "v1%2e%2e"} {
+		form := url.Values{"version": {v}}
+		req := httptest.NewRequest("POST", "/resource/"+toString(resource.ID)+"/versions", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp, err := app.Test(req)
+		assert.NoError(t, err)
+		assert.Equal(t, 400, resp.StatusCode, v)
+		body, _ := io.ReadAll(resp.Body)
+		assert.Contains(t, string(body), "may contain only letters")
+	}
+	var n int64
+	database.DB.Model(&models.ResourceVersion{}).Where("resource_id = ?", resource.ID).Count(&n)
+	assert.Zero(t, n)
 }
 
 func TestGetRawResource_InvalidFilePath(t *testing.T) {

@@ -68,6 +68,9 @@ func TestCreateResource_InputValidation(t *testing.T) {
 		{"version empty", func(i *CreateInput) { i.Version = "" }, false, ErrInvalidVersion},
 		{"version blank", func(i *CreateInput) { i.Version = "   " }, false, ErrInvalidVersion},
 		{"version 64", func(i *CreateInput) { i.Name = "cv-v64"; i.Version = strings.Repeat("1", 64) }, true, nil},
+		{"version traversal", func(i *CreateInput) { i.Version = "v1.tar.gz#/../../.." }, false, ErrInvalidVersion},
+		{"version slash", func(i *CreateInput) { i.Version = "a/b" }, false, ErrInvalidVersion},
+		{"version rc", func(i *CreateInput) { i.Name = "cv-rc"; i.Version = "v1.0.0-rc.1" }, true, nil},
 		{"version 65", func(i *CreateInput) { i.Version = strings.Repeat("1", 65) }, false, ErrInvalidVersion},
 	}
 	for _, tt := range tests {

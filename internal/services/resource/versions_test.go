@@ -57,6 +57,12 @@ func TestAddVersion(t *testing.T) {
 		{"blank", owner.ID, "   ", ErrInvalidVersion, ""},
 		{"too long", owner.ID, strings.Repeat("v", 65), ErrInvalidVersion, ""},
 		{"max length", owner.ID, strings.Repeat("v", 64), nil, strings.Repeat("v", 64)},
+		{"fragment traversal", owner.ID, "v1.tar.gz#/../../../..", ErrInvalidVersion, ""},
+		{"dotdot", owner.ID, "../x", ErrInvalidVersion, ""},
+		{"slash tag", owner.ID, "release/v1", ErrInvalidVersion, ""},
+		{"percent", owner.ID, "%2e%2e", ErrInvalidVersion, ""},
+		{"control", owner.ID, "v1\x1b[0m", ErrInvalidVersion, ""},
+		{"rc tag", owner.ID, "v1.0.0-rc.1", nil, "v1.0.0-rc.1"},
 		{"not a member", other.ID, "v9.9.9", ErrUnauthorized, ""},
 	}
 	for _, tt := range tests {
