@@ -209,3 +209,34 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+  # Tell the Terraform provider repository about the release, after the deploy
+  # has been verified. Its regenerate workflow fetches api-docs/openapi.yaml at
+  # this tag and opens a pull request when the generated client changes. The
+  # token comes from a GitHub App and is limited to that one repository.
+  notify-provider:
+    needs: [bump-version, deploy]
+    runs-on: ubuntu-26.04
+    permissions: {}
+    steps:
+      - name: Create an App token
+        id: app-token
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: open-wander
+          repositories: terraform-provider-ramble
+          permission-contents: write
+
+      - name: Send ramble-released
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ needs.bump-version.outputs.new_version }}
+        run: |
+          set -euo pipefail
+          spec_url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${VERSION}/api-docs/openapi.yaml"
+          jq -n --arg v "$VERSION" --arg u "$spec_url" \
+            '{event_type: "ramble-released", client_payload: {version: $v, spec_url: $u}}' \
+            | gh api repos/open-wander/terraform-provider-ramble/dispatches --input -
+          echo "sent ramble-released $VERSION"
