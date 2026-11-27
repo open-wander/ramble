@@ -97,6 +97,28 @@ func TestCreateOrgAPI_Success(t *testing.T) {
 	_ = tok
 }
 
+// The create response and a later GET report the same created_at: the
+// create response is rendered from the stored row, not the in-memory copy
+// (nanoseconds on Linux, microseconds in Postgres).
+func TestCreateOrgAPI_CreatedAtMatchesGet(t *testing.T) {
+	app := orgAPIApp(t)
+	u := mkAPIUser(t, "alice", true, "")
+	plain, _ := mkAPIToken(t, u, models.ScopeWrite)
+	name := uniqueName(t, "tsorg")
+
+	status, body := sendJSON(t, app, "POST", plain, "/v1/orgs", `{"name":"`+name+`"}`)
+	require.Equal(t, 201, status, body)
+	var created map[string]any
+	require.NoError(t, json.Unmarshal([]byte(body), &created))
+
+	status, body = sendJSON(t, app, "GET", plain, "/v1/orgs/"+name, "")
+	require.Equal(t, 200, status, body)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal([]byte(body), &got))
+
+	assert.Equal(t, got["created_at"], created["created_at"])
+}
+
 func TestCreateOrgAPI_Rejections(t *testing.T) {
 	app := orgAPIApp(t)
 	u := mkAPIUser(t, "alice", true, "")
