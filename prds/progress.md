@@ -1228,3 +1228,13 @@ PATCH ok + version POST failing untested.
 PATTERN: time - a create response built from the in-memory row has nanosecond timestamps on Linux; render from
 the stored row. macOS hides it (microsecond clock), so a local test cannot catch it.
 PATTERN: provider - tfplugindocs needs a real terraform binary (an OpenTofu shim fails on registry.opentofu.org).
+
+## 2026-11-27 - 17.4-17.6: release pipeline, Ramble v0.6.0, provider v0.1.0
+
+- ramble#74: release.yml `notify-provider` (after deploy) sends `ramble-released` with an App token limited to the provider repo.
+- provider#7: `regenerate.yml` (dispatch or by hand), `tag-release.yml` (next minor on merge of an App-opened `regen/ramble-v*` PR), `release.yml` (GoReleaser, GPG). Runs started by the App open an issue on failure.
+- Ramble v0.6.0 released and deployed (run 45980824440). `notify-provider` failed: `RELEASE_APP_CLIENT_ID` was empty; a re-run of the failed job still saw it empty after the variable was added. Regeneration run by hand for v0.6.0: client unchanged, no PR.
+- PATTERN: [ci] - A run started by a GitHub App (repository_dispatch, App-created tag) notifies nobody on failure; add an `if: failure()` step that opens an issue.
+- PATTERN: [ci] - Never use "Re-run all jobs" on ramble's release run: bump-version recomputes from the latest tag and would cut and deploy the next version. Re-run only the failed job.
+- PATTERN: [ci] - Validate workflow inputs with a bash `[[ =~ ]]` whole-string match, not `grep -E` (line-based: a multi-line value passes and can inject GITHUB_OUTPUT lines).
+- PATTERN: [ci] - Pushes and PRs made with the App token must use `persist-credentials: false` on checkout, or checkout's extraheader sends the read-only GITHUB_TOKEN instead.
