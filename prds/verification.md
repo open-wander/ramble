@@ -1,154 +1,85 @@
-# Verification — Phase 6 structured logging (infra prod-logging standard)
+# Verification and security review: programmatic management (#65)
 
-Date: 2026-10-11
-Scope: ramble at feat/logging-followups 7181db4 (PR #52) against the six-point standard in
-TydeWhatMay/infra `docs/prod-logging.md`. Method: one Opus verifier per point, each in its
-own worktree, reading every server write path, running the guarding tests, and making one
-or more mutations to check a test goes red (norman verify, single rigor, plus mutation sweep).
+Date: 2026-11-27
+Scope: ramble main at c757ae0..be86320 (v0.6.0) and terraform-provider-ramble v0.1.0, against prds/active/prd-programmatic-management.md. Run after the release, at the operator's call.
 
-> **UPDATE (2026-10-11, same day): gaps 1-6 fixed on the same branch as Phase 7**
-> (7.1 gaps 1-2, 7.2 gap 3, 7.3 gap 6, 7.4 gap 4, 7.5 gap 5), each with a test that a
-> mutation turns red; see TASKS-archive.md Phase 7. Gap 7 accepted. Remaining notes for a
-> later pass: SMTP server replies wrapped with %w can still echo a recipient address;
-> fetchVersionContent logs version_fetch.* via the global logger (no request_id on
-> webhook-triggered fetches); flag-parse errors on `ramble server` stay plain text.
+Method:
+- norman verify, single rigor: one verifier for each of US-001..US-015, FR-5, FR-6, FR-7 and FR-8.
+- Trimmed norman secure, Track A: 8 security requirements, each checked with 3 lenses (exists, tested, edge cases). Every requirement that passed was then put through a mutation sweep.
+- 14 further security requirements went over the cap of 8 and were not lens-verified. Most of them are covered by the single-rigor verify.
+- Trimmed norman secure, Track B: 5 threat-led areas (tokens, resource writes, organisations, CLI, provider and CI). Every finding went to 3 skeptics (reproduce, reachable, mitigated).
+- A completeness critic ran over all of the above.
+- 99 agents in total.
 
-## Summary
+All 16 Track B findings were confirmed by at least 2 of 3 skeptics. In this mode the skeptics are known to be too agreeable, so a confirmation here is not proof. The failing test written in each fix task is the proof.
 
-| # | Requirement | Result | Mutation |
-|---|---|---|---|
-| S1 | One JSON object per line on stdout | PARTIAL | killed (stdlib redirect, banner flag) |
-| S2 | time / upper-case level / msg; msg a stable event key | PARTIAL | killed (sentence key, lower-case level) |
-| S3 | http.request fields; same request_id on every line of a request | PARTIAL | killed (reqDB, SetUserContext, query string) |
-| S4 | No ANSI / console writer in production | PARTIAL | **survived** (ConsoleWriter in prod branch) |
-| S5 | No SQL at INFO; slow/error at WARN/ERROR, placeholders only | PARTIAL | killed (bind values, level, threshold) |
-| S6 | No secrets, tokens, bodies, query strings | PARTIAL | killed (bind values, query string) |
+## Confirmed findings (Track B), most severe first
 
-No FAILs. The tested components hold; the PARTIALs are untested or unconverted paths.
-None is a regression from PR #52 — all existed before it.
+| Area | Severity | Finding | File | Fix task |
+|---|---|---|---|---|
+| cli | HIGH | Path traversal in the pack cache: a version string from the registry writes files anywhere in the victim's home (e.g. ~/.bashrc, ~/.ssh/authorized_keys) | `internal/pack/cache.go:43` | 18.1 |
+| provider-ci | HIGH | Any write collaborator can deploy arbitrary code to production and steal the Nomad token and release App key: ramble release.yml is workflow_dispatch on any ref, and all secrets are repository-level with no environment gate | `ramble/.github/workflows/release.yml:3` | 18.3 |
+| provider-ci | HIGH | Provider: any write collaborator can produce a GPG-signed Terraform provider release (direct v* tag push, or a self-merged regen PR), and can steal the GPG signing key | `terraform-provider-ramble/.github/workflows/release.yml:6` | 18.3 |
+| provider-ci | HIGH | Self-hosted runner that can reach the Nomad API is usable by pull requests on a public repository | `ramble/.github/workflows/ci.yml:6` | 18.3 |
+| resources | HIGH | Web edit of an org-owned resource silently moves it out of the organisation into the creator's personal namespace | `ramble/views/edit_resource.html:99` | 18.2 |
+| orgs | MEDIUM | An organisation can take over the namespace of an admin-deleted user | `internal/services/org/org.go:38` | 18.6 |
+| resources | MEDIUM | Unbounded tag list on POST/PATCH /v1/resources drives per-tag queries inside a transaction (DoS) and floods the global tags table | `ramble/internal/services/resource/create.go:86` | 18.5 |
+| tokens | MEDIUM | API tokens survive password reset; a stolen session can be turned into a 365-day write token that account recovery does not remove | `internal/services/apitoken/service.go:202` | 18.4 |
+| cli | LOW | RAMBLE_TOKEN is not tied to a registry: it is sent to whichever registry a command targets | `internal/cli/config/config.go:176` | 18.7 |
+| cli | LOW | Terminal escape injection: descriptions and versions set by other users are printed raw by pack/job list, info, search and run | `internal/cli/cmd/pack_info.go:72` | 18.7 |
+| orgs | LOW | A member whose account an admin deleted breaks the organisation's pages and cannot be removed through the API | `views/profile.html:73` | 18.7 |
+| orgs | LOW | Any owner can force a user into an organisation, and the user cannot leave | `internal/handlers/api_org_members.go:108` | 18.7 |
+| orgs | LOW | Some owner checks run outside the organisation row lock (time-of-check to time-of-use gap) | `internal/handlers/api_org_members.go:172` | 18.7 |
+| resources | LOW | Web resource edit skips name/type validation and uses a case-sensitive collision check | `ramble/internal/services/resource/service.go:210` | 18.7 |
+| tokens | LOW | Token revocation sits behind RequireVerifiedEmail, so a user whose verification is cleared cannot revoke live tokens | `internal/server/server.go:352` | 18.7 |
+| tokens | LOW | Write rate limit can be multiplied by issuing many tokens, and failed or read token requests have no limit | `internal/handlers/api_auth.go:161` | 18.7 |
 
-## Gaps
+The scenarios and the skeptics' reasons are in the workflow journal for run wf_79a8b810-abf, which is session-local. Each fix task restates its own reproduction.
 
-1. **Plain-text `fmt.Printf` on request paths** (S1, S2, S3, S6): `internal/handlers/auth.go:384`,
-   `auth.go:488` (email send errors; error text can contain the recipient address via
-   `internal/services/email/email.go:60`), `internal/handlers/utils.go:49` (SetFlash session save).
-   Not JSON, no request_id, invisible to the event-key guard.
-2. **No guard against direct stdout writes** in server packages: the AST guard checks only
-   `Msg`/`Msgf`. Extend it to flag `fmt.Print*` / `fmt.Fprint*(os.Stdout|os.Stderr)` outside `internal/cli`.
-3. **Webhook handlers log through the global logger** (S3): `resource_webhooks.go:228` builds
-   `webhookLog` from `logger.Log`; `github_sync.go:450-502` (HandleGitHubIssueWebhook) and the
-   `github.webhook_request_*` lines in handleNewIssueDB/handleIssueStateChangeDB use `logger.Log`.
-   Those lines lack request_id. Use `logger.FromContext(c.UserContext())`.
-4. **Production writer not tested** (S4, surviving mutant): `TestInit_ProductionFormat` replaces
-   the writer with `Log.Output(&buf)`, so switching the production branch of `logger.Init` to
-   `ConsoleWriter` passes. Make the writer injectable and assert on what Init itself writes.
-5. **GORM logger wiring not tested** (S4, S5): nothing asserts `database.Connect` sets
-   `Logger: newDefaultGormLogger()`; reverting to GORM's default (colour, interpolated values) passes.
-6. **Server-process CLI output** (S1, S2): `ramble server` runs under cobra; an error from
-   `server.Run` (e.g. Listen) prints plain text via cobra and `root.go:59`, and the update check
-   in Pre/PostRun can print a notice. Set SilenceErrors/SilenceUsage and log a JSON `server.exit_error`
-   for the server command; skip the update check there.
-7. Minor: `db_test.go` copies the requestLogger middleware rather than using it (drift risk);
-   `database.go:43,56,75` use `Fatal` (level FATAL, outside the four named levels); no test
-   guards secrets out of audit `details`; Sentry may receive the query string (SendDefaultPII is off).
+## Requirement verdicts
 
----
+| Requirement | Verdict | Notes |
+|---|---|---|
+| US-001 | PASS |  |
+| US-002 | PASS |  |
+| US-003 | PASS |  |
+| US-004 | PASS |  |
+| US-005 | PASS |  |
+| US-006 | PASS |  |
+| US-007 | PASS |  |
+| US-008 | PASS |  |
+| US-009 | PARTIAL | The audit action is `resource.reset_webhook`, the same as the web path (FR-8). The PRD says `resource.webhook_reset`, so the PRD text is wrong. |
+| US-010 | PASS |  |
+| US-011 | PASS |  |
+| US-012 | PASS |  |
+| US-013 | PASS |  |
+| US-014 | PARTIAL | Acceptance tests build Ramble from source rather than using the ghcr image. Namespace replacement is covered only by a unit test. |
+| US-015 | PARTIAL | Deviations: the spec is fetched from a raw URL at the tag, not a release asset, and tests build from source rather than the image. notify-provider has not been proven yet (it failed at v0.6.0 because the variable was missing). No test checks the scope of the App token; mutation survived. |
+| FR-5 | PASS |  |
+| FR-6 | PARTIAL | The global session middleware returns `{"error":"Session expired"}` on /v1 for expired cookie sessions sending Accept: application/json. Fiber 413 maps to 500 internal_error. |
+| FR-7 | PASS |  |
+| FR-8 | PASS |  |
 
-# Previous report
+Track A (lenses, then mutation):
 
-# Verification — prd-security-bugfix
+| Requirement | Verdict | Mutation |
+|---|---|---|
+| 65:US-001 | PASS | HashToken returns plain (service.go:103), so plaintext lands in api_tokens.hash: TestPlaintextNeverStored FAIL (service_security_test.go:39). GAP: adding "token", plain to the token.created log (service.go:177) left all  |
+| 65:US-003-auth | PASS | Dropped the RevokedAt check in Authenticate (service.go:202): TestAuthenticate_Invalid FAIL (service_test.go:319) and TestRequireAPIToken_Rejections_Identical401/revoked FAIL. Separately, a distinct message for an unknow |
+| 65:US-003-org | PASS | tokenAllowsOrg returns true for restricted tokens (api_auth.go:~126): 11 tests FAIL incl. TestTokenAllowsOrg, ...ThroughRoute, CreateOrg/OrgAPI/DeleteOrg/OrgMembers/CreateResource/GetResource/WriteResource OrgRestricted, |
+| 65:US-003-admin | PASS | Removed `u.IsAdmin = false` in RequireAPIToken (api_auth.go:88): TestRequireAPIToken_SetsLocals FAIL (api_auth_test.go:172). TestAdminRoutesIgnoreBearerToken (server) stayed green under this mutation; it guards admin rou |
+| 65:US-003-csrf | PASS | isCookielessAPIRequest drops the session-cookie check (server.go:626), so any /v1 request skips CSRF: TestCSRF_BearerExemptionThroughStack FAIL (api_csrf_security_test.go:86,101) and TestIsCookielessAPIRequest FAIL (serv |
+| 65:US-008 | PASS | DeleteResource calls AuthorizeResourceAction(id, userID, false) (resource/service.go:251), so org members can delete: handlers TestResourceAPI_OrgRoles and TestDeleteResource_OrgMember_Forbidden FAIL. Resource-package te |
+| 65:US-011 | PASS | keepsAnOwner no longer returns ErrLastOwner (org.go:405): TestRemoveMember, TestSetMemberRole, TestLastOwner_IgnoresDeletedUsers, TestPutOrgMemberAPI and TestRemoveOrgMemberAPI FAIL. Removing RequireOwner from SetMemberR |
+| 65:US-015 | PARTIAL | In notify-provider (release.yml:229) I removed `repositories: terraform-provider-ramble`, so the token covers every repo in the installation, and added `permission-administration: write`. actionlint on a reduced copy of  |
 
-Date: 2026-05-31
-Scope: the four completed user stories (US-001, US-002, US-003, US-005). US-004 is
-not yet implemented (task 1.2 still TODO) and was not verified.
-Method: independent Opus verifier per story, reading the implementation against the
-PRD acceptance criteria and running the package tests.
+## Critic gaps
 
-> **UPDATE (2026-05-31, later same day): everything flagged below has since been
-> completed.** This report is a snapshot of the mid-PRD verification pass; do not read
-> it as a list of open work. Task 1.2 (US-004) shipped as
-> `ResourceService.AuthorizeResourceAction`, and task 4.1 wired `RecordFetchFailed` into
-> the live `fetchVersionContent` path, killing the dead-code gap. All 6 tasks plus the 5
-> Phase-5 follow-ups are done and the PRD moved to `done/`. See `progress.md`
-> (2026-05-31 entries) and `TASKS-archive.md`. See "Remaining work" at the foot for the
-> per-item resolution.
+- UNCOVERED GET /v1/registries and GET /v1/registries/search (internal/handlers/nomad_pack.go:232-280, routes internal/server/server.go:422-423): None of the sweeps examined these public routes. The tokens lens says it skipped the public list and search handlers, and the resources lens did not name them. ListUserRegistriesAPI (nomad_pack.go:234-240) and SearchRegistriesAPI (nomad_pack.go:266-273) query reqDB(c).Table("nomad_resources") with LEFT JOINs on users and organizations. They use no Model, so GORM's soft-delete scope does not apply, and neither query has a deleted_at filter (NomadResource, User and Organization all embed gorm.Model, internal/models). As a result, after DELETE /v1/resources/{id} (US-008) or DELETE /v1/orgs/{name} (US-010), the deleted namespace still appears in the public registry list and search. The same appl
 
-## Summary
+## Out of scope or capped
 
-| Story | Task | Result | Notes |
-|-------|------|--------|-------|
-| US-001 Block unauthorized org resource creation | 1.1 | PASS | All 6 criteria verified; tests green |
-| US-002 Limit remote repository content size | 2.1 | PARTIAL | Behaviour (incl. FR-4) met; coverage gap — `RecordFetchFailed` is dead code |
-| US-003 Tighten SSRF host allowlisting | 2.2 | PASS | Reverse-suffix branch removed; bypass tests green (incl. -tags security) |
-| US-005 Harden OAuth account linking | 3.1 | PASS | No email-based auto-link; collision rejected; EmailVerified left false |
-| US-004 Clarify org resource management roles | 1.2 | NOT IMPLEMENTED **at time of this pass — since completed, see UPDATE above** | Task 1.2 was still TODO when verified |
-
-## Test results
-
-- `go test ./internal/handlers/` — ok
-- `go test ./internal/services/resource/` — ok
-- `go test ./internal/security/` and `-tags security` — ok
-
-## US-001 (1.1) — PASS
-All criteria PASS: membership check (`resource_crud.go:79-90`) runs before
-`CreateResource` (`resource_crud.go:122`); non-member -> 403 with no row persisted;
-member and owner allowed (`role IN ('member','owner')`); personal namespace skips the
-check (`if orgID != nil`); nonexistent org -> 403, no row; userID from session.
-Tests: TestPostNewResource_* (5 cases) green.
-Minor: malformed `owner=org:abc` becomes org id 0 and is rejected by the existence
-check (403) rather than a distinct 400; raw inline query duplicates auth logic that
-1.2 should centralize.
-
-## US-002 (2.1) — PARTIAL
-Behaviour fully satisfied:
-- `readLimited` uses `io.LimitReader(r, MaxRemoteFileBytes+1)` + explicit
-  `len(body) > MaxRemoteFileBytes` check (`utils.go:117-127`). Exactly-at-max accepted,
-  max+1 rejected.
-- All remote-file fetch sites route through `downloadFile` (README, job, metadata,
-  variables, LICENSE, webhook metadata, web view). No bypassing site.
-- Oversized -> `("", err)`; success update unreachable; required content -> FAILED via
-  `fetchVersionContent` (`background.go:200-216`); "blocked" makes it a permanent
-  error (no retry).
-
-GAP (why PARTIAL): `RecordFetchFailed` (`service.go:352`) is DEAD CODE — only called
-from service_test.go. Its tests (`TestRecordFetchFailed_*`) validate an unused helper,
-giving false confidence. FR-4 is genuinely met by background.go's inline failure path,
-but there is no test driving the real oversized -> FetchStatusFailed chain end-to-end
-(downloadFile hardcodes the protected client/host rewrite, a testability gap).
-Recommended fix: wire `fetchVersionContent` to call `RecordFetchFailed` (single source
-of truth) or remove the helper, and add a test on the real path.
-
-## US-003 (2.2) — PASS
-Reverse-suffix branch removed; only `H==A || HasSuffix(H, "."+A)` remains, with
-lowercase + trailing-dot normalization and empty-host/empty-entry guards
-(`ssrf.go:152-172`). Parent domains (com, githubusercontent.com), siblings
-(notgithub.com), and embedded (github.com.evil.com) rejected; subdomains accepted.
-`TestIsHostAllowed_ParentDomainBypass` (11 subtests) + existing suite green.
-
-## US-005 (3.1) — PASS
-No remaining email-based auto-link; the only email query in `processOAuthUser`
-(`auth.go:122`) is a collision PROBE that refuses (never links). Collision returns
-`errOAuthEmailCollision`, existing row unchanged. Already-linked login and brand-new
-signup work. `errors.Is(gorm.ErrRecordNotFound)` guards both lookups. Tests assert at
-DB level. EmailVerified left false for new OAuth accounts (conservative — github/gitlab
-expose no verified flag); this already satisfies the residual concern originally
-tracked as task 3.2.
-Minor (UX, not security): a same-email account already linked to a *different* provider
-falls to Create and hits the Email uniqueIndex, surfacing a generic failure flash
-rather than the clear collision message.
-
-## Remaining work — ALL RESOLVED
-
-Both items below were outstanding when this pass ran and were completed later the same
-day. Nothing here is open.
-
-- ~~1.2 (US-004): organization resource management roles — not yet implemented.~~
-  RESOLVED — `ResourceService.AuthorizeResourceAction(resourceID, userID, requireOwner)`
-  added with org-before-personal branching and `ErrUnauthorized`/`ErrResourceNotFound`
-  sentinels. Edit/version/retry/reset-webhook are member-allowed, delete is owner-only,
-  and `PostNewVersion` (previously UNAUTHENTICATED) is now gated. Tests:
-  `resource_authz_test.go` (24) + `TestAuthorizeResourceAction` (10).
-- ~~US-002 coverage gap: dead `RecordFetchFailed` helper (wire in or remove).~~
-  RESOLVED (task 4.1) — `background.go fetchVersionContent` now calls `RecordFetchFailed`
-  on both the panic-recovery and error branches, so the helper is live and its tests
-  cover the real path. Later hardened by 5.1 (1000-rune UTF-8-safe truncation).
+- 14 security requirements over the cap of 8 were not lens-verified.
+- GitHub settings the auditors could not read, because the API returned 403: fork-PR approval policy, runner groups, whether the runner is ephemeral, secret names, App installation scope.
+- Provider acceptance tests: one verifier ran them against a local Ramble (23 passing). Nothing was run against production.
+- The previous report (Phase 6 logging, 2026-10-11) is in git history.
