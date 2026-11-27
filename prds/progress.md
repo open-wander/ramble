@@ -1238,3 +1238,12 @@ PATTERN: provider - tfplugindocs needs a real terraform binary (an OpenTofu shim
 - PATTERN: [ci] - Never use "Re-run all jobs" on ramble's release run: bump-version recomputes from the latest tag and would cut and deploy the next version. Re-run only the failed job.
 - PATTERN: [ci] - Validate workflow inputs with a bash `[[ =~ ]]` whole-string match, not `grep -E` (line-based: a multi-line value passes and can inject GITHUB_OUTPUT lines).
 - PATTERN: [ci] - Pushes and PRs made with the App token must use `persist-credentials: false` on checkout, or checkout's extraheader sends the read-only GITHUB_TOKEN instead.
+
+## 2026-11-27 - #65 verify and trimmed secure (99 agents)
+
+- verify: 15 PASS, 4 PARTIAL (US-009, US-014, US-015 and FR-6, all small). Track A: 7 of 8 PASS with mutations killed; US-015 PARTIAL (no test on the App token scope).
+- Track B: 16 findings confirmed, 4 HIGH. Fix phase 18.
+- PATTERN: [security] - Values a registry user controls (versions, names) reach client file paths and URLs. Validate them at write time on the server AND before use in the client; a path guard must check against the real root, not a dir already built from the value.
+- PATTERN: [web] - An edit form `<select>` with no `selected` option silently submits its first option. Every select bound to an existing value must mark the current one, and the server must treat a missing value as "unchanged".
+- PATTERN: [ci] - Repository-level secrets reach every branch a Write collaborator pushes. Put deploy, signing and App keys in an environment with required reviewers, and protect release tags with a tag ruleset.
+- PATTERN: [auth] - Credentials derived from a session (API tokens) must be revoked by account recovery (password reset or change).
