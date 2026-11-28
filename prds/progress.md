@@ -1261,3 +1261,10 @@ PATTERN: provider - tfplugindocs needs a real terraform binary (an OpenTofu shim
 - Draft advisories GHSA-pq9v-vf2c-25hw (18.2) and GHSA-2wcj-fvx5-m238 (18.3) opened through `qm github exec -configuration open-wander-advisories`.
 - PATTERN: [authz] - An absent or empty form field must mean "unchanged" for ownership, never "clear"; make the destructive choice an explicit value.
 - PATTERN: [go] - When an interface is the declared contract for a service, assert it at compile time; a signature change otherwise drifts silently.
+
+## 2026-11-28 - 18.3: release supply chain (agent part)
+
+- Environment gates on every secret-using job; secrets must move to environment secrets or the gate protects nothing. Security review of the first draft found two HIGH gaps, both fixed: commit-author logins come from spoofable emails (now backed by a regen/** branch ruleset plus one-commit and files-only checks), and GITHUB_TOKEN on any branch can overwrite a GHCR tag (deploy now uses the pushed digest).
+- An environment with a `main` branch policy rejects `pull_request` runs (ref refs/pull/N/merge); tag-release moved to pull_request_target, which never checks out the head.
+- PATTERN: [ci] - Deploy images by digest, never by tag: GITHUB_TOKEN with packages: write on any branch can overwrite a tag outside every environment gate.
+- PATTERN: [ci] - A commit's author.login is derived from its email; an identity check on commits needs a ruleset that controls who can push the branch.

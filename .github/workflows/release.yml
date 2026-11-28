@@ -26,8 +26,19 @@ permissions:
   # storage record on org repositories; without this it warns on every release.
   artifact-metadata: write
 
+# Every job that creates the tag or reads a deployment secret uses the
+# `release` environment. The environment needs required reviewers and a
+# deployment branch policy of `main` only, and the deployment
+# secrets (NOMAD_*, HOMEBREW_TAP_TOKEN, RELEASE_APP_PRIVATE_KEY) must be
+# environment secrets, not repository secrets: a repository secret is readable
+# from any branch a write collaborator pushes. Approving bump-version starts a
+# release; deploy and notify-provider ask for approval again when they start.
+# build-and-push uses only GITHUB_TOKEN; the self-hosted runner itself is
+# protected by its runner group, which allows only this workflow on main.
 jobs:
   bump-version:
+    if: github.ref == 'refs/heads/main'
+    environment: release
     runs-on: ubuntu-26.04
     outputs:
       new_version: ${{ steps.bump.outputs.new_version }}
@@ -88,6 +99,8 @@ jobs:
   build-and-push:
     needs: bump-version
     runs-on: [self-hosted, linux, x64]
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -137,11 +150,12 @@ jobs:
           push-to-registry: true
 
   # The self-hosted runner can reach the Nomad API; the address, token and
-  # datacenter are repo secrets. The job spec in git IS the deployment: the
-  # workflow adds only the image tag, as a variable. Nothing is edited on any
-  # server.
+  # datacenter are `release` environment secrets. The job spec in git IS the
+  # deployment: the workflow adds only the image, by digest, as a variable.
+  # Nothing is edited on any server.
   deploy:
     needs: [bump-version, build-and-push]
+    environment: release
     runs-on: [self-hosted, linux, x64]
     steps:
       - uses: actions/checkout@v7
@@ -168,9 +182,13 @@ jobs:
           NOMAD_ADDR: ${{ secrets.NOMAD_ADDR }}
           NOMAD_TOKEN: ${{ secrets.NOMAD_TOKEN }}
           NOMAD_DATACENTER: ${{ secrets.NOMAD_DATACENTER }}
+          DIGEST: ${{ needs.build-and-push.outputs.digest }}
         run: |
           set -euo pipefail
-          image="ghcr.io/${GITHUB_REPOSITORY,,}:${{ needs.bump-version.outputs.new_version_num }}"
+          # Deploy by digest: a workflow on any branch can overwrite a GHCR
+          # tag with GITHUB_TOKEN, outside the release environment.
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "bad image digest: $DIGEST" >&2; exit 1; }
+          image="ghcr.io/${GITHUB_REPOSITORY,,}@${DIGEST}"
           echo "deploying $image"
           nomad job run -var "image=$image" -var "datacenters=[\"${NOMAD_DATACENTER}\"]" deploy/nomad/ramble.nomad.hcl
 
@@ -187,6 +205,7 @@ jobs:
   release:
     needs: [bump-version, build-and-push]
     if: inputs.publish_unsigned_cli
+    environment: release
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
@@ -216,6 +235,7 @@ jobs:
   # token comes from a GitHub App and is limited to that one repository.
   notify-provider:
     needs: [bump-version, deploy]
+    environment: release
     runs-on: ubuntu-26.04
     permissions: {}
     steps:

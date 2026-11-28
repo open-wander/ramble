@@ -48,6 +48,12 @@ Add these secrets to your repository (Settings > Secrets and variables > Actions
 
 ## Triggering a Release
 
+Releases run only from `main`. The release jobs use the `release` environment,
+which has required reviewers: approve the run when it starts, again before the
+deploy, and again before the Terraform provider is notified (Actions > the run
+> Review deployments). See `.github/rulesets/README.md` for the environment and
+its secrets.
+
 ### Option 1: GitHub Actions UI
 
 1. Go to Actions > "Release and Deploy"
