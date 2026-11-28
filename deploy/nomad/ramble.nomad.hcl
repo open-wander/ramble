@@ -4,14 +4,15 @@
 #
 # A release runs .github/workflows/release.yml: it builds the image on the
 # self-hosted runner, pushes ghcr.io/open-wander/ramble:<version> and runs
-# this spec with -var image=<that> and the datacenter. Never :latest.
+# this spec with -var image=ghcr.io/open-wander/ramble@<digest> of that push
+# and the datacenter. Never :latest, and never a tag: tags can be overwritten.
 #
 # Secrets: Nomad variable nomad/jobs/ramble. AUTO_SEED and INITIAL_USER_* are
 # deliberately absent: the database arrives populated, and a seeding
 # credential has no business in a running job.
 
 variable "image" {
-  description = "App image. Set by the deploy job to the tag being released."
+  description = "App image. Set by the deploy job to the digest of the image being released."
   type        = string
   default     = "ghcr.io/open-wander/ramble:0.5.11"
 }
