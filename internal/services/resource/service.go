@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -90,7 +91,7 @@ func truncateFetchError(msg string) string {
 // ResourceServicer defines business logic operations for resources
 type ResourceServicer interface {
 	CreateResource(input CreateInput, userID uint, orgID *uint) (*models.NomadResource, error)
-	UpdateResource(id uint, input UpdateInput, userID uint) error
+	UpdateResource(id uint, input UpdateInput, userID uint) (UpdateResult, error)
 	PatchResource(id, userID uint, in PatchInput) error
 	DeleteResource(id uint, userID uint) error
 	ToggleStar(resourceID, userID uint) (isStarred bool, starCount int64, err error)
@@ -110,6 +111,8 @@ type ResourceServicer interface {
 	// it never clears content columns.
 	RecordFetchFailed(resourceID uint, version, errMsg string) error
 }
+
+var _ ResourceServicer = (*ResourceService)(nil)
 
 // ResourceService implements ResourceServicer
 type ResourceService struct {
@@ -161,70 +164,141 @@ type UpdateInput struct {
 	Tags          string
 }
 
-// UpdateResource updates an existing resource with authorization checks
-func (s *ResourceService) UpdateResource(id uint, input UpdateInput, userID uint) error {
+// OwnerPersonal is the UpdateInput.Owner value that selects the acting user's
+// personal namespace. An empty Owner leaves the owner unchanged.
+const OwnerPersonal = "personal"
+
+// ErrInvalidOwner is returned for an Owner value that is not empty, "personal"
+// or "org:<id>".
+var ErrInvalidOwner = errors.New("invalid owner")
+
+// UpdateResult describes the owner change UpdateResource applied, so callers
+// can audit what actually happened.
+type UpdateResult struct {
+	Transferred bool
+	FromOrgID   *uint
+	ToOrgID     *uint
+	FromUserID  uint
+	ToUserID    uint
+}
+
+// parseOwner resolves an Owner value to a target organisation. keep reports
+// that the owner is unchanged; personal that the acting user's namespace is
+// the target.
+func parseOwner(owner string) (orgID *uint, keep, personal bool, err error) {
+	switch {
+	case owner == "":
+		return nil, true, false, nil
+	case owner == OwnerPersonal:
+		return nil, false, true, nil
+	}
+	rest, ok := strings.CutPrefix(owner, "org:")
+	if !ok {
+		return nil, false, false, ErrInvalidOwner
+	}
+	oid, perr := strconv.ParseUint(rest, 10, 64)
+	if perr != nil || oid == 0 {
+		return nil, false, false, ErrInvalidOwner
+	}
+	id := uint(oid)
+	return &id, false, false, nil
+}
+
+func sameOrg(a, b *uint) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
+
+// UpdateResource updates an existing resource with authorization checks.
+//
+// Owner: "" keeps the current owner, "personal" moves the resource into the
+// acting user's personal namespace and "org:<id>" into that organisation.
+// Moving a resource out of an organisation requires the owner role there;
+// moving into one requires membership. A missing target organisation and a
+// non-member one return the same ErrUnauthorized.
+func (s *ResourceService) UpdateResource(id uint, input UpdateInput, userID uint) (UpdateResult, error) {
+	var result UpdateResult
+
 	// Authorize first (returns ErrResourceNotFound or ErrUnauthorized as appropriate)
 	if err := s.AuthorizeResourceAction(id, userID, false); err != nil {
-		return err
+		return result, err
 	}
 
 	// Same rule as the API: a stored URL must be an allowed https git host.
 	if err := security.ValidateRepositoryURL(input.RepositoryURL); err != nil {
-		return ErrInvalidRepositoryURL
+		return result, ErrInvalidRepositoryURL
 	}
 
 	var resource models.NomadResource
 	if err := s.db.First(&resource, id).Error; err != nil {
-		return ErrResourceNotFound
+		return result, ErrResourceNotFound
 	}
 
-	// Parse new owner if transferring
-	var newOrgID *uint
-	originalOrgID := resource.OrganizationID
-	if strings.HasPrefix(input.Owner, "org:") {
-		var oid uint
-		if _, err := fmt.Sscanf(input.Owner, "org:%d", &oid); err != nil {
-			return fmt.Errorf("invalid organization ID")
-		}
-
-		// Verify organization exists
-		var org models.Organization
-		if err := s.db.First(&org, oid).Error; err != nil {
-			return fmt.Errorf("organization not found")
-		}
-		newOrgID = &oid
+	targetOrgID, keep, personal, err := parseOwner(input.Owner)
+	if err != nil {
+		return result, err
+	}
+	targetUserID := resource.UserID
+	switch {
+	case keep:
+		targetOrgID = resource.OrganizationID
+	case personal:
+		targetOrgID = nil
+		targetUserID = userID
 	}
 
-	// Validate new org membership if transferring
-	if newOrgID != nil && (originalOrgID == nil || *originalOrgID != *newOrgID) {
-		isMember, err := s.ValidateOrgMembership(userID, *newOrgID)
+	orgChanged := !sameOrg(resource.OrganizationID, targetOrgID)
+	moved := orgChanged || targetUserID != resource.UserID
+
+	if moved && resource.OrganizationID != nil {
+		// Leaving an organisation needs the owner role there.
+		if err := s.AuthorizeResourceAction(id, userID, true); err != nil {
+			return result, err
+		}
+	}
+
+	if orgChanged && targetOrgID != nil {
+		isMember, err := s.ValidateOrgMembership(userID, *targetOrgID)
 		if err != nil {
-			return err
+			return result, err
 		}
 		if !isMember {
-			return fmt.Errorf("you must be a member of the target organization")
+			return result, ErrUnauthorized
 		}
 	}
 
-	// Check name collision in target namespace
-	if input.Name != resource.Name || (resource.OrganizationID != newOrgID) {
+	// Check name collision in the target namespace
+	if input.Name != resource.Name || moved {
 		var count int64
 		collideQuery := s.db.Model(&models.NomadResource{}).Where("name = ? AND id != ?", input.Name, id)
-		if newOrgID != nil {
-			collideQuery = collideQuery.Where("organization_id = ?", *newOrgID)
+		if targetOrgID != nil {
+			collideQuery = collideQuery.Where("organization_id = ?", *targetOrgID)
 		} else {
-			collideQuery = collideQuery.Where("user_id = ? AND organization_id IS NULL", resource.UserID)
+			collideQuery = collideQuery.Where("user_id = ? AND organization_id IS NULL", targetUserID)
 		}
-		collideQuery.Count(&count)
+		if err := collideQuery.Count(&count).Error; err != nil {
+			return result, fmt.Errorf("failed to check name: %w", err)
+		}
 		if count > 0 {
-			return fmt.Errorf("a resource with this name already exists in that namespace")
+			return result, fmt.Errorf("a resource with this name already exists in that namespace")
 		}
+	}
+
+	result = UpdateResult{
+		Transferred: moved,
+		FromOrgID:   resource.OrganizationID,
+		ToOrgID:     targetOrgID,
+		FromUserID:  resource.UserID,
+		ToUserID:    targetUserID,
 	}
 
 	// Update resource fields
 	resource.Name = input.Name
 	resource.Type = models.ResourceType(input.Type)
-	resource.OrganizationID = newOrgID
+	resource.OrganizationID = targetOrgID
+	resource.UserID = targetUserID
 	resource.Description = input.Description
 	resource.RepositoryURL = input.RepositoryURL
 	resource.FilePath = input.FilePath
@@ -233,15 +307,20 @@ func (s *ResourceService) UpdateResource(id uint, input UpdateInput, userID uint
 	// Update tags
 	tags := s.resolveTags(input.Tags)
 
-	if err := s.db.Model(&resource).Association("Tags").Replace(tags); err != nil {
-		return fmt.Errorf("failed to update tags: %w", err)
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&resource).Association("Tags").Replace(tags); err != nil {
+			return fmt.Errorf("failed to update tags: %w", err)
+		}
+		if err := tx.Save(&resource).Error; err != nil {
+			return fmt.Errorf("failed to save resource: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return UpdateResult{}, err
 	}
 
-	if err := s.db.Save(&resource).Error; err != nil {
-		return fmt.Errorf("failed to save resource: %w", err)
-	}
-
-	return nil
+	return result, nil
 }
 
 // DeleteResource deletes a resource after authorization check.

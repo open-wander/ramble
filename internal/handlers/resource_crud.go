@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"rmbl/internal/models"
 	"rmbl/internal/services/logger"
 	"rmbl/internal/services/resource"
@@ -172,6 +173,10 @@ func PostNewVersion(c *fiber.Ctx) error {
 	return c.SendStatus(200)
 }
 
+// resourceOwnerPersonal exists because GetEditResource shadows the resource
+// package with a local variable.
+const resourceOwnerPersonal = resource.OwnerPersonal
+
 func GetEditResource(c *fiber.Ctx) error {
 	namespace := c.Params("username")
 	resourcename := c.Params("resourcename")
@@ -222,11 +227,29 @@ func GetEditResource(c *fiber.Ctx) error {
 	for _, t := range resource.Tags {
 		tagNames = append(tagNames, t.Name)
 	}
+	currentOwner := resourceOwnerPersonal
+	if resource.OrganizationID != nil {
+		currentOwner = fmt.Sprintf("org:%d", *resource.OrganizationID)
+	}
 	return c.Render("edit_resource", MergeContext(BaseContext(c), fiber.Map{
-		"Resource":      resource,
-		"TagsString":    strings.Join(tagNames, ", "),
-		"Organizations": orgs,
+		"Resource":        resource,
+		"CurrentOwner":    currentOwner,
+		"CurrentUsername": currentUser.Username,
+		"TagsString":      strings.Join(tagNames, ", "),
+		"Organizations":   orgs,
 	}), "layouts/main")
+}
+
+// namespaceName returns the organisation name, or the username when orgID is nil.
+func namespaceName(db *gorm.DB, orgID *uint, userID uint) string {
+	if orgID != nil {
+		var o models.Organization
+		db.First(&o, *orgID)
+		return o.Name
+	}
+	var u models.User
+	db.First(&u, userID)
+	return u.Username
 }
 
 // PostEditResource godoc
@@ -276,7 +299,8 @@ func PostEditResource(c *fiber.Ctx) error {
 		Tags:          input.Tags,
 	}
 
-	if err := resource.Service.WithContext(c.UserContext()).UpdateResource(id, serviceInput, currentUserID); err != nil {
+	result, err := resource.Service.WithContext(c.UserContext()).UpdateResource(id, serviceInput, currentUserID)
+	if err != nil {
 		if errors.Is(err, resource.ErrUnauthorized) {
 			return c.Status(403).SendString("Unauthorized")
 		}
@@ -290,18 +314,15 @@ func PostEditResource(c *fiber.Ctx) error {
 	var res models.NomadResource
 	reqDB(c).First(&res, id)
 
-	newNamespace := ""
-	if res.OrganizationID != nil {
-		var o models.Organization
-		reqDB(c).First(&o, *res.OrganizationID)
-		newNamespace = o.Name
-	} else {
-		var u models.User
-		reqDB(c).First(&u, res.UserID)
-		newNamespace = u.Username
-	}
+	newNamespace := namespaceName(reqDB(c), res.OrganizationID, res.UserID)
 
 	AuditLog(c, "resource.edit", "resource", res.ID, res.Name, nil)
+	if result.Transferred {
+		AuditLog(c, "resource.transfer", "resource", res.ID, res.Name, map[string]any{
+			"from": namespaceName(reqDB(c), result.FromOrgID, result.FromUserID),
+			"to":   newNamespace,
+		})
+	}
 	SetFlash(c, "success", "Resource updated successfully!")
 	c.Set("HX-Redirect", "/"+newNamespace+"/"+res.Name)
 	return c.SendStatus(200)

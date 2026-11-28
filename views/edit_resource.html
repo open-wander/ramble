@@ -96,13 +96,13 @@
                         <div class="mt-1">
                             {{if .Organizations}}
                             <select id="owner" name="owner" class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-md p-2 border">
-                                <option value="" {{if not .Resource.OrganizationID}}selected{{end}}>Personal ({{.Resource.User.Username}})</option>
+                                <option value="personal" {{if eq .CurrentOwner "personal"}}selected{{end}}>Personal ({{.CurrentUsername}})</option>
                                 {{range .Organizations}}
-                                <option value="org:{{.ID}}">{{.Name}}</option>
+                                <option value="org:{{.ID}}" {{if eq $.CurrentOwner (printf "org:%d" .ID)}}selected{{end}}>{{.Name}}</option>
                                 {{end}}
                             </select>
                             <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                                Transfer this resource to an organization you belong to.
+                                Transfer this resource to an organization you belong to. Moving it out of an organization requires the owner role there.
                             </p>
                             {{else}}
                             <input type="text" disabled value="Personal ({{.Resource.User.Username}})" class="shadow-sm block w-full sm:text-sm border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-md p-2 border bg-gray-100 dark:bg-gray-800">
