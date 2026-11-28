@@ -299,6 +299,19 @@ func (s *Service) Revoke(userID, tokenID uint) (*models.APIToken, error) {
 	return &tok, nil
 }
 
+// RevokeAllForUser revokes every token of userID that is not yet revoked, with
+// one conditional UPDATE, and returns how many it revoked. Tokens already
+// revoked keep their original revoked_at.
+func (s *Service) RevokeAllForUser(userID uint) (int64, error) {
+	res := s.db.Model(&models.APIToken{}).
+		Where("user_id = ? AND revoked_at IS NULL", userID).
+		Update("revoked_at", s.now())
+	if res.Error != nil {
+		return 0, fmt.Errorf("revoke tokens: %w", res.Error)
+	}
+	return res.RowsAffected, nil
+}
+
 // TouchLastUsed sets last_used_at, at most once per minute per token, with a
 // single conditional UPDATE so it also holds across replicas.
 func (s *Service) TouchLastUsed(tokenID uint) error {
