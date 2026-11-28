@@ -465,3 +465,72 @@ func TestGenerate_Uniform(t *testing.T) {
 	}
 	assert.Less(t, chi, 140.0, "chi-square %.1f over %d chars", chi, total)
 }
+
+func TestRevokeAllForUser(t *testing.T) {
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	earlier := now.Add(-48 * time.Hour)
+	svc := newWithClock(testDB, func() time.Time { return now })
+
+	tests := []struct {
+		name    string
+		active  int
+		revoked int
+		expired int
+	}{
+		{"no tokens", 0, 0, 0},
+		{"only revoked", 0, 2, 0},
+		{"mixed", 2, 1, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := mkUser(t, "revall")
+			other := mkUser(t, "revother")
+			_, otherTok, err := svc.Create(other.ID, "o", "read", nil, 10)
+			require.NoError(t, err)
+
+			var revokedIDs, liveIDs []uint
+			mk := func() uint {
+				_, tok, err := svc.Create(u.ID, "t", "read", nil, 10)
+				require.NoError(t, err)
+				return tok.ID
+			}
+			for range tt.active {
+				liveIDs = append(liveIDs, mk())
+			}
+			for range tt.expired {
+				id := mk()
+				liveIDs = append(liveIDs, id)
+				require.NoError(t, testDB.Model(&models.APIToken{}).Where("id = ?", id).Update("expires_at", earlier).Error)
+			}
+			for range tt.revoked {
+				id := mk()
+				revokedIDs = append(revokedIDs, id)
+				require.NoError(t, testDB.Model(&models.APIToken{}).Where("id = ?", id).Update("revoked_at", earlier).Error)
+			}
+
+			n, err := svc.RevokeAllForUser(u.ID)
+			require.NoError(t, err)
+			assert.EqualValues(t, tt.active+tt.expired, n)
+
+			for _, id := range liveIDs {
+				var row models.APIToken
+				require.NoError(t, testDB.First(&row, id).Error)
+				require.NotNil(t, row.RevokedAt)
+				assert.True(t, now.Equal(row.RevokedAt.UTC()))
+			}
+			for _, id := range revokedIDs {
+				var row models.APIToken
+				require.NoError(t, testDB.First(&row, id).Error)
+				require.NotNil(t, row.RevokedAt)
+				assert.True(t, earlier.Equal(row.RevokedAt.UTC()), "revoked_at must be kept")
+			}
+			var o models.APIToken
+			require.NoError(t, testDB.First(&o, otherTok.ID).Error)
+			assert.Nil(t, o.RevokedAt, "other user's token untouched")
+
+			n, err = svc.RevokeAllForUser(u.ID)
+			require.NoError(t, err)
+			assert.Zero(t, n)
+		})
+	}
+}

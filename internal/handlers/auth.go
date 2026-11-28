@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"rmbl/internal/crypto"
 	"rmbl/internal/models"
+	"rmbl/internal/services/apitoken"
 	"rmbl/internal/services/email"
 	"rmbl/internal/services/logger"
 	"strings"
@@ -570,15 +571,43 @@ func PostResetPassword(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).SendString("Could not hash password")
 	}
 
-	// Update password and set PasswordChangedAt for session invalidation
-	user.PasswordHash = string(hashedPassword)
-	user.PasswordChangedAt = time.Now()
-	user.ResetToken = "" // Clear token
-	reqDB(c).Save(&user)
+	// Update the password and revoke the user's API tokens in one transaction.
+	// PasswordChangedAt invalidates web sessions; tokens need explicit revocation.
+	var revoked int64
+	err = reqDB(c).Transaction(func(tx *gorm.DB) error {
+		user.PasswordHash = string(hashedPassword)
+		user.PasswordChangedAt = time.Now()
+		user.ResetToken = "" // Clear token
+		if err := tx.Save(&user).Error; err != nil {
+			return err
+		}
+		n, err := apitoken.New(tx).RevokeAllForUser(user.ID)
+		if err != nil {
+			return err
+		}
+		revoked = n
+		return nil
+	})
+	if err != nil {
+		logger.FromContext(c.UserContext()).Error("auth.reset_save_failed",
+			logger.Err(err), slog.Uint64("user_id", uint64(user.ID)))
+		return c.Status(fiber.StatusInternalServerError).SendString("Failed to process request")
+	}
 
 	AuditLog(c, "auth.password_reset_completed", "user", user.ID, user.Username, nil)
 
-	SetFlash(c, "success", "Your password has been reset. Please log in.")
+	msg := "Your password has been reset. Please log in."
+	if revoked > 0 {
+		AuditLog(c, "token.revoke_all", "user", user.ID, user.Username, map[string]any{
+			"count": revoked, "reason": "password_reset",
+		})
+		noun := "API tokens were"
+		if revoked == 1 {
+			noun = "API token was"
+		}
+		msg = fmt.Sprintf("Your password has been reset and %d %s revoked. Please log in.", revoked, noun)
+	}
+	SetFlash(c, "success", msg)
 	c.Set("HX-Redirect", "/login")
 	return c.SendStatus(fiber.StatusOK)
 }

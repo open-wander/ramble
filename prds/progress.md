@@ -1268,3 +1268,8 @@ PATTERN: provider - tfplugindocs needs a real terraform binary (an OpenTofu shim
 - An environment with a `main` branch policy rejects `pull_request` runs (ref refs/pull/N/merge); tag-release moved to pull_request_target, which never checks out the head.
 - PATTERN: [ci] - Deploy images by digest, never by tag: GITHUB_TOKEN with packages: write on any branch can overwrite a tag outside every environment gate.
 - PATTERN: [ci] - A commit's author.login is derived from its email; an identity check on commits needs a ruleset that controls who can push the branch.
+
+## 2026-11-28 - 18.4: API tokens revoked on password reset
+
+- RevokeAllForUser in the apitoken service; the reset handler runs the password save and the revocation in one transaction, audit and flash after commit (AuditLog writes through database.DB, never inside the tx).
+- Review MINOR: the flash wording and the 500 path have no test. Mutations caught: skipping the revoke, dropping the revoked_at IS NULL filter, dropping the user_id filter. A pre-existing race in marking a reset link used went to 18.7.

@@ -5,13 +5,16 @@ package handlers
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"net/http"
 	"net/http/httptest"
 	"rmbl/internal/database"
 	"rmbl/internal/models"
+	"rmbl/internal/services/apitoken"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
@@ -523,5 +526,91 @@ func TestAuth_RateLimitingObservation(t *testing.T) {
 		// MaxFailedLoginAttempts = 5
 		// AccountLockDuration = 15 minutes
 		assert.True(t, true, "Per-account rate limiting via FailedLoginAttempts")
+	})
+}
+
+// TestAuth_PasswordResetRevokesAPITokens verifies a completed reset revokes
+// every active API token of the user and leaves other revocations untouched.
+func TestAuth_PasswordResetRevokesAPITokens(t *testing.T) {
+	defer cleanupTestData(t)
+	apitoken.Init(database.DB)
+
+	mkUser := func(name, resetToken string) models.User {
+		h := sha256.Sum256([]byte(resetToken))
+		pw, _ := bcrypt.GenerateFromPassword([]byte("OldPassword123!"), bcrypt.DefaultCost)
+		u := models.User{
+			Username: name, Email: name + "@test.com", Name: name,
+			EmailVerified: true, PasswordHash: string(pw),
+			ResetToken: hex.EncodeToString(h[:]), ResetTokenExpires: time.Now().Add(time.Hour),
+		}
+		require.NoError(t, database.DB.Create(&u).Error)
+		return u
+	}
+	reset := func(app *fiber.App, token string) *http.Response {
+		req := httptest.NewRequest("POST", "/reset-password", strings.NewReader("token="+token+"&password=NewPassword123!"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		return resp
+	}
+
+	t.Run("active tokens are revoked", func(t *testing.T) {
+		u := mkUser("resettok1", "resettoken-one")
+		org := models.Organization{Name: "resettok1-org"}
+		require.NoError(t, database.DB.Create(&org).Error)
+		require.NoError(t, database.DB.Create(&models.Membership{UserID: u.ID, OrganizationID: org.ID, Role: "owner"}).Error)
+		defer database.DB.Exec("DELETE FROM memberships WHERE organization_id = ?", org.ID)
+		defer database.DB.Exec("DELETE FROM organizations WHERE id = ?", org.ID)
+
+		personal, _, err := apitoken.Svc.Create(u.ID, "personal", models.ScopeRead, nil, 30)
+		require.NoError(t, err)
+		orgTok, _, err := apitoken.Svc.Create(u.ID, "org", models.ScopeWrite, &org.ID, 30)
+		require.NoError(t, err)
+		_, old, err := apitoken.Svc.Create(u.ID, "old", models.ScopeRead, nil, 30)
+		require.NoError(t, err)
+		earlier := time.Now().Add(-48 * time.Hour).Truncate(time.Microsecond)
+		require.NoError(t, database.DB.Model(&models.APIToken{}).Where("id = ?", old.ID).Update("revoked_at", earlier).Error)
+
+		for _, p := range []string{personal, orgTok} {
+			_, err := apitoken.Svc.Authenticate(p)
+			require.NoError(t, err)
+		}
+
+		app := setupTestApp()
+		app.Post("/reset-password", PostResetPassword)
+		resp := reset(app, "resettoken-one")
+		require.Equal(t, 200, resp.StatusCode)
+
+		for _, p := range []string{personal, orgTok} {
+			_, err := apitoken.Svc.Authenticate(p)
+			assert.ErrorIs(t, err, apitoken.ErrInvalidToken)
+		}
+		var row models.APIToken
+		require.NoError(t, database.DB.First(&row, old.ID).Error)
+		require.NotNil(t, row.RevokedAt)
+		assert.True(t, earlier.Equal(row.RevokedAt.Truncate(time.Microsecond)), "earlier revoked_at must be kept")
+
+		var logs []models.AuditLog
+		require.NoError(t, database.DB.Where("action = ? AND target_id = ?", "token.revoke_all", u.ID).Find(&logs).Error)
+		require.Len(t, logs, 1)
+		assert.Contains(t, logs[0].Details, `"count":2`)
+		assert.Contains(t, logs[0].Details, `"reason":"password_reset"`)
+	})
+
+	t.Run("no tokens leaves no revoke audit row", func(t *testing.T) {
+		u := mkUser("resettok2", "resettoken-two")
+		app := setupTestApp()
+		app.Post("/reset-password", PostResetPassword)
+		resp := reset(app, "resettoken-two")
+		require.Equal(t, 200, resp.StatusCode)
+
+		var n int64
+		require.NoError(t, database.DB.Model(&models.AuditLog{}).
+			Where("action = ? AND target_id = ?", "token.revoke_all", u.ID).Count(&n).Error)
+		assert.Zero(t, n)
+		var done int64
+		require.NoError(t, database.DB.Model(&models.AuditLog{}).
+			Where("action = ? AND target_id = ?", "auth.password_reset_completed", u.ID).Count(&done).Error)
+		assert.EqualValues(t, 1, done)
 	})
 }
