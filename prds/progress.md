@@ -1253,3 +1253,11 @@ PATTERN: provider - tfplugindocs needs a real terraform binary (an OpenTofu shim
 - Shared rule names.IsValidVersion on every server write path, including the webhook, which used to insert tags directly and now goes through ProcessTagEvent. Tags with `/` are rejected. CLI validates every registry-supplied path component and writes through os.OpenRoot.
 - Review MINOR: the reproduce-first test was written against the new signature, so it never ran red on the old code. The security review skeptic had reproduced the escape with a scratch test, and the reviewer confirmed by mutation that the regression tests guard the fix. A rejected webhook tag left LastWebhookStatus=success; fixed with a test that a mutation turns red.
 - PATTERN: [security] - os.OpenRoot (Go 1.24+) confines every write under a root, including through symlinks; use it for any client cache built from server-supplied names.
+
+## 2026-11-28 - 18.2: web edit moved org resources out of the org
+
+- The form posted owner="" for org resources (no selected option) and "" meant personal. Now "" means unchanged and personal is explicit. A move out needs the owner role on the source org (AuthorizeResourceAction requireOwner, since services/org imports services/resource). A move to personal lands in the acting user's namespace.
+- Review MINOR: the ResourceServicer interface was out of date with the new signature and nothing asserted it; added `var _ ResourceServicer = (*ResourceService)(nil)`. Ten mutations were all caught.
+- Draft advisories GHSA-pq9v-vf2c-25hw (18.2) and GHSA-2wcj-fvx5-m238 (18.3) opened through `qm github exec -configuration open-wander-advisories`.
+- PATTERN: [authz] - An absent or empty form field must mean "unchanged" for ownership, never "clear"; make the destructive choice an explicit value.
+- PATTERN: [go] - When an interface is the declared contract for a service, assert it at compile time; a signature change otherwise drifts silently.
